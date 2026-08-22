@@ -7,12 +7,23 @@ import {
   removeDocumentFromTag,
   renameTag
 } from '../api/tags';
+import { getErrorMessage } from '../lib/errors';
 import type { Tag } from '../types';
 
 export function useTags() {
   const [tags, setTags] = useState<Tag[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(() => listTags().then(setTags).catch(() => setTags([])), []);
+  const refresh = useCallback(
+    () =>
+      listTags()
+        .then((result) => {
+          setTags(result);
+          setError(null);
+        })
+        .catch((err) => setError(getErrorMessage(err, 'Could not load your tags.'))),
+    []
+  );
 
   useEffect(() => {
     refresh();
@@ -54,5 +65,5 @@ export function useTags() {
     [refresh]
   );
 
-  return { tags, create, rename, remove, toggleDocument, refresh };
+  return { tags, error, create, rename, remove, toggleDocument, refresh };
 }

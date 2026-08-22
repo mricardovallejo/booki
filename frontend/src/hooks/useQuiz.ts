@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { generateQuiz, getQuizReport, submitQuizAnswer } from '../api/sessions';
+import { getErrorMessage } from '../lib/errors';
 import type { Difficulty, QuizAnswerResult, QuizConfig, QuizQuestion, QuizReport, Session } from '../types';
 
 export interface QuizConfigInput {
@@ -20,6 +21,7 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
   const [generating, setGenerating] = useState(false);
   const [grading, setGrading] = useState<number | null>(null);
   const [report, setReport] = useState<QuizReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (session) {
@@ -33,11 +35,14 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
 
   const generate = useCallback(async () => {
     setGenerating(true);
+    setError(null);
     setResults({});
     try {
       const result = await generateQuiz(sessionId, config);
       setQuestions(result.questions);
       setActiveConfig(result.config);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not generate a quiz.'));
     } finally {
       setGenerating(false);
     }
@@ -46,6 +51,7 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
   const submitAnswer = useCallback(
     async (question: QuizQuestion, answer: string) => {
       setGrading(question.id);
+      setError(null);
       try {
         const result = await submitQuizAnswer(sessionId, {
           pageNumber: question.pageNumber,
@@ -57,6 +63,9 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
         setResults((prev) => ({ ...prev, [question.id]: result }));
         onActivity?.();
         return result;
+      } catch (err) {
+        setError(getErrorMessage(err, 'Could not check this answer.'));
+        return null;
       } finally {
         setGrading(null);
       }
@@ -64,7 +73,16 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
     [sessionId, activeConfig, config, onActivity]
   );
 
-  const loadReport = useCallback(() => getQuizReport(sessionId).then(setReport), [sessionId]);
+  const loadReport = useCallback(
+    () =>
+      getQuizReport(sessionId)
+        .then((result) => {
+          setReport(result);
+          setError(null);
+        })
+        .catch((err) => setError(getErrorMessage(err, 'Could not load the quiz report.'))),
+    [sessionId]
+  );
 
   return {
     config,
@@ -74,6 +92,7 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
     results,
     generating,
     grading,
+    error,
     generate,
     submitAnswer,
     report,

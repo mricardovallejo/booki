@@ -15,7 +15,7 @@ import type { Document } from '../types';
 export default function HomePage() {
   useScrollToHash();
   const { documents, isUploading, upload, remove: removeDocument } = useDocuments();
-  const { tags, create, rename, remove: removeTag, toggleDocument } = useTags();
+  const { tags, error: tagsError, create, rename, remove: removeTag, toggleDocument } = useTags();
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [organizingDocument, setOrganizingDocument] = useState<Document | null>(null);
   const [deletingDocument, setDeletingDocument] = useState<Document | null>(null);
@@ -112,6 +112,8 @@ export default function HomePage() {
         </div>
         {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
       </div>
+
+      {tagsError && <p className="mx-auto max-w-7xl px-6 text-sm text-rose-400">{tagsError}</p>}
 
       {documents.length > 0 && !trimmedQuery && (
         <TagsBar tags={tags} onCreate={create} onRename={rename} onDelete={removeTag} />

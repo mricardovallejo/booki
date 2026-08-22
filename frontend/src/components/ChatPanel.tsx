@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function ChatPanel({ sessionId, onActivity }: Props) {
-  const { messages, sending, send, refresh } = useChat(sessionId, onActivity);
+  const { messages, sending, error, send, refresh } = useChat(sessionId, onActivity);
   const [text, setText] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -73,6 +73,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
       </div>
 
       <div className="border-t border-white/10 p-4">
+        {error && <p className="mb-2 text-xs text-rose-400">{error}</p>}
         <div className="flex items-center gap-3 rounded-2xl bg-booki-card px-3 py-2">
           <VoiceButton onResult={(t) => send(t, 'VOICE')} size="sm" />
           <input

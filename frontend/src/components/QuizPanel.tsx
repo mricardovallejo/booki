@@ -21,7 +21,7 @@ const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
 export default function QuizPanel({ sessionId, onActivity }: Props) {
   const { session } = useSession(sessionId);
   const { masters, error: mastersError } = useProfileMasters();
-  const { config, setConfig, questions, activeConfig, results, generating, grading, generate, submitAnswer } =
+  const { config, setConfig, questions, activeConfig, results, generating, grading, error, generate, submitAnswer } =
     useQuiz(sessionId, session, onActivity);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [showSetup, setShowSetup] = useState(true);
@@ -99,6 +99,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
           <Button onClick={onGenerate} disabled={generating} className="w-full">
             {generating ? 'Generating…' : questions.length > 0 ? 'Regenerate quiz' : 'Generate quiz'}
           </Button>
+          {error && <p className="text-sm text-rose-400">{error}</p>}
         </Card>
       ) : (
         <div className="space-y-5">
@@ -117,6 +118,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
               Edit setup
             </Button>
           </div>
+          {error && <p className="text-xs text-rose-400">{error}</p>}
 
           {questions.map((q) => {
             const result = results[q.id];

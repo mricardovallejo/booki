@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { generateSummaryAsChat, generateSummaryAsPdf } from '../api/sessions';
 import { downloadReportFile } from '../api/reports';
+import { getErrorMessage } from '../lib/errors';
 import type { GenerateSummaryRequest, SentReport } from '../types';
 
 function triggerDownload(blob: Blob, fileName: string) {
@@ -33,11 +34,8 @@ export function useSummary(sessionId: number) {
       const blob = await downloadReportFile(report.id);
       triggerDownload(blob, `booki-summary-${report.id}.pdf`);
       return { deliveredAs: 'pdf' as const, report };
-    } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Could not generate the summary.';
-      setError(message);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not generate the summary.'));
       return null;
     } finally {
       setGenerating(false);

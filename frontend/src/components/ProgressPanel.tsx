@@ -7,7 +7,15 @@ interface Props {
 }
 
 export default function ProgressPanel({ sessionId, refreshKey }: Props) {
-  const progress = useProgress(sessionId, refreshKey);
+  const { progress, error } = useProgress(sessionId, refreshKey);
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center px-5 text-center text-sm text-rose-400">
+        {error}
+      </div>
+    );
+  }
 
   if (!progress) {
     return (

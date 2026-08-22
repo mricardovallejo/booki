@@ -1,0 +1,1074 @@
+openapi: 3.0.3
+info:
+  title: kobi-backend-api
+  description: >
+    API contract for BooKI's backend. This spec is reverse-engineered from the
+    mock-backend's real, verified behavior (Express, in-memory) and from the
+    frontend's existing types (`frontend/src/types/index.ts`) and endpoint map
+    (`frontend/src/config/endpoints.ts`). It is meant to be the single source
+    of truth while the real Spring Boot backend (`backend/`) is implemented,
+    so both sides can be checked against the same shapes before writing more
+    Java code.
+
+    Endpoints that currently only exist in mock form (chat replies, quiz
+    grading, summaries, PDF reports) are marked in their description as
+    "mock logic" — the real backend is expected to replace the *logic*
+    behind them (e.g. call a real AI provider) while keeping the *shape*
+    of the request/response the same, so the frontend does not need to change.
+  version: "1.0.0"
+  license:
+    name: Proprietary — internal use only
+servers:
+  - url: http://localhost:3001/api
+    description: Mock backend (Node/Express, in-memory data)
+  - url: http://localhost:8080/api
+    description: Real backend (Spring Boot)
+
+tags:
+  - name: Auth
+    description: Registration and sign-in. Issues the Bearer token used by every other endpoint.
+  - name: Users
+    description: The current user's own profile, including the personal context that shapes chat, quiz, and summary responses.
+  - name: Documents
+    description: Uploading and managing PDF books.
+  - name: Tags
+    description: User-defined labels for organizing the library. A document can belong to any number of tags.
+  - name: Profile Masters
+    description: Expert personas BooKI can take on during a session (tone, vocabulary, difficulty framing).
+  - name: Sessions
+    description: A reading session over a page range of one document — the core unit of the product.
+  - name: Quiz
+    description: Configurable comprehension quizzes scoped to a session, with a persisted correction history.
+  - name: Reports
+    description: PDF generation for session progress and quiz corrections, optionally "sent" by email.
+  - name: Summary
+    description: On-demand summarization of a session's book pages plus its discussion so far.
+  - name: Health
+    description: Liveness check.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  mock: { type: boolean, description: "true only on the mock backend" }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Create an account
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                name: { type: string, description: "Defaults to the local part of the email if omitted" }
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in
+      operationId: loginUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get the current user's profile
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Users]
+      summary: Update the current user's profile
+      operationId: updateCurrentUser
+      description: >
+        `bio` and `systemPrompt` form the "user context" layer: combined with
+        the app's own defaults and the session's Profile Master, they shape
+        how chat, quiz, and summary responses are generated
+        (see `GET /sessions/{id}/context`).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                bio: { type: string }
+                systemPrompt: { type: string }
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /documents:
+    get:
+      tags: [Documents]
+      summary: List my documents
+      operationId: listDocuments
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Document" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Documents]
+      summary: Upload a PDF
+      operationId: uploadDocument
+      description: >
+        Real backend: extracts text per page (e.g. Apache PDFBox) and persists
+        one `DocumentPage` row per page. Mock backend: ignores the uploaded
+        file's real content and generates a few placeholder pages instead.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Uploaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /documents/{id}:
+    get:
+      tags: [Documents]
+      summary: Get document metadata
+      operationId: getDocument
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Documents]
+      summary: Delete a document
+      operationId: deleteDocument
+      description: >
+        Cascades: removes the document's pages, drops it from every Tag's
+        membership list, and deletes any sessions (with their messages and
+        quiz attempts) that pointed at it.
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /documents/{id}/file:
+    get:
+      tags: [Documents]
+      summary: Download/stream the PDF file
+      operationId: downloadDocumentFile
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      responses:
+        "200":
+          description: The PDF binary
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /collections:
+    get:
+      tags: [Tags]
+      summary: List my tags
+      operationId: listTags
+      description: >
+        Called "collections" in the URL for historical reasons; the product
+        concept is "Tags" — a document can belong to any number of them
+        (many-to-many via `documentIds`).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Tag" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Tags]
+      summary: Create a tag
+      operationId: createTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                documentIds:
+                  type: array
+                  items: { type: integer }
+                  description: Any id not owned by the caller is silently dropped.
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /collections/{id}:
+    patch:
+      tags: [Tags]
+      summary: Rename a tag
+      operationId: renameTag
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Tags]
+      summary: Delete a tag
+      operationId: deleteTag
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /collections/{id}/documents/{documentId}:
+    put:
+      tags: [Tags]
+      summary: Add a document to a tag
+      operationId: addDocumentToTag
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+        - $ref: "#/components/parameters/DocumentIdPath"
+      responses:
+        "200":
+          description: Updated tag
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Tags]
+      summary: Remove a document from a tag
+      operationId: removeDocumentFromTag
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+        - $ref: "#/components/parameters/DocumentIdPath"
+      responses:
+        "200":
+          description: Updated tag
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /profile-masters:
+    get:
+      tags: [Profile Masters]
+      summary: List available Profile Masters
+      operationId: listProfileMasters
+      description: >
+        Global, not per-user, in the current mock. A future version may scope
+        custom Masters to their creator while keeping built-in ones shared.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProfileMaster" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Profile Masters]
+      summary: Create a custom Profile Master
+      operationId: createProfileMaster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, systemPrompt]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                systemPrompt: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfileMaster" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /sessions:
+    post:
+      tags: [Sessions]
+      summary: Create a reading session over a page range
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documentId, startPage, endPage, difficulty]
+              properties:
+                documentId: { type: integer }
+                title: { type: string, description: "Auto-generated from the document title and page range if omitted" }
+                startPage: { type: integer, minimum: 1 }
+                endPage: { type: integer, minimum: 1 }
+                profileMasterId: { type: integer, nullable: true }
+                difficulty: { $ref: "#/components/schemas/Difficulty" }
+                language: { $ref: "#/components/schemas/SessionLanguage" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}:
+    get:
+      tags: [Sessions]
+      summary: Get a session
+      operationId: getSession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/context:
+    get:
+      tags: [Sessions]
+      summary: Inspect the layered prompt context for this session
+      operationId: getSessionContext
+      description: >
+        Transparency endpoint: shows exactly what shapes BooKI's answers for
+        this session — the app's own baseline behavior (incl. session
+        language), the Profile Master's persona, and the user's own stated
+        preferences. Surfaced in the frontend's "Context" info button.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionContext" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/current-page:
+    patch:
+      tags: [Sessions]
+      summary: Update the reader's current page
+      operationId: updateCurrentPage
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPage]
+              properties:
+                currentPage: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/messages:
+    get:
+      tags: [Sessions]
+      summary: List chat messages for a session
+      operationId: listMessages
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Message" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Sessions]
+      summary: Send a message to BooKI
+      operationId: sendMessage
+      description: >
+        Mock logic: keyword-matched canned replies in the session's language,
+        grounded in the actual page text for that session, with the user's
+        own `systemPrompt` echoed once on the first exchange of the session.
+        Real backend: replace with a real `AiProvider.converse(...)` call
+        using the same layered context (see `/sessions/{id}/context`),
+        keeping the request/response shape identical.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                inputType: { $ref: "#/components/schemas/InputType" }
+      responses:
+        "201":
+          description: BooKI's reply
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Message" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/quiz:
+    post:
+      tags: [Quiz]
+      summary: Generate quiz questions for this session
+      operationId: generateQuiz
+      description: >
+        Mock logic: one templated question per page (up to `questionCount`),
+        in the session's language. Real backend: could ask a real AI provider
+        to generate genuine comprehension questions from the page text instead.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profileMasterId: { type: integer, nullable: true, description: "Defaults to the session's own Master" }
+                difficulty: { $ref: "#/components/schemas/Difficulty" }
+                questionCount: { type: integer, minimum: 1, maximum: 10, default: 3 }
+      responses:
+        "200":
+          description: Generated quiz
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizGenerateResult" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/quiz/answer:
+    post:
+      tags: [Quiz]
+      summary: Submit and grade one quiz answer
+      operationId: submitQuizAnswer
+      description: >
+        Mock logic: keyword-overlap scoring against the page's text, with a
+        pass threshold that gets stricter as `difficulty` increases. Every
+        call is persisted as a `QuizAttempt`, which is what
+        `GET /sessions/{id}/quiz/attempts` and the PDF quiz report read from.
+        Real backend: replace the grading with a real AI judgment, keeping
+        the `{correct, score, feedback}` shape.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pageNumber, answer]
+              properties:
+                pageNumber: { type: integer }
+                question: { type: string, description: "Echoed back verbatim into the stored QuizAttempt for the report" }
+                answer: { type: string }
+                difficulty: { $ref: "#/components/schemas/Difficulty" }
+                profileMasterId: { type: integer, nullable: true }
+      responses:
+        "200":
+          description: Grading result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizAnswerResult" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/quiz/attempts:
+    get:
+      tags: [Quiz]
+      summary: Full quiz correction report for this session
+      operationId: getQuizReport
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizReport" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/progress:
+    get:
+      tags: [Sessions]
+      summary: Reading and quiz progress stats
+      operationId: getSessionProgress
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionProgress" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/notifications:
+    get:
+      tags: [Sessions]
+      summary: Contextual nudges for this session
+      operationId: getSessionNotifications
+      description: >
+        Computed on the fly from current progress (not persisted): e.g.
+        "you're halfway through", "try a quiz". Always in the session's
+        language.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SessionNotification" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/reports:
+    get:
+      tags: [Reports]
+      summary: History of PDF reports generated for this session
+      operationId: listSessionReports
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SentReport" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/reports/progress:
+    post:
+      tags: [Reports]
+      summary: Generate (and "send") a progress report PDF
+      operationId: sendProgressReport
+      description: >
+        No real mail transport is configured in the mock — the send is
+        logged server-side, not actually delivered. The PDF itself is real
+        and always downloadable via the returned `downloadUrl`.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "201":
+          description: Report generated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SentReport" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/reports/quiz:
+    post:
+      tags: [Reports]
+      summary: Generate (and "send") a quiz correction report PDF
+      operationId: sendQuizReport
+      description: Fails with 400 if no quiz answers have been submitted yet for this session.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "201":
+          description: Report generated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SentReport" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/summary:
+    post:
+      tags: [Summary]
+      summary: Summarize the book pages + discussion so far
+      operationId: generateSummary
+      description: >
+        Combines the session's page text with its chat history, in the
+        Profile Master's tone and the user's own stated preferences, plus an
+        optional free-text instruction (`prompt`). `lengthPages` scales how
+        much of each is included (roughly 1–10 "pages" of density). Delivered
+        either as a new BooKI chat message, or as a downloadable PDF
+        (optionally also "sent" by email, same caveat as the other reports).
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerateSummaryRequest" }
+      responses:
+        "201":
+          description: >
+            A `Message` when `deliverAs` is `chat`, or a `SentReport` when
+            `deliverAs` is `pdf`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Message"
+                  - $ref: "#/components/schemas/SentReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /reports/{id}/file:
+    get:
+      tags: [Reports]
+      summary: Download a generated report PDF
+      operationId: downloadReportFile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: The PDF binary
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        `Authorization: Bearer <token>`. The mock backend issues an unsigned
+        placeholder token (base64 JSON, `alg: none`) — the real backend must
+        issue a properly signed JWT instead, but the header format and the
+        401-on-missing/invalid-or-expired-token behavior must stay the same.
+
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    DocumentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    DocumentIdPath:
+      name: documentId
+      in: path
+      required: true
+      schema: { type: integer }
+    TagId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing, invalid, or expired token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found, or not owned by the caller
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    Difficulty:
+      type: string
+      enum: [easy, medium, hard]
+
+    SessionLanguage:
+      type: string
+      enum: [en, es, fr]
+      description: Language BooKI itself replies in for this session — independent of the language of the uploaded document.
+
+    InputType:
+      type: string
+      enum: [TEXT, VOICE]
+
+    Speaker:
+      type: string
+      enum: [USER, BOOKI]
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        name: { type: string }
+        bio: { type: string }
+        systemPrompt:
+          type: string
+          description: The "user context" layer — the reader's own stated learning preferences, applied across every session they create.
+        createdAt: { type: string, format: date-time }
+      required: [id, email, name, createdAt]
+
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+      required: [token, user]
+
+    Document:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        pageCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+      required: [id, title, pageCount, createdAt]
+
+    Tag:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        documentIds:
+          type: array
+          items: { type: integer }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, documentIds]
+
+    ProfileMaster:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        systemPrompt: { type: string }
+      required: [id, name, description]
+
+    Session:
+      type: object
+      properties:
+        id: { type: integer }
+        documentId: { type: integer }
+        title: { type: string }
+        startPage: { type: integer }
+        endPage: { type: integer }
+        currentPage: { type: integer }
+        difficulty: { $ref: "#/components/schemas/Difficulty" }
+        profileMasterId: { type: integer, nullable: true }
+        language: { $ref: "#/components/schemas/SessionLanguage" }
+        createdAt: { type: string, format: date-time }
+      required: [id, documentId, title, startPage, endPage, currentPage, difficulty, language, createdAt]
+
+    SessionContext:
+      type: object
+      description: The three layers combined to shape BooKI's answers for a session.
+      properties:
+        appPrompt: { type: string }
+        masterPrompt: { type: string, nullable: true }
+        userPrompt: { type: string, nullable: true }
+      required: [appPrompt, masterPrompt, userPrompt]
+
+    Message:
+      type: object
+      properties:
+        id: { type: integer }
+        sessionId: { type: integer }
+        speaker: { $ref: "#/components/schemas/Speaker" }
+        inputType: { $ref: "#/components/schemas/InputType" }
+        message: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, speaker, inputType, message, createdAt]
+
+    QuizQuestion:
+      type: object
+      properties:
+        id: { type: integer }
+        pageNumber: { type: integer }
+        question: { type: string }
+      required: [id, pageNumber, question]
+
+    QuizConfig:
+      type: object
+      properties:
+        profileMasterId: { type: integer, nullable: true }
+        masterName: { type: string, nullable: true }
+        difficulty: { $ref: "#/components/schemas/Difficulty" }
+        questionCount: { type: integer }
+      required: [difficulty, questionCount]
+
+    QuizGenerateResult:
+      type: object
+      properties:
+        questions:
+          type: array
+          items: { $ref: "#/components/schemas/QuizQuestion" }
+        config: { $ref: "#/components/schemas/QuizConfig" }
+      required: [questions, config]
+
+    QuizAnswerResult:
+      type: object
+      properties:
+        correct: { type: boolean }
+        score: { type: number, minimum: 0, maximum: 1 }
+        feedback: { type: string }
+      required: [correct, score, feedback]
+
+    QuizAttempt:
+      type: object
+      properties:
+        id: { type: integer }
+        pageNumber: { type: integer }
+        question: { type: string }
+        answer: { type: string }
+        correct: { type: boolean }
+        score: { type: number }
+        feedback: { type: string }
+        difficulty: { $ref: "#/components/schemas/Difficulty" }
+        masterName: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, pageNumber, question, answer, correct, score, feedback, difficulty, createdAt]
+
+    QuizReport:
+      type: object
+      properties:
+        attempts:
+          type: array
+          items: { $ref: "#/components/schemas/QuizAttempt" }
+        summary:
+          type: object
+          properties:
+            total: { type: integer }
+            correct: { type: integer }
+            incorrect: { type: integer }
+            averageScore: { type: integer, description: "0-100" }
+          required: [total, correct, incorrect, averageScore]
+      required: [attempts, summary]
+
+    SessionProgress:
+      type: object
+      properties:
+        pagesRead: { type: integer }
+        totalPages: { type: integer }
+        pctRead: { type: integer, description: "0-100" }
+        messageCount: { type: integer }
+        quizzesTaken: { type: integer }
+        quizAverageScore: { type: integer, description: "0-100" }
+      required: [pagesRead, totalPages, pctRead, messageCount, quizzesTaken, quizAverageScore]
+
+    SessionNotification:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [progress, chat, quiz] }
+        message: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, type, message, createdAt]
+
+    SentReport:
+      type: object
+      properties:
+        id: { type: integer }
+        sessionId: { type: integer }
+        type: { type: string, enum: [progress, quiz, summary] }
+        email:
+          type: string
+          nullable: true
+          description: Null when the PDF was only generated/downloaded, never emailed.
+        downloadUrl: { type: string, description: "Relative path, e.g. /reports/{id}/file" }
+        simulated:
+          type: boolean
+          description: true when an email was provided — no real mail transport is configured, so "sent" is logged, not delivered.
+        createdAt: { type: string, format: date-time }
+      required: [id, sessionId, type, email, downloadUrl, simulated, createdAt]
+
+    GenerateSummaryRequest:
+      type: object
+      required: [lengthPages, includeCover, deliverAs]
+      properties:
+        lengthPages:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Target density of the summary, expressed as an equivalent number of pages.
+        prompt:
+          type: string
+          description: Optional free-text instruction from the reader (e.g. "focus on the characters"). Echoed verbatim into the generated summary's intro.
+        includeCover:
+          type: boolean
+          description: Whether the PDF should include the document's cover art block (gradient + initials). Ignored when deliverAs is chat.
+        deliverAs: { type: string, enum: [chat, pdf] }
+        email:
+          type: string
+          format: email
+          description: Only used when deliverAs is pdf; optional even then.

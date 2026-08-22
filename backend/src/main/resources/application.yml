@@ -1,0 +1,84 @@
+spring:
+  application:
+    name: booki-backend
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+server:
+  port: 8080
+
+booki:
+  jwt:
+    secret: ${JWT_SECRET:change-me-in-production-this-is-a-dev-secret-32bytes}
+    expiration-ms: 86400000
+  storage:
+    pdf-path: ${PDF_STORAGE_PATH:./uploads}
+    report-path: ${REPORT_STORAGE_PATH:./reports}
+  ai:
+    provider: ${AI_PROVIDER:openai}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model: gpt-4o-mini
+    kimi:
+      api-key: ${KIMI_API_KEY:}
+      base-url: https://api.moonshot.cn
+      model: kimi-k2
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:booki}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:booki}
+    password: ${MYSQL_PASSWORD:booki}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:h2:file:~/booki-local-db;MODE=MySQL;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false

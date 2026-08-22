@@ -1,0 +1,1 @@
+ALTER TABLE sessions ADD COLUMN language VARCHAR(10) NOT NULL DEFAULT 'en';

@@ -462,12 +462,21 @@ paths:
                 profileMasterId: { type: integer, nullable: true }
                 difficulty: { $ref: "#/components/schemas/Difficulty" }
                 language: { $ref: "#/components/schemas/SessionLanguage" }
+                aiProvider:
+                  type: string
+                  enum: [claude, openai, kimi, ollama]
+                  description: >
+                    Which AI provider this session's chat, quiz generation/grading,
+                    and summary all use for the rest of its life. Omit to use the
+                    backend's configured default (profile-dependent — see docs/backend.md).
       responses:
         "201":
           description: Created
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -588,9 +597,11 @@ paths:
       summary: Generate quiz questions for this session
       operationId: generateQuiz
       description: >
-        Mock logic: one templated question per page (up to `questionCount`),
-        in the session's language. Real backend: could ask a real AI provider
-        to generate genuine comprehension questions from the page text instead.
+        Mock logic: one templated question per page (up to `questionCount`), in
+        the session's language. Real backend: asks the session's AI provider
+        (see Session.aiProvider) to write one genuine comprehension question
+        per page, grounded in that page's text plus the session's layered
+        prompt (app/master/user).
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -621,8 +632,9 @@ paths:
         pass threshold that gets stricter as `difficulty` increases. Every
         call is persisted as a `QuizAttempt`, which is what
         `GET /sessions/{id}/quiz/attempts` and the PDF quiz report read from.
-        Real backend: replace the grading with a real AI judgment, keeping
-        the `{correct, score, feedback}` shape.
+        Real backend: the session's AI provider judges the answer against the
+        page's text (calibrated to `difficulty`), keeping the same
+        `{correct, score, feedback}` shape.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -784,7 +796,8 @@ paths:
       summary: Summarize the book pages + discussion so far
       operationId: generateSummary
       description: >
-        Combines the session's page text with its chat history, in the
+        Real backend: a genuine AI call (the session's `aiProvider`) that
+        combines the session's page text with its chat history, in the
         Profile Master's tone and the user's own stated preferences, plus an
         optional free-text instruction (`prompt`). `lengthPages` scales how
         much of each is included (roughly 1–10 "pages" of density). Delivered
@@ -972,8 +985,12 @@ components:
         difficulty: { $ref: "#/components/schemas/Difficulty" }
         profileMasterId: { type: integer, nullable: true }
         language: { $ref: "#/components/schemas/SessionLanguage" }
+        aiProvider:
+          type: string
+          enum: [claude, openai, kimi, ollama]
+          description: The resolved provider actually in effect — never null, even if the session didn't pick one explicitly.
         createdAt: { type: string, format: date-time }
-      required: [id, documentId, title, startPage, endPage, currentPage, difficulty, language, createdAt]
+      required: [id, documentId, title, startPage, endPage, currentPage, difficulty, language, aiProvider, createdAt]
 
     SessionContext:
       type: object

@@ -2,6 +2,10 @@
 
 Practical guide: what runs on which port, the different ways to start each piece, and how to check/stop them. For architecture, see [architecture.md](architecture.md); this is just the "how do I turn it on/off" flow.
 
+## API keys: put them in `.env`, not `export`
+
+`cp .env.example .env` at the **repo root**, fill in real values (e.g. `ANTHROPIC_API_KEY`), save. `backend/build.gradle`'s `bootRun`/`bootRunLocal` tasks read that file automatically and inject each value as an environment variable — no more "which terminal did I `export` it in" — it works the same regardless of which terminal runs `./gradlew`. `.env` is gitignored, so this never gets committed. See `docs/backend.md`'s AI configuration section for the full variable list.
+
 ## Port map
 
 | Port | What it is | Needed for... |
@@ -10,6 +14,7 @@ Practical guide: what runs on which port, the different ways to start each piece
 | `8080` | Real backend (Spring Boot) | The frontend actually working (login, uploading PDFs, AI) |
 | `3001` | Mock backend (Node/Express) | Testing the frontend WITHOUT Java/DB/API keys |
 | `3306` | MySQL (if using Docker) | Only needed if the backend runs with the `dev` profile (not needed with `local`) |
+| `11434` | Ollama daemon (if installed) | Only needed if a session's `aiProvider` is `ollama` — see §4 below |
 
 **Important:** the frontend always requests `/api/...` on its own port (5173), and Vite forwards (proxies) that to `http://localhost:8080` — that's set in `frontend/vite.config.ts`. This means it can **only talk to ONE backend at a time** (the real one, on 8080). The mock on 3001 is a completely separate server, only useful if you change the proxy or hit `localhost:3001` directly with `curl`/Postman.
 
@@ -33,7 +38,7 @@ cd backend
 ./gradlew bootRunLocal
 ```
 
-Uses H2 in a file (`~/booki-local-db`), doesn't need MySQL running.
+Uses H2 in a file (`~/booki-local-db`), doesn't need MySQL running. A session that doesn't explicitly pick an AI model defaults to **Ollama** here (see §4 below) — free, but needs Ollama actually installed and running, or chat/quiz/summary just get the offline fallback message.
 
 **b) `dev` profile (requires MySQL via Docker):**
 
@@ -42,6 +47,8 @@ docker compose up -d      # starts MySQL on port 3306
 cd backend
 ./gradlew bootRun
 ```
+
+A session that doesn't explicitly pick an AI model defaults to **Claude** here — needs `ANTHROPIC_API_KEY` set, or same offline fallback as above.
 
 Requires Docker installed and your user in the `docker` group (`sudo usermod -aG docker $USER`, then log out/in or `newgrp docker` for just the current shell) so `docker`/`docker compose` work without `sudo`.
 
@@ -70,6 +77,54 @@ node src/index.js
 - Listens on `http://localhost:3001`.
 - Comes with a preloaded demo user: `demo@booki.app` / `password`.
 - Only useful if you point something directly at `localhost:3001` (the frontend's proxy doesn't use it by default).
+
+## 4. Ollama (optional, local AI provider)
+
+Only needed if you want a session's `aiProvider` set to `ollama` to actually work — see `docs/backend.md`'s AI configuration section for how provider selection works. Everything else in BooKI runs fine without ever touching this section.
+
+### Install (Linux, any distro/arch — the script detects it)
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+This downloads a shell script and pipes it straight into `sh` to run — it in turn downloads the real Ollama binary for your CPU/GPU and registers it as a **systemd service**. That matters: unlike `bootRunLocal` or `npm run dev`, you don't "launch" Ollama each time — it's installed once and then always running in the background, like MySQL.
+
+### Managing the service
+
+```bash
+systemctl status ollama     # is it running?
+sudo systemctl stop ollama    # stop it
+sudo systemctl start ollama   # start it
+sudo systemctl restart ollama # restart it (forcibly unloads any stuck/loaded model)
+journalctl -u ollama --no-pager -n 50   # recent logs — check here for GPU/ROCm detection at startup
+```
+
+### Managing models
+
+A "model" (e.g. `llama3.1`, `llama3.2:1b`) is a separate download from the Ollama binary itself — `booki.ai.ollama.model` in `application.yml` (env var `OLLAMA_MODEL`) picks which one BooKI actually calls; nothing pulls it automatically.
+
+```bash
+ollama pull llama3.2:1b    # download a model (only needs to be done once; cached on disk)
+ollama list                # see what's downloaded, and each one's disk size
+ollama rm llama3.1         # delete a model from disk to free space
+ollama stop llama3.2:1b    # force-unload a model from RAM right now
+```
+
+`ollama stop` matters more than it sounds: Ollama keeps a model loaded in RAM for `OLLAMA_KEEP_ALIVE` (default 5 minutes) after the last request, so it responds fast to a follow-up question — but that means the RAM isn't released automatically the instant a request finishes. If your system is under memory pressure, don't wait out the 5 minutes — run `ollama stop <model>` to free it immediately.
+
+### Hardware reality check — CPU vs. GPU inference
+
+Run `journalctl -u ollama --no-pager -n 200 | grep -i "rocm\|gpu"` right after the service starts to see what Ollama actually detected. On this dev machine it found an integrated AMD Vega 3 GPU (`gfx902`) but **dropped it** — ROCm only supports `gfx1030` and newer (or specific datacenter chips), so `gfx902` falls back to pure CPU inference, and Ollama also disables integrated GPUs by default anyway (`OLLAMA_IGPU_ENABLE=1` would attempt it via Vulkan, likely still slow on an iGPU this old).
+
+**Concretely what that costs you**: a single chat/quiz/summary request against the 8B `llama3.1` model, running on CPU alone, took **32 minutes of accumulated CPU time**, pushed system RAM usage to 93% and swap to 100% (`free -h` showed 174Mi free out of 14Gi), with real risk of the OOM killer stepping in or the whole desktop freezing. That's why `booki.ai.ollama.model` defaults to the much smaller **`llama3.2:1b`** (1.3GB vs. 4.9GB) instead of `llama3.1` — feasible on CPU-only hardware. If you have a real ROCm/CUDA-compatible GPU, bump `OLLAMA_MODEL` back up to something bigger.
+
+If your system ever gets into that state (swap full, everything crawling), the fastest way out:
+```bash
+ollama stop <model>          # or, if that hangs too:
+sudo systemctl restart ollama
+free -h                      # confirm memory recovered
+```
 
 ## Checking what's running right now
 

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useSessionContext } from '../hooks/useSessionContext';
+import { useSession } from '../hooks/useSession';
+import { AI_PROVIDER_LABELS } from '../lib/aiProviders';
 
 interface Props {
   sessionId: number;
@@ -7,6 +9,7 @@ interface Props {
 
 export default function ContextInfoButton({ sessionId }: Props) {
   const context = useSessionContext(sessionId);
+  const { session } = useSession(sessionId);
   const [open, setOpen] = useState(false);
 
   return (
@@ -26,6 +29,12 @@ export default function ContextInfoButton({ sessionId }: Props) {
             What shapes BooKI's answers here
           </p>
           <div className="space-y-3 text-xs">
+            <div>
+              <p className="font-bold text-white/70">AI model</p>
+              <p className="mt-0.5 text-white/60">
+                {session ? AI_PROVIDER_LABELS[session.aiProvider] : '…'}
+              </p>
+            </div>
             <div>
               <p className="font-bold text-white/70">App</p>
               <p className="mt-0.5 text-white/60">{context.appPrompt}</p>

@@ -1,5 +1,7 @@
 package com.booki.service.impl;
 
+import com.booki.ai.AiProvider;
+import com.booki.ai.AiProviderRegistry;
 import com.booki.domain.Document;
 import com.booki.domain.DocumentPage;
 import com.booki.domain.Message;
@@ -7,7 +9,6 @@ import com.booki.domain.ProfileMaster;
 import com.booki.domain.QuizAttempt;
 import com.booki.domain.SentReport;
 import com.booki.domain.Session;
-import com.booki.domain.User;
 import com.booki.dto.GenerateSummaryRequest;
 import com.booki.dto.MessageResponse;
 import com.booki.dto.SendReportRequest;
@@ -19,7 +20,6 @@ import com.booki.repository.MessageRepository;
 import com.booki.repository.QuizAttemptRepository;
 import com.booki.repository.SentReportRepository;
 import com.booki.repository.SessionRepository;
-import com.booki.repository.UserRepository;
 import com.booki.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,9 +35,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 
 @Service
@@ -49,44 +47,18 @@ public class ReportServiceImpl implements ReportService {
     private final DocumentPageRepository documentPageRepository;
     private final MessageRepository messageRepository;
     private final QuizAttemptRepository quizAttemptRepository;
-    private final UserRepository userRepository;
     private final SentReportRepository sentReportRepository;
     private final SessionProgressCalculator progressCalculator;
     private final PdfReportBuilder pdfReportBuilder;
+    private final AiProviderRegistry aiProviderRegistry;
+    private final SessionContextBuilder sessionContextBuilder;
 
     @Value("${booki.storage.report-path}")
     private String reportStoragePath;
 
-    private static final Set<String> SUPPORTED_LANGUAGES = Set.of("en", "es", "fr");
     private static final Map<String, String> LANGUAGE_NAMES = Map.of("en", "English", "es", "Spanish", "fr", "French");
+    private static final Map<String, String> SUMMARY_HEADING = Map.of("en", "Summary", "es", "Resumen", "fr", "Résumé");
     private static final Pattern EMAIL_RE = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
-
-    private record SummaryLabels(String book, String discussion, String noDiscussion) {
-    }
-
-    private static final Map<String, SummaryLabels> SUMMARY_LABELS = Map.of(
-            "en", new SummaryLabels("From the book", "From our discussion", "You haven't chatted with BooKI yet in this session."),
-            "es", new SummaryLabels("Del libro", "De nuestra conversación", "Todavía no has conversado con BooKI en esta sesión."),
-            "fr", new SummaryLabels("Du livre", "De notre discussion", "Tu n'as pas encore discuté avec BooKI dans cette session.")
-    );
-
-    private static final Map<String, Function<String, String>> SUMMARY_INTRO = Map.of(
-            "en", tone -> "Summary prepared as your " + tone + ", combining the book's content with our discussion so far.",
-            "es", tone -> "Resumen preparado como tu " + tone + ", combinando el contenido del libro con nuestra conversación hasta ahora.",
-            "fr", tone -> "Résumé préparé en tant que ton " + tone + ", combinant le contenu du livre et notre discussion jusqu'ici."
-    );
-
-    private static final Map<String, Function<String, String>> CUSTOM_PROMPT_NOTE = Map.of(
-            "en", p -> " Following your request: \"" + p + "\".",
-            "es", p -> " Siguiendo tu pedido: \"" + p + "\".",
-            "fr", p -> " Suivant ta demande : \"" + p + "\"."
-    );
-
-    private static final Map<String, Function<String, String>> USER_NOTE_PREFIX = Map.of(
-            "en", note -> " (Keeping in mind what you told BooKI about yourself: \"" + note + "\")",
-            "es", note -> " (Recordando lo que le contaste a BooKI sobre ti: \"" + note + "\")",
-            "fr", note -> " (En tenant compte de ce que tu as dit à BooKI à ton sujet : \"" + note + "\")"
-    );
 
     @Override
     public List<SentReportResponse> listReports(Long userId, Long sessionId) {
@@ -187,12 +159,9 @@ public class ReportServiceImpl implements ReportService {
             email = requireValidEmail(request.getEmail());
         }
 
-        SummaryContent content = buildSummaryContent(session, request.getLengthPages(), request.getPrompt());
+        String summaryText = generateSummaryText(session, request.getLengthPages(), request.getPrompt());
 
         if (!deliverAsPdf) {
-            String summaryText = content.intro + "\n\n" + content.labels.book() + ": " + content.bookPart
-                    + "\n\n" + content.labels.discussion() + ": " + content.discussionPart;
-
             Message botMessage = new Message();
             botMessage.setSession(session);
             botMessage.setSpeaker(Message.Speaker.BOOKI);
@@ -217,12 +186,11 @@ public class ReportServiceImpl implements ReportService {
                     pdfReportBuilder.initialsFor(document.getTitle()));
         }
 
-        List<PdfReportBuilder.Section> sections = List.of(
-                new PdfReportBuilder.Section(content.labels.book(), List.of(content.bookPart)),
-                new PdfReportBuilder.Section(content.labels.discussion(), List.of(content.discussionPart))
-        );
+        String heading = SUMMARY_HEADING.getOrDefault(
+                sessionContextBuilder.resolveLanguage(session.getLanguage()), SUMMARY_HEADING.get("en"));
+        List<PdfReportBuilder.Section> sections = List.of(new PdfReportBuilder.Section(heading, List.of(summaryText)));
 
-        byte[] pdf = pdfReportBuilder.build("Summary — " + sessionTitle(session), content.intro, sections, cover);
+        byte[] pdf = pdfReportBuilder.build("Summary — " + sessionTitle(session), null, sections, cover);
         String fileName = writeReportFile(pdf);
         SentReport report = saveSentReport(session, "summary", email, fileName);
         return toResponse(report);
@@ -235,23 +203,19 @@ public class ReportServiceImpl implements ReportService {
         return new FileSystemResource(Paths.get(reportStoragePath).resolve(report.getFileName()));
     }
 
-    private record SummaryContent(String intro, String bookPart, String discussionPart, SummaryLabels labels) {
-    }
-
-    private SummaryContent buildSummaryContent(Session session, Integer lengthPages, String customPrompt) {
-        String lang = resolveLanguage(session.getLanguage());
+    /**
+     * Real AI call grounded in the book pages (scaled by lengthPages) and the
+     * discussion so far, on top of the same three-layer prompt chat/quiz use.
+     */
+    private String generateSummaryText(Session session, Integer lengthPages, String customPrompt) {
         int pages = Math.min(10, Math.max(1, lengthPages != null ? lengthPages : 2));
         int charsPerPage = Math.round(80 + pages * 90);
         int messageCount = Math.min(40, Math.max(2, pages * 4));
+        String languageName = sessionContextBuilder.languageName(session.getLanguage());
 
-        SummaryLabels labels = SUMMARY_LABELS.get(lang);
-        ProfileMaster master = session.getProfileMaster();
-        User user = userRepository.findById(session.getUser().getId()).orElse(null);
-        String tone = master != null ? master.getName() : "assistant";
-
-        List<DocumentPage> pages_ = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
+        List<DocumentPage> bookPages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
                 session.getDocument().getId(), session.getStartPage(), session.getEndPage());
-        String bookPart = pages_.stream()
+        String bookExcerpt = bookPages.stream()
                 .map(p -> {
                     String text = p.getExtractedText();
                     boolean truncated = text.length() > charsPerPage;
@@ -263,21 +227,26 @@ public class ReportServiceImpl implements ReportService {
 
         List<Message> sessionMessages = messageRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
         List<Message> recent = sessionMessages.subList(Math.max(0, sessionMessages.size() - messageCount), sessionMessages.size());
-        String discussionPart = recent.stream()
-                .map(m -> (m.getSpeaker() == Message.Speaker.USER ? "You" : "BooKI") + ": "
-                        + m.getMessage().substring(0, Math.min(200, m.getMessage().length())))
-                .reduce((a, b) -> a + " | " + b)
-                .orElse(labels.noDiscussion());
+        String discussion = recent.isEmpty()
+                ? "(none — the reader hasn't sent any chat messages yet)"
+                : recent.stream()
+                        .map(m -> (m.getSpeaker() == Message.Speaker.USER ? "Reader" : "BooKI") + ": "
+                                + m.getMessage().substring(0, Math.min(200, m.getMessage().length())))
+                        .reduce((a, b) -> a + " | " + b)
+                        .orElse("");
 
-        StringBuilder intro = new StringBuilder(SUMMARY_INTRO.get(lang).apply(tone));
+        String contextText = "BOOK EXCERPT:\n" + bookExcerpt + "\n\nDISCUSSION SO FAR:\n" + discussion;
+        String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, contextText);
+
+        StringBuilder instruction = new StringBuilder(
+                "Write a reading summary in " + languageName + ", about " + pages + " page(s) long (roughly "
+                        + (pages * 250) + " words), weaving together the book excerpt and our discussion above.");
         if (customPrompt != null && !customPrompt.isBlank()) {
-            intro.append(CUSTOM_PROMPT_NOTE.get(lang).apply(customPrompt.trim()));
-        }
-        if (user != null && user.getSystemPrompt() != null && !user.getSystemPrompt().isBlank()) {
-            intro.append(USER_NOTE_PREFIX.get(lang).apply(user.getSystemPrompt()));
+            instruction.append(" Follow this specific request: \"").append(customPrompt.trim()).append("\".");
         }
 
-        return new SummaryContent(intro.toString(), bookPart, discussionPart, labels);
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+        return provider.converse(systemPrompt, List.of(), instruction.toString()).strip();
     }
 
     private String requireValidEmail(String email) {
@@ -285,10 +254,6 @@ public class ReportServiceImpl implements ReportService {
             throw new IllegalArgumentException("A valid email is required");
         }
         return email;
-    }
-
-    private String resolveLanguage(String language) {
-        return SUPPORTED_LANGUAGES.contains(language) ? language : "en";
     }
 
     private String sessionTitle(Session session) {

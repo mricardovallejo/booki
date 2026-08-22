@@ -1,6 +1,7 @@
 import api from './client';
 import { ENDPOINTS } from '../config/endpoints';
 import type {
+  AiProvider,
   Difficulty,
   GenerateSummaryRequest,
   Message,
@@ -23,6 +24,7 @@ export interface CreateSessionRequest {
   profileMasterId?: number;
   difficulty: Difficulty;
   language: SessionLanguage;
+  aiProvider?: AiProvider;
 }
 
 export const createSession = (payload: CreateSessionRequest) =>

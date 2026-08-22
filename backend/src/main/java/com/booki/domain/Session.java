@@ -46,6 +46,10 @@ public class Session {
     @Column(nullable = false, length = 10)
     private String language;
 
+    /** Null means "use the app's configured default provider for this profile" — see AiProviderRegistry. */
+    @Column(length = 20, name = "ai_provider")
+    private String aiProvider;
+
     @Column(nullable = false, columnDefinition = "TEXT", name = "config_json")
     private String configJson;
 

@@ -78,6 +78,14 @@ public class SessionServiceImpl implements SessionService {
         Document document = documentRepository.findByIdAndUserId(request.getDocumentId(), userId)
                 .orElseThrow(() -> new NoSuchElementException("Document not found"));
 
+        if (request.getStartPage() > request.getEndPage()) {
+            throw new IllegalArgumentException("startPage must be less than or equal to endPage");
+        }
+        if (request.getEndPage() > document.getPageCount()) {
+            throw new IllegalArgumentException(
+                    "endPage exceeds the document's page count (" + document.getPageCount() + ")");
+        }
+
         Session session = new Session();
         session.setUser(document.getUser());
         session.setDocument(document);
@@ -111,6 +119,10 @@ public class SessionServiceImpl implements SessionService {
     @Override
     public SessionResponse updateCurrentPage(Long userId, Long sessionId, Integer currentPage) {
         Session session = findOwned(userId, sessionId);
+        if (currentPage == null || currentPage < session.getStartPage() || currentPage > session.getEndPage()) {
+            throw new IllegalArgumentException(
+                    "currentPage must be between " + session.getStartPage() + " and " + session.getEndPage());
+        }
         session.setCurrentPage(currentPage);
         sessionRepository.save(session);
         return toResponse(session);
@@ -131,7 +143,7 @@ public class SessionServiceImpl implements SessionService {
         Message userMessage = new Message();
         userMessage.setSession(session);
         userMessage.setSpeaker(Message.Speaker.USER);
-        userMessage.setInputType(Message.InputType.valueOf(request.getInputType()));
+        userMessage.setInputType(parseInputType(request.getInputType()));
         userMessage.setMessage(request.getMessage());
         messageRepository.save(userMessage);
 
@@ -202,6 +214,14 @@ public class SessionServiceImpl implements SessionService {
 
     private String resolveDifficulty(String difficulty) {
         return (difficulty != null && DIFFICULTIES.contains(difficulty)) ? difficulty : "medium";
+    }
+
+    private Message.InputType parseInputType(String inputType) {
+        try {
+            return Message.InputType.valueOf(inputType);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new IllegalArgumentException("inputType must be TEXT or VOICE");
+        }
     }
 
     /**

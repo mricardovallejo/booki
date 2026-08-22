@@ -6,7 +6,7 @@ A PDF reader with page-range sessions and a contextual learning/discussion assis
 
 ```
 booki/
-├── backend/          # Spring Boot 3.3 + Java 21 + Gradle
+├── backend/          # Spring Boot 4.1 + Java 21 + Gradle
 ├── frontend/         # React + TypeScript + Vite + PWA
 ├── docs/             # Vision, architecture, and agent memory
 ├── docker-compose.yml

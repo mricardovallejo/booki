@@ -1,26 +1,26 @@
-# Visión de BooKI MVP
+# BooKI MVP Vision
 
-BooKI es un lector de PDF con sesiones por rango de páginas y un asistente contextual de aprendizaje y discusión, controlable por texto y voz.
+BooKI is a PDF reader with page-range sessions and a contextual learning/discussion assistant, controllable by text and voice.
 
-## Principios rectores
+## Guiding principles
 
-- La lectura nunca se bloquea: la IA acompaña, no convierte la lectura en tarea escolar.
-- La unidad central es la **sesión**: un rango de páginas del documento con contexto propio.
-- Los **Profile Masters** son personalidades expertas que condicionan tono, vocabulario y profundidad.
-- La voz es una interfaz principal, no un agregado.
-- La UI evita parecer un LMS o dashboard educativo.
+- Reading is never blocked: the AI accompanies, it doesn't turn reading into homework.
+- The core unit is the **session**: a page range of the document with its own context.
+- **Profile Masters** are expert personas that shape tone, vocabulary, and depth.
+- Voice is a primary interface, not an add-on.
+- The UI avoids looking like an LMS or an educational dashboard.
 
-## Flujo mínimo del MVP
+## Minimal MVP flow
 
-1. Subir un PDF.
-2. Elegir rango de páginas y crear una sesión.
-3. Abrir el lector.
-4. Leer, escribir o hablar con BooKI.
-5. Recibir respuestas contextuales del rango de páginas.
+1. Upload a PDF.
+2. Choose a page range and create a session.
+3. Open the reader.
+4. Read, write, or talk with BooKI.
+5. Get contextual answers grounded in the page range.
 
-## Fuera del MVP
+## Out of scope for the MVP
 
-- Red social, biblioteca pública, recomendaciones tipo Netflix.
-- Gamificación, badges, rankings.
-- Múltiples perfiles familiares.
-- Aplicaciones nativas móviles (se usa PWA).
+- Social network, public library, Netflix-style recommendations.
+- Gamification, badges, rankings.
+- Multiple family profiles.
+- Native mobile apps (a PWA is used instead).

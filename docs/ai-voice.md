@@ -1,37 +1,37 @@
-# IA y voz en BooKI
+# AI and voice in BooKI
 
-## Estrategia de IA
+## AI strategy
 
-- Interfaz `AiProvider.converse(systemPrompt, context, userMessage)`.
-- Implementación inicial: **OpenAI** (`gpt-4o-mini`).
-- Preparado para **Kimi** con una segunda implementación y condicional por propiedad.
-- El system prompt se construye dinámicamente con:
-  - Prompt base de BooKI.
-  - System prompt del Profile Master.
-  - Dificultad de la sesión.
-  - Título del documento.
-  - Rango de páginas y página actual.
-  - Texto extraído del rango de páginas.
+- Interface: `AiProvider.converse(systemPrompt, context, userMessage)`.
+- Initial implementation: **OpenAI** (`gpt-4o-mini`).
+- Ready for **Kimi** via a second implementation, selected with a conditional property.
+- The system prompt is built dynamically from:
+  - BooKI's base prompt.
+  - The Profile Master's system prompt.
+  - The session's difficulty.
+  - The document title.
+  - The page range and current page.
+  - Text extracted from the page range.
 
-## Ejemplos de interacción
+## Example interactions
 
-- "BooKI, no entendí esta parte."
-- "Explícamelo como si tuviera 12 años."
-- "Hazme una pregunta."
-- "Dame una pista."
-- "Resume estas páginas."
+- "BooKI, I didn't understand this part."
+- "Explain it to me like I'm 12."
+- "Ask me a question."
+- "Give me a hint."
+- "Summarize these pages."
 
-## Estrategia de voz
+## Voice strategy
 
-Para el MVP se usa la **Web Speech API del navegador**:
+The MVP uses the **browser's Web Speech API**:
 
-- `SpeechRecognition` para STT.
-- `speechSynthesis` para TTS (aún no implementado, pero listo para agregar).
-- Ventajas: sin coste, sin dependencias de red extra, funciona en todos los navegadores modernos.
-- Limitaciones: precisión variable, idioma fijo a `es-ES`.
+- `SpeechRecognition` for STT.
+- `speechSynthesis` for TTS (not yet implemented, but ready to add).
+- Advantages: no cost, no extra network dependencies, works in all modern browsers.
+- Limitations: variable accuracy, language currently fixed at the reader's chosen locale.
 
-## Alternativas futuras
+## Future alternatives
 
-- Whisper local para STT.
-- TTS con ElevenLabs, OpenAI TTS o Piper local.
-- Procesamiento de audio en backend para dispositivos sin Web Speech API.
+- Local Whisper for STT.
+- TTS via ElevenLabs, OpenAI TTS, or local Piper.
+- Backend-side audio processing for devices without the Web Speech API.

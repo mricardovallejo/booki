@@ -1,14 +1,14 @@
-# Arquitectura de BooKI
+# BooKI Architecture
 
-## Repositorio
+## Repository
 
-Monorepo multiproyecto:
+Multi-project monorepo:
 
 ```
 booki/
 ├── backend/          # Spring Boot 3.3 + Java 21 + Gradle
 ├── frontend/         # React + TypeScript + Vite + PWA
-├── docs/             # Memoria técnica y funcional
+├── docs/             # Technical and product memory
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
@@ -16,31 +16,31 @@ booki/
 
 ## Stack
 
-| Capa | Tecnología |
+| Layer | Technology |
 |------|------------|
 | Backend | Spring Boot 3.3, Spring Security, JWT Bearer, JPA, Flyway, WebClient |
-| Base de datos | MySQL (dev/prod), H2 (tests) |
-| PDFs | Apache PDFBox para extracción de texto; archivo almacenado en disco |
+| Database | MySQL (dev/prod), H2 (tests) |
+| PDFs | Apache PDFBox for text extraction; file stored on disk |
 | Frontend | React 18, TypeScript, Tailwind CSS, Vite, PWA, react-pdf |
-| Voz | Web Speech API en el navegador (STT/TTS) |
-| IA | Interfaz `AiProvider`; proveedor inicial OpenAI, preparado para Kimi |
+| Voice | Browser Web Speech API (STT/TTS) |
+| AI | `AiProvider` interface; initial provider OpenAI, ready for Kimi |
 
-## Capas del backend
+## Backend layers
 
 - `controller` → REST controllers
-- `service` → interfaces de servicio
-- `service/impl` → implementaciones
-- `domain` → entidades JPA
+- `service` → service interfaces
+- `service/impl` → implementations
+- `domain` → JPA entities
 - `repository` → Spring Data JPA
-- `security` → JWT util y filtro
-- `ai` → proveedores de IA
+- `security` → JWT util and filter
+- `ai` → AI providers
 - `dto` → request/response
-- `config` → configuraciones de Spring
+- `config` → Spring configuration
 
-## Capas del frontend
+## Frontend layers
 
-- `src/pages` → pantallas (Home, Session)
-- `src/components` → componentes reutilizables (Layout, PdfViewer, ChatDrawer, VoiceButton)
-- `src/api` → llamadas al backend
-- `src/hooks` → hooks personalizados (useVoice)
+- `src/pages` → screens (Home, Session)
+- `src/components` → reusable components (Layout, PdfViewer, ChatDrawer, VoiceButton)
+- `src/api` → backend calls
+- `src/hooks` → custom hooks (useVoice)
 - `src/types` → TypeScript types

@@ -57,7 +57,7 @@ public class OpenAiProvider implements AiProvider {
             return root.path("choices").get(0).path("message").path("content").asString();
         } catch (Exception e) {
             log.error("OpenAI request failed", e);
-            return "Lo siento, no pude contactar al asistente en este momento. ¿Puedes intentarlo de nuevo?";
+            return "Sorry, I couldn't reach the assistant right now. Can you try again?";
         }
     }
 }

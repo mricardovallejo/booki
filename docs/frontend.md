@@ -1,34 +1,34 @@
-# Frontend BooKI
+# BooKI Frontend
 
-## Tecnologías
+## Technologies
 
 - React 18 + TypeScript
 - Vite (dev server + build)
 - Tailwind CSS
-- react-pdf para renderizar PDF
-- Web Speech API para voz (STT/TTS)
+- react-pdf for PDF rendering
+- Web Speech API for voice (STT/TTS)
 - PWA via vite-plugin-pwa
 
-## Pantallas
+## Screens
 
-- **HomePage**: lista de PDFs del usuario y botón de subida.
-- **SessionPage**: lector de PDF + drawer de chat/voz.
+- **HomePage**: list of the user's PDFs and an upload button.
+- **SessionPage**: PDF reader + chat/voice drawer.
 
-## Componentes principales
+## Main components
 
-- `Layout`: barra superior y contenedor de rutas.
-- `PdfViewer`: muestra el PDF y permite avanzar página.
-- `ChatDrawer`: panel lateral con historial y entrada de mensaje/voz.
-- `VoiceButton`: activa SpeechRecognition y envía el transcript.
+- `Layout`: top bar and route container.
+- `PdfViewer`: displays the PDF and lets you move between pages.
+- `ChatDrawer`: side panel with history and message/voice input.
+- `VoiceButton`: triggers SpeechRecognition and sends the transcript.
 
-## Flujo de voz
+## Voice flow
 
-1. Usuario pulsa el botón de micrófono.
-2. `useVoice` usa `SpeechRecognition` del navegador.
-3. El transcript se envía como mensaje tipo `VOICE`.
-4. El backend responde con texto.
-5. El frontend puede usar `speechSynthesis.speak()` para leer la respuesta (implementación futura).
+1. The user taps the microphone button.
+2. `useVoice` uses the browser's `SpeechRecognition`.
+3. The transcript is sent as a `VOICE`-type message.
+4. The backend responds with text.
+5. The frontend can use `speechSynthesis.speak()` to read the response aloud (future work).
 
-## Proxy de desarrollo
+## Dev proxy
 
-Vite redirige `/api` a `http://localhost:8080`.
+Vite forwards `/api` to `http://localhost:8080`.

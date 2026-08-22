@@ -1,33 +1,33 @@
-# Memoria compacta para agentes
+# Compact memory for agents
 
-## Qué estamos construyendo
+## What we're building
 
-BooKI MVP: lector de PDF con sesiones por rango de páginas y asistente IA contextual por texto/voz.
+BooKI MVP: a PDF reader with page-range sessions and a contextual AI assistant over text/voice.
 
-## Stack fijado
+## Fixed stack
 
 - Backend: Spring Boot 3.3, Java 21, Gradle, JPA, Flyway, MySQL (dev), H2 (tests), Spring Security + JWT.
 - Frontend: React + TypeScript + Vite + Tailwind + PWA + react-pdf.
-- Voz: Web Speech API en navegador.
-- IA: `AiProvider` interface; OpenAI por defecto.
+- Voice: browser Web Speech API.
+- AI: `AiProvider` interface; OpenAI by default.
 
-## Convenciones
+## Conventions
 
-- Código en inglés: `Document`, `Session`, `ProfileMaster`, `Message`.
-- Package base: `com.booki`.
+- Code in English: `Document`, `Session`, `ProfileMaster`, `Message`.
+- Base package: `com.booki`.
 - Backend: Controller → Service (interface) → ServiceImpl → Repository.
 - Frontend: `pages/` → `components/` → `api/` → `hooks/`.
 
-## Qué NO hacer sin preguntar
+## What NOT to do without asking
 
-- No agregar microservicios.
-- No cambiar la base de datos sin consensuar.
-- No introducir dependencias pesadas nuevas.
-- No modificar los principios de producto (lectura nunca bloqueada, no LMS).
+- Don't add microservices.
+- Don't change the database without agreement.
+- Don't introduce heavy new dependencies.
+- Don't change the product principles (reading is never blocked, not an LMS).
 
-## Próximos pasos habituales
+## Usual next steps
 
-1. Levantar MySQL con Docker Compose.
-2. Ejecutar backend en dev.
-3. Instalar dependencias del frontend con npm y levantar dev server.
-4. Probar flujo: registro → subida PDF → crear sesión → conversar.
+1. Start MySQL with Docker Compose.
+2. Run the backend in dev.
+3. Install frontend dependencies with npm and start the dev server.
+4. Test the flow: register → upload PDF → create session → chat.

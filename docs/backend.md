@@ -1,55 +1,55 @@
-# Backend BooKI
+# BooKI Backend
 
-## Perfiles
+## Profiles
 
-- `dev` (por defecto): MySQL en localhost:3306.
-- `local`: H2 en archivo (`~/booki-local-db`) con `AUTO_SERVER=TRUE`. Ideal para desarrollo sin Docker.
-- `test`: H2 en memoria, Flyway deshabilitado.
+- `dev` (default): MySQL on localhost:3306.
+- `local`: file-based H2 (`~/booki-local-db`) with `AUTO_SERVER=TRUE`. Ideal for development without Docker.
+- `test`: in-memory H2, Flyway disabled.
 
-### Arranque local con H2
+### Running locally with H2
 
 ```bash
 cd backend
 ./gradlew bootRunLocal
 ```
 
-Esto levanta el backend en `http://localhost:8080` sin necesidad de MySQL ni Docker.
+This starts the backend on `http://localhost:8080` without needing MySQL or Docker.
 
-## Entidades principales
+## Main entities
 
 - `User`: email + password_hash.
-- `Document`: metadatos del PDF subido por el usuario.
-- `DocumentPage`: texto extraído por página.
-- `ProfileMaster`: personalidad experta con system prompt.
-- `Session`: rango de páginas, página actual y configuración.
-- `Message`: historial de conversación (USER / BOOKI).
+- `Document`: metadata for the PDF uploaded by the user.
+- `DocumentPage`: text extracted per page.
+- `ProfileMaster`: expert persona with a system prompt.
+- `Session`: page range, current page, and settings.
+- `Message`: conversation history (USER / BOOKI).
 
-## API REST
+## REST API
 
-| Método | Ruta | Descripción |
+| Method | Route | Description |
 |--------|------|-------------|
-| POST | `/api/auth/register` | Registro con email/password |
-| POST | `/api/auth/login` | Login, devuelve JWT |
-| GET | `/api/documents` | Listar PDFs del usuario |
-| POST | `/api/documents` | Subir PDF (multipart) |
-| GET | `/api/documents/{id}` | Metadatos del PDF |
-| GET | `/api/documents/{id}/file` | Descargar/visualizar PDF |
-| GET | `/api/profile-masters` | Listar masters activos |
-| POST | `/api/sessions` | Crear sesión |
-| GET | `/api/sessions/{id}` | Cargar sesión |
-| PATCH | `/api/sessions/{id}/current-page` | Actualizar página actual |
-| GET | `/api/sessions/{id}/messages` | Historial de mensajes |
-| POST | `/api/sessions/{id}/messages` | Enviar mensaje a BooKI |
+| POST | `/api/auth/register` | Register with email/password |
+| POST | `/api/auth/login` | Login, returns a JWT |
+| GET | `/api/documents` | List the user's PDFs |
+| POST | `/api/documents` | Upload a PDF (multipart) |
+| GET | `/api/documents/{id}` | PDF metadata |
+| GET | `/api/documents/{id}/file` | Download/view the PDF |
+| GET | `/api/profile-masters` | List active masters |
+| POST | `/api/sessions` | Create a session |
+| GET | `/api/sessions/{id}` | Load a session |
+| PATCH | `/api/sessions/{id}/current-page` | Update the current page |
+| GET | `/api/sessions/{id}/messages` | Message history |
+| POST | `/api/sessions/{id}/messages` | Send a message to BooKI |
 
-## Seguridad
+## Security
 
-- JWT Bearer token en header `Authorization`.
-- Contraseñas hasheadas con BCrypt.
-- CORS configurado para `http://localhost:5173`.
+- JWT Bearer token in the `Authorization` header.
+- Passwords hashed with BCrypt.
+- CORS configured for `http://localhost:5173`.
 
-## Configuración de IA
+## AI configuration
 
-Variables en `.env`:
+Variables in `.env`:
 
 ```
 AI_PROVIDER=openai
@@ -58,4 +58,4 @@ OPENAI_MODEL=gpt-4o-mini
 KIMI_API_KEY=...
 ```
 
-La clase `AiProvider` es la interfaz; `OpenAiProvider` es la implementación inicial.
+The `AiProvider` class is the interface; `OpenAiProvider` is the initial implementation.

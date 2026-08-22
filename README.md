@@ -1,14 +1,14 @@
 # BooKI
 
-Lector de PDF con sesiones por rango de páginas y un asistente contextual de aprendizaje y discusión, controlable por texto y voz.
+A PDF reader with page-range sessions and a contextual learning/discussion assistant, controllable by text and voice.
 
-## Estructura del monorepo
+## Monorepo structure
 
 ```
 booki/
 ├── backend/          # Spring Boot 3.3 + Java 21 + Gradle
 ├── frontend/         # React + TypeScript + Vite + PWA
-├── docs/             # Visión, arquitectura y memoria para agentes
+├── docs/             # Vision, architecture, and agent memory
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
@@ -16,15 +16,15 @@ booki/
 
 > Practical guide to ports, ways to start each server, and how to stop them: [docs/local-dev.md](docs/local-dev.md).
 
-## Requisitos
+## Requirements
 
 - Java 21
-- Gradle (incluido wrapper en `backend/gradlew`)
-- Node.js 20+ y npm (para el frontend)
-- Docker y Docker Compose **opcional** (para MySQL; también puedes usar H2)
-- API key de OpenAI (o Kimi) para el asistente
+- Gradle (wrapper included at `backend/gradlew`)
+- Node.js 20+ and npm (for the frontend)
+- Docker and Docker Compose **optional** (for MySQL; you can also use H2)
+- An OpenAI (or Kimi) API key for the assistant
 
-## Arranque rápido con H2 (sin Docker)
+## Quick start with H2 (no Docker)
 
 ### 1. Backend
 
@@ -33,7 +33,7 @@ cd backend
 ./gradlew bootRunLocal
 ```
 
-Usa el perfil `local` con H2 en archivo (`~/booki-local-db`). El backend escucha en `http://localhost:8080`.
+Uses the `local` profile with file-based H2 (`~/booki-local-db`). The backend listens on `http://localhost:8080`.
 
 ### 2. Frontend
 
@@ -43,9 +43,9 @@ npm install
 npm run dev
 ```
 
-El frontend escucha en `http://localhost:5173`.
+The frontend listens on `http://localhost:5173`.
 
-## Arranque con MySQL + Docker
+## Starting with MySQL + Docker
 
 ```bash
 cp .env.example .env
@@ -54,46 +54,49 @@ cd backend && ./gradlew bootRun
 cd frontend && npm run dev
 ```
 
-## Flujo de prueba
+## Test flow
 
-1. Abre `http://localhost:5173`.
-2. Regístrate con email/password (falta UI de auth; usa Postman o similar con `POST /api/auth/register`).
-3. Sube un PDF desde la pantalla principal.
-4. Haz clic en un libro para crear una sesión (elegir rango, dificultad y Profile Master).
-5. Abre la sesión y conversa con BooKI por texto o voz.
+1. Open `http://localhost:5173`.
+2. Sign up or log in from the login page.
+3. Upload a PDF from the home screen.
+4. Click a book to create a session (choose page range, difficulty, and a Profile Master).
+5. Open the session and chat with BooKI by text or voice.
 
-## Configuración de IA
+## AI configuration
 
-Edita `.env` o variables de entorno:
+Edit `.env` or set environment variables:
 
 ```bash
 AI_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 ```
 
-Para usar Kimi:
+To use Kimi:
 
 ```bash
 AI_PROVIDER=kimi
 KIMI_API_KEY=...
 ```
 
-## Perfiles de memoria para agentes
+Note: as of now, only the OpenAI provider is actually implemented (`OpenAiProvider`) — `AI_PROVIDER=kimi` will fail to start until a `KimiProvider` is added.
 
-- `docs/vision.md` — visión del producto y principios.
-- `docs/architecture.md` — stack y estructura.
-- `docs/backend.md` — detalles del backend.
-- `docs/frontend.md` — detalles del frontend.
-- `docs/ai-voice.md` — estrategia de IA y voz.
-- `docs/decisions.md` — decisiones arquitectónicas.
-- `docs/agent-memory.md` — resumen compacto.
+## Agent memory profiles
 
-## Estado del MVP
+- `docs/vision.md` — product vision and principles.
+- `docs/architecture.md` — stack and structure.
+- `docs/backend.md` — backend details.
+- `docs/frontend.md` — frontend details.
+- `docs/ai-voice.md` — AI and voice strategy.
+- `docs/decisions.md` — architecture decisions.
+- `docs/agent-memory.md` — compact summary.
+- `docs/local-dev.md` — how to run/stop each server locally.
 
-Estructura base lista para iterar. Pendientes inmediatos:
+## MVP status
 
-- [x] UI para crear sesión seleccionando rango de páginas.
-- [x] Mejorar UX del lector y del chat.
-- [ ] UI de login/registro en el frontend.
-- [ ] Integrar TTS con Web Speech API.
-- [ ] Tests de integración con H2.
+Base structure ready to iterate on. Immediate pending items:
+
+- [x] UI to create a session by selecting a page range.
+- [x] Improve reader and chat UX.
+- [x] Login/register UI in the frontend.
+- [ ] Integrate TTS with the Web Speech API.
+- [ ] Integration tests with H2.

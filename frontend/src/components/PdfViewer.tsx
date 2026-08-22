@@ -17,14 +17,13 @@ interface Props {
 
 export default function PdfViewer({ sessionId }: Props) {
   const { token } = useAuth();
-  const { session, goToPage } = useSession(sessionId);
+  const { session, error, goToPage } = useSession(sessionId);
   const [numPages, setNumPages] = useState(0);
   const [inputPage, setInputPage] = useState(1);
 
   useEffect(() => {
     if (session) setInputPage(session.currentPage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.id]);
+  }, [session?.currentPage]);
 
   const documentId = session?.documentId;
   const file = useMemo(
@@ -49,7 +48,6 @@ export default function PdfViewer({ sessionId }: Props) {
 
   const onGoToPage = async (page: number) => {
     await goToPage(page);
-    setInputPage(Math.max(session.startPage, Math.min(page, session.endPage)));
   };
 
   return (
@@ -58,6 +56,7 @@ export default function PdfViewer({ sessionId }: Props) {
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-bold text-white">{session.title}</h2>
           <p className="text-xs text-booki-muted">Session pages {session.startPage}-{session.endPage}</p>
+          {error && <p className="mt-0.5 text-xs text-rose-400">{error}</p>}
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 rounded-lg bg-booki-card px-3 py-1.5">

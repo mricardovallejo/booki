@@ -7,7 +7,7 @@ interface Props {
 }
 
 export default function NotificationsBell({ sessionId, refreshKey }: Props) {
-  const notifications = useNotifications(sessionId, refreshKey);
+  const { notifications, error } = useNotifications(sessionId, refreshKey);
   const [open, setOpen] = useState(false);
 
   return (
@@ -31,7 +31,9 @@ export default function NotificationsBell({ sessionId, refreshKey }: Props) {
           <p className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-booki-muted">
             Notifications
           </p>
-          {notifications.length === 0 ? (
+          {error ? (
+            <p className="px-4 py-3 text-sm text-rose-400">{error}</p>
+          ) : notifications.length === 0 ? (
             <p className="px-4 py-3 text-sm text-booki-muted">You're all caught up.</p>
           ) : (
             notifications.map((n) => (

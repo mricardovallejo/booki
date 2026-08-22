@@ -8,7 +8,15 @@ interface Props {
 }
 
 export default function QuizReportPanel({ sessionId, refreshKey }: Props) {
-  const report = useQuizReport(sessionId, refreshKey);
+  const { report, error } = useQuizReport(sessionId, refreshKey);
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center px-5 text-center text-sm text-rose-400">
+        {error}
+      </div>
+    );
+  }
 
   if (!report) {
     return (

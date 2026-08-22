@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { sendProgressReport, sendQuizReport } from '../api/sessions';
 import { downloadReportFile } from '../api/reports';
+import { getErrorMessage } from '../lib/errors';
 import type { SentReport } from '../types';
 
 function triggerDownload(blob: Blob, fileName: string) {
@@ -27,11 +28,8 @@ export function useSessionReports(sessionId: number) {
         type === 'progress' ? await sendProgressReport(sessionId, email) : await sendQuizReport(sessionId, email);
       setLastSent(report);
       return report;
-    } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Could not send the report.';
-      setError(message);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not send the report.'));
       return null;
     } finally {
       setSending(null);
@@ -39,8 +37,13 @@ export function useSessionReports(sessionId: number) {
   };
 
   const download = async (report: SentReport) => {
-    const blob = await downloadReportFile(report.id);
-    triggerDownload(blob, `booki-${report.type}-report-${report.id}.pdf`);
+    setError(null);
+    try {
+      const blob = await downloadReportFile(report.id);
+      triggerDownload(blob, `booki-${report.type}-report-${report.id}.pdf`);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not download the report.'));
+    }
   };
 
   return { sending, lastSent, error, send, download };

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getErrorMessage } from '../lib/errors';
 import type { Tag } from '../types';
 
 interface Props {
@@ -13,10 +14,16 @@ export default function TagsBar({ tags, onCreate, onRename, onDelete }: Props) {
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const submitNew = async () => {
     if (newName.trim()) {
-      await onCreate(newName.trim());
+      try {
+        await onCreate(newName.trim());
+        setError(null);
+      } catch (err) {
+        setError(getErrorMessage(err, 'Could not create this tag.'));
+      }
     }
     setNewName('');
     setAdding(false);
@@ -24,9 +31,23 @@ export default function TagsBar({ tags, onCreate, onRename, onDelete }: Props) {
 
   const submitRename = async (id: number) => {
     if (editingName.trim()) {
-      await onRename(id, editingName.trim());
+      try {
+        await onRename(id, editingName.trim());
+        setError(null);
+      } catch (err) {
+        setError(getErrorMessage(err, 'Could not rename this tag.'));
+      }
     }
     setEditingId(null);
+  };
+
+  const onDeleteTag = async (id: number) => {
+    try {
+      await onDelete(id);
+      setError(null);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not delete this tag.'));
+    }
   };
 
   return (
@@ -61,7 +82,7 @@ export default function TagsBar({ tags, onCreate, onRename, onDelete }: Props) {
               </button>
               <span className="text-[10px] text-white/40">{tag.documentIds.length}</span>
               <button
-                onClick={() => onDelete(tag.id)}
+                onClick={() => onDeleteTag(tag.id)}
                 className="text-white/30 opacity-0 transition group-hover:opacity-100 hover:text-rose-400"
                 title="Delete tag"
               >
@@ -90,6 +111,7 @@ export default function TagsBar({ tags, onCreate, onRename, onDelete }: Props) {
           </button>
         )}
       </div>
+      {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
     </div>
   );
 }

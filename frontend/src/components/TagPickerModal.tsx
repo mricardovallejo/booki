@@ -1,15 +1,28 @@
+import { useState } from 'react';
+import { getErrorMessage } from '../lib/errors';
 import type { Document, Tag } from '../types';
 import Button from './ui/Button';
 
 interface Props {
   document: Document | null;
   tags: Tag[];
-  onToggle: (tagId: number, documentId: number, isTagged: boolean) => void;
+  onToggle: (tagId: number, documentId: number, isTagged: boolean) => Promise<void>;
   onClose: () => void;
 }
 
 export default function TagPickerModal({ document, tags, onToggle, onClose }: Props) {
+  const [error, setError] = useState<string | null>(null);
+
   if (!document) return null;
+
+  const toggle = async (tagId: number, isTagged: boolean) => {
+    try {
+      await onToggle(tagId, document.id, isTagged);
+      setError(null);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not update this tag.'));
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
@@ -34,13 +47,15 @@ export default function TagPickerModal({ document, tags, onToggle, onClose }: Pr
                 <input
                   type="checkbox"
                   checked={isTagged}
-                  onChange={() => onToggle(tag.id, document.id, isTagged)}
+                  onChange={() => toggle(tag.id, isTagged)}
                   className="h-4 w-4 rounded border-white/20 bg-booki-bg text-booki-accent focus:ring-booki-accent"
                 />
               </label>
             );
           })}
         </div>
+
+        {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
 
         <Button variant="secondary" onClick={onClose} className="mt-5 w-full">
           Done

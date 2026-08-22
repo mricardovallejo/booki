@@ -7,6 +7,7 @@ import com.booki.dto.UserResponse;
 import com.booki.repository.UserRepository;
 import com.booki.security.JwtUtil;
 import com.booki.service.AuthService;
+import com.booki.service.ProfileMasterService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -19,6 +20,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final ProfileMasterService profileMasterService;
 
     @Override
     public AuthResponse register(AuthRequest request) {
@@ -33,6 +35,7 @@ public class AuthServiceImpl implements AuthService {
         user.setBio("");
         user.setSystemPrompt("");
         userRepository.save(user);
+        profileMasterService.seedDefaultsForNewUser(user.getId());
         return toAuthResponse(user);
     }
 

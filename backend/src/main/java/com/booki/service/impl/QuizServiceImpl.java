@@ -102,7 +102,8 @@ public class QuizServiceImpl implements QuizService {
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
         int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 10);
 
-        ProfileMaster master = resolvedMasterId != null ? profileMasterRepository.findById(resolvedMasterId).orElse(null) : null;
+        ProfileMaster master = resolvedMasterId != null
+                ? profileMasterRepository.findByIdAndUserId(resolvedMasterId, userId).orElse(null) : null;
         User user = userRepository.findById(userId).orElse(null);
         Function<Integer, String> template = QUIZ_TEMPLATES.getOrDefault(lang, QUIZ_TEMPLATES.get("en"));
 
@@ -178,7 +179,8 @@ public class QuizServiceImpl implements QuizService {
         attempt.setQuestion(request.getQuestion() == null ? "" : request.getQuestion());
         attempt.setAnswer(answer);
         attempt.setDifficulty(difficulty);
-        attempt.setProfileMaster(masterId != null ? profileMasterRepository.findById(masterId).orElse(null) : null);
+        attempt.setProfileMaster(masterId != null
+                ? profileMasterRepository.findByIdAndUserId(masterId, userId).orElse(null) : null);
         attempt.setCorrect(correct);
         attempt.setScore(score);
         attempt.setFeedback(feedback);

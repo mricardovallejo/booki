@@ -88,7 +88,7 @@ public class SessionServiceImpl implements SessionService {
         session.setLanguage(resolveLanguage(request.getLanguage()));
 
         if (request.getProfileMasterId() != null) {
-            ProfileMaster master = profileMasterRepository.findById(request.getProfileMasterId()).orElse(null);
+            ProfileMaster master = profileMasterRepository.findByIdAndUserId(request.getProfileMasterId(), userId).orElse(null);
             session.setProfileMaster(master);
         }
         session.setConfigJson("{}");

@@ -20,7 +20,7 @@ This starts the backend on `http://localhost:8080` without needing MySQL or Dock
 - `User`: email, password hash, display name, bio, and a free-text `systemPrompt` the reader can write about themselves (used to personalize BooKI's tone).
 - `Document`: metadata for a PDF uploaded by the user (title, file path, page count).
 - `DocumentPage`: text extracted per page of a document.
-- `ProfileMaster`: an expert persona (name, short description, system prompt, `isActive` flag) selectable when creating a session.
+- `ProfileMaster`: an expert persona (name, short description, system prompt, `isActive` flag) selectable when creating a session. **Per-user, not global**: every account gets its own editable copy of the 4 built-in defaults, seeded from template rows (`user_id IS NULL`) at registration; editing or deleting one never affects any other user's copy. Deleting one clears (sets to `null`) the `profileMasterId` on any `Session`/`QuizAttempt` that referenced it — their history is kept, they just lose the persona tag.
 - `Tag`: a per-user label a document can be filed under (many-to-many with `Document`); exposed via the `/api/collections` endpoints for historical reasons — see note below.
 - `Session`: a page range (`startPage`/`endPage`) of a document, with `currentPage`, chosen `difficulty`, `language`, and an optional `ProfileMaster`.
 - `Message`: one turn of conversation history in a session (`USER` / `BOOKI`, `TEXT` / `VOICE`).
@@ -35,8 +35,10 @@ All routes below are under `/api` and require a `Authorization: Bearer <jwt>` he
 
 | Method | Route | Description |
 |--------|------|-------------|
-| POST | `/api/auth/register` | Register with email/password, returns a JWT + the new user |
+| POST | `/api/auth/register` | Register with email/password, returns a JWT + the new user (`201`) |
 | POST | `/api/auth/login` | Login, returns a JWT + the user |
+
+Email is normalized (trimmed + lowercased) before lookup/storage on both routes, so `Name@Example.com` and `name@example.com` are treated as the same account.
 
 ### Users — `/api/users`
 
@@ -50,7 +52,7 @@ All routes below are under `/api` and require a `Authorization: Bearer <jwt>` he
 | Method | Route | Description |
 |--------|------|-------------|
 | GET | `/api/documents` | List the current user's PDFs |
-| POST | `/api/documents` | Upload a PDF (multipart, field `file`) |
+| POST | `/api/documents` | Upload a PDF (multipart, field `file`); `400` on a missing/invalid/unreadable PDF |
 | GET | `/api/documents/{id}` | Get one document's metadata |
 | GET | `/api/documents/{id}/file` | Stream/view the PDF file |
 | DELETE | `/api/documents/{id}` | Delete a document |
@@ -59,8 +61,10 @@ All routes below are under `/api` and require a `Authorization: Bearer <jwt>` he
 
 | Method | Route | Description |
 |--------|------|-------------|
-| GET | `/api/profile-masters` | List active masters |
-| POST | `/api/profile-masters` | Create a new master |
+| GET | `/api/profile-masters` | List the current user's own Masters (4 defaults + any custom ones) |
+| POST | `/api/profile-masters` | Create a new master, owned by the current user |
+| PATCH | `/api/profile-masters/{id}` | Update one of the current user's own Masters (`404` if it belongs to someone else) |
+| DELETE | `/api/profile-masters/{id}` | Delete one of the current user's own Masters |
 
 ### Collections (Tags) — `/api/collections`
 
@@ -118,6 +122,8 @@ All routes below are under `/api` and require a `Authorization: Bearer <jwt>` he
 - Passwords hashed with BCrypt.
 - CORS configured for `http://localhost:5173` only (see `config/SecurityConfig`) — any other origin, including `http://127.0.0.1:5173`, is rejected with a 403 "Invalid CORS request".
 - `/api/auth/**` and `/api/health` are public; every other `/api/**` route requires a valid JWT.
+- The JWT is stateless: a valid signature is enough to authenticate, even if the `userId` it carries no longer exists (e.g. after a local DB reset). Any endpoint that then looks up that user throws `NoSuchElementException` → `404 {"error": "Resource not found"}`. Symptom from the frontend: everything looks "not found" until you log out and back in for a fresh token.
+- Every error response, from every handler in `config/GlobalExceptionHandler`, uses the same `{"error": "..."}` shape — including validation (`400`), auth (`401`), not-found (`404`), and the two multipart-specific cases (missing file part, file too large). The frontend's `lib/errors.ts` (see `docs/frontend.md`) relies on this being consistent everywhere.
 
 ## AI configuration
 

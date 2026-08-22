@@ -14,7 +14,7 @@
 - **LoginPage**: sign in / sign up (email, password, optional name); also offers a "use demo account" shortcut.
 - **HomePage**: list of the user's PDFs, tag filtering, and the upload flow.
 - **SessionPage**: PDF reader + chat, quiz, progress, and notifications for one session.
-- **MastersPage**: browse/create Profile Masters.
+- **MastersPage**: browse/create/edit/delete the current user's own Profile Masters — each user has their own private set (see `docs/backend.md`).
 - **ProfilePage**: edit the current user's name, bio, and personal system prompt.
 
 All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `/login` when there's no authenticated user (see `context/AuthContext`).
@@ -39,6 +39,10 @@ All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `
 - `src/api/*.ts`: one file per backend resource (`auth`, `documents`, `profileMasters`, `reports`, `sessions`, `tags`, `users`), all going through the shared Axios instance in `api/client.ts` (adds the JWT header, base URL `/api`, redirects to `/login` on a 401).
 - `src/hooks/*.ts`: data-fetching hooks built on top of `src/api` (`useDocuments`, `useSession`, `useChat`, `useQuiz`, `useQuizReport`, `useProgress`, `useNotifications`, `useSessionReports`, `useSummary`, `useTags`, `useProfileMasters`, `useUserProfile`, plus UI-only hooks like `useVoice` and `useScrollToHash`).
 - `src/config/endpoints.ts`: the single source of truth for backend route paths used by the frontend.
+
+**Known gap:** `useQuiz.ts` (`generate`, `submitAnswer`, `loadReport`) has no `catch` — a failed request there fails silently instead of surfacing an error, unlike the pages/components that already went through the error-handling pass below. Worth fixing when Quiz gets its own review pass.
+
+- `src/lib/errors.ts`: `getErrorMessage(err, fallback?)` — the one place that knows how to pull `{error: string}` out of a failed Axios call (see `docs/backend.md`'s note on the backend's unified error shape). Every `catch` block that shows an error to the user should go through this helper rather than re-deriving `err.response?.data?.error` inline. A page-level `error` state + a red `<p>` under the relevant button/field is the established pattern (see `LoginPage`, `HomePage`, `ProfilePage`, `MastersPage`, `CreateSessionModal`) — don't let a form `onSubmit` swallow a rejected promise silently.
 
 ## Voice flow
 

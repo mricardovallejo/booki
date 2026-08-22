@@ -4,6 +4,7 @@ import { createSession } from '../api/sessions';
 import { useProfileMasters } from '../hooks/useProfileMasters';
 import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage } from '../lib/preferences';
 import { ROUTES } from '../config/routes';
+import { getErrorMessage } from '../lib/errors';
 import Button from './ui/Button';
 import { Field, Select } from './ui/FormField';
 import type { Difficulty, Document, SessionLanguage } from '../types';
@@ -21,7 +22,7 @@ const DIFFICULTIES: { value: Difficulty; label: string }[] = [
 
 export default function CreateSessionModal({ document, onClose }: Props) {
   const navigate = useNavigate();
-  const masters = useProfileMasters();
+  const { masters, error: mastersError } = useProfileMasters();
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState(1);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
@@ -29,6 +30,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
   const [language, setLanguage] = useState<SessionLanguage>(getDefaultLanguage());
   const [rememberLanguage, setRememberLanguage] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (document) {
@@ -44,6 +46,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
       if (rememberLanguage) {
         setDefaultLanguage(language);
@@ -58,6 +61,8 @@ export default function CreateSessionModal({ document, onClose }: Props) {
         language
       });
       navigate(ROUTES.session(session.id));
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not create this session.'));
     } finally {
       setLoading(false);
     }
@@ -124,6 +129,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
                 </option>
               ))}
             </Select>
+            {mastersError && <p className="mt-1 text-xs text-rose-400">{mastersError}</p>}
           </Field>
 
           <Field label="BooKI's interaction language">
@@ -144,6 +150,8 @@ export default function CreateSessionModal({ document, onClose }: Props) {
               Set as my default language for new sessions
             </label>
           </Field>
+
+          {error && <p className="text-sm text-rose-400">{error}</p>}
 
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">

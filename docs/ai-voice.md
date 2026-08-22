@@ -2,8 +2,7 @@
 
 ## AI strategy
 
-- Interface: `AiProvider.converse(systemPrompt, context, userMessage)`.
-- Only implementation today: **OpenAI** (`gpt-4o-mini`), in `OpenAiProvider`.
+- Interface: `AiProvider.converse(systemPrompt, context, userMessage)`- Only implementation today: **OpenAI** (`gpt-4o-mini`), in `OpenAiProvider`.
 - Config-ready for **Kimi** (`AI_PROVIDER=kimi`, `KIMI_API_KEY`) but there's no `KimiProvider` class yet — setting that env var currently breaks startup (see `docs/backend.md`).
 - If the OpenAI call fails for any reason (missing/invalid key, network error, etc.), `OpenAiProvider` silently returns a canned "couldn't reach the assistant" message instead of raising an error the frontend can distinguish — worth keeping in mind when a session's replies all look identical/generic.
 - The system prompt is built dynamically (`SessionServiceImpl.buildSystemPrompt`) from:

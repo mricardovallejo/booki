@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { createSession } from '../api/sessions';
 import { useProfileMasters } from '../hooks/useProfileMasters';
 import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage } from '../lib/preferences';
+import { AI_PROVIDER_LABELS } from '../lib/aiProviders';
 import { ROUTES } from '../config/routes';
 import { getErrorMessage } from '../lib/errors';
 import Button from './ui/Button';
 import { Field, Select } from './ui/FormField';
-import type { Difficulty, Document, SessionLanguage } from '../types';
+import type { AiProvider, Difficulty, Document, SessionLanguage } from '../types';
 
 interface Props {
   document: Document | null;
@@ -27,6 +28,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
   const [endPage, setEndPage] = useState(1);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [profileMasterId, setProfileMasterId] = useState<number | undefined>(undefined);
+  const [aiProvider, setAiProvider] = useState<AiProvider | undefined>(undefined);
   const [language, setLanguage] = useState<SessionLanguage>(getDefaultLanguage());
   const [rememberLanguage, setRememberLanguage] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -58,7 +60,8 @@ export default function CreateSessionModal({ document, onClose }: Props) {
         endPage,
         difficulty,
         profileMasterId,
-        language
+        language,
+        aiProvider
       });
       navigate(ROUTES.session(session.id));
     } catch (err) {
@@ -149,6 +152,20 @@ export default function CreateSessionModal({ document, onClose }: Props) {
               />
               Set as my default language for new sessions
             </label>
+          </Field>
+
+          <Field label="AI model">
+            <Select
+              value={aiProvider ?? ''}
+              onChange={(e) => setAiProvider(e.target.value ? (e.target.value as AiProvider) : undefined)}
+            >
+              <option value="">Default</option>
+              {(Object.keys(AI_PROVIDER_LABELS) as AiProvider[]).map((p) => (
+                <option key={p} value={p}>
+                  {AI_PROVIDER_LABELS[p]}
+                </option>
+              ))}
+            </Select>
           </Field>
 
           {error && <p className="text-sm text-rose-400">{error}</p>}

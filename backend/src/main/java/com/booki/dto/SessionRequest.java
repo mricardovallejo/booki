@@ -28,4 +28,7 @@ public class SessionRequest {
 
     /** en|es|fr; defaults to "en" if missing or unrecognized. */
     private String language;
+
+    /** claude|openai|kimi|ollama; null means "use the app's configured default for this profile". */
+    private String aiProvider;
 }

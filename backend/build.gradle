@@ -73,8 +73,32 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
+// Loads the monorepo's .env (one level up from backend/, alongside .env.example)
+// so ANTHROPIC_API_KEY etc. don't have to be exported by hand in every terminal.
+// A variable already set in the real shell environment always wins — .env only
+// fills in what's missing, same convention as dotenv tooling elsewhere.
+def dotEnvFile = file("${rootDir}/../.env")
+def dotEnvVars = [:]
+if (dotEnvFile.exists()) {
+	dotEnvFile.eachLine { line ->
+		line = line.trim()
+		if (line && !line.startsWith('#')) {
+			int idx = line.indexOf('=')
+			if (idx > 0) {
+				def key = line.substring(0, idx).trim()
+				def value = line.substring(idx + 1).trim()
+				if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+					value = value.substring(1, value.length() - 1)
+				}
+				dotEnvVars[key] = value
+			}
+		}
+	}
+}
+
 tasks.named('bootRun') {
 	systemProperty 'spring.profiles.active', 'dev'
+	dotEnvVars.each { k, v -> if (!environment.containsKey(k)) environment(k, v) }
 }
 
 tasks.register('bootRunLocal', org.springframework.boot.gradle.tasks.run.BootRun.class) {
@@ -83,4 +107,5 @@ tasks.register('bootRunLocal', org.springframework.boot.gradle.tasks.run.BootRun
 	mainClass = tasks.named('bootRun').get().mainClass
 	classpath = sourceSets.main.runtimeClasspath
 	systemProperty 'spring.profiles.active', 'local'
+	dotEnvVars.each { k, v -> if (!environment.containsKey(k)) environment(k, v) }
 }

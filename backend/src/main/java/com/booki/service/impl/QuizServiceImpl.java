@@ -1,10 +1,11 @@
 package com.booki.service.impl;
 
+import com.booki.ai.AiProvider;
+import com.booki.ai.AiProviderRegistry;
 import com.booki.domain.DocumentPage;
 import com.booki.domain.ProfileMaster;
 import com.booki.domain.QuizAttempt;
 import com.booki.domain.Session;
-import com.booki.domain.User;
 import com.booki.dto.GenerateQuizRequest;
 import com.booki.dto.QuizAnswerResponse;
 import com.booki.dto.QuizAttemptResponse;
@@ -17,23 +18,22 @@ import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.ProfileMasterRepository;
 import com.booki.repository.QuizAttemptRepository;
 import com.booki.repository.SessionRepository;
-import com.booki.repository.UserRepository;
 import com.booki.service.QuizService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Mock-equivalent keyword-overlap grading, ported faithfully from the
- * Node mock so its documented behavior in docs/openapi.yaml stays accurate.
- * A future pass can swap grading for a real AI judgment call without
- * changing the {@code {correct, score, feedback}} response shape.
+ * Question generation and grading both call the session's chosen AI
+ * provider ({@link AiProviderRegistry}), grounded in that page's reading
+ * text plus the same three-layer prompt (app/master/user) chat uses — see
+ * {@link SessionContextBuilder}. Reports (PDF progress/quiz correction)
+ * stay template-based; only this in-session flow is AI-driven.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,57 +43,19 @@ public class QuizServiceImpl implements QuizService {
     private final DocumentPageRepository documentPageRepository;
     private final ProfileMasterRepository profileMasterRepository;
     private final QuizAttemptRepository quizAttemptRepository;
-    private final UserRepository userRepository;
+    private final AiProviderRegistry aiProviderRegistry;
+    private final SessionContextBuilder sessionContextBuilder;
 
-    private static final Set<String> SUPPORTED_LANGUAGES = Set.of("en", "es", "fr");
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
 
-    private static final Map<String, Function<Integer, String>> QUIZ_TEMPLATES = Map.of(
-            "en", n -> "In your own words, what does page " + n + " explain?",
-            "es", n -> "Con tus propias palabras, ¿qué explica la página " + n + "?",
-            "fr", n -> "Avec tes propres mots, qu'est-ce que la page " + n + " explique ?"
-    );
-
-    private record DifficultySettings(double threshold, int denomCap) {
-    }
-
-    private static final Map<String, DifficultySettings> DIFFICULTY_SETTINGS = Map.of(
-            "easy", new DifficultySettings(0.15, 4),
-            "medium", new DifficultySettings(0.25, 6),
-            "hard", new DifficultySettings(0.4, 8)
-    );
-
-    private record Feedback(String correct, String incorrect) {
-    }
-
-    private static final Map<String, Feedback> FEEDBACK = Map.of(
-            "en", new Feedback(
-                    "Nice! Your answer covers key ideas from this page.",
-                    "Not quite — try rereading the page and mentioning its key terms."),
-            "es", new Feedback(
-                    "¡Bien! Tu respuesta cubre ideas clave de esta página.",
-                    "No del todo — vuelve a leer la página y menciona sus términos clave."),
-            "fr", new Feedback(
-                    "Bien joué ! Ta réponse couvre les idées clés de cette page.",
-                    "Pas tout à fait — relis la page et mentionne ses termes clés.")
-    );
-
-    private static final Map<String, Function<String, String>> USER_NOTE_PREFIX = Map.of(
-            "en", note -> " (Keeping in mind what you told BooKI about yourself: \"" + note + "\")",
-            "es", note -> " (Recordando lo que le contaste a BooKI sobre ti: \"" + note + "\")",
-            "fr", note -> " (En tenant compte de ce que tu as dit à BooKI à ton sujet : \"" + note + "\")"
-    );
-
-    private static final Set<String> STOPWORDS = Set.of(
-            "the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "have", "has",
-            "les", "des", "une", "pour", "dans", "sont", "avec",
-            "los", "las", "del", "que", "una", "para", "como", "sus", "por"
-    );
+    private static final Pattern CORRECT_PATTERN = Pattern.compile("CORRECT:\\s*(yes|no)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SCORE_PATTERN = Pattern.compile("SCORE:\\s*([0-9]*\\.?[0-9]+)");
+    private static final Pattern FEEDBACK_PATTERN = Pattern.compile("FEEDBACK:\\s*(.+)");
 
     @Override
     public QuizGenerateResponse generateQuiz(Long userId, Long sessionId, GenerateQuizRequest request) {
         Session session = findOwned(userId, sessionId);
-        String lang = resolveLanguage(session.getLanguage());
+        String languageName = sessionContextBuilder.languageName(session.getLanguage());
 
         Long resolvedMasterId = request.getProfileMasterId() != null
                 ? request.getProfileMasterId()
@@ -104,8 +66,7 @@ public class QuizServiceImpl implements QuizService {
 
         ProfileMaster master = resolvedMasterId != null
                 ? profileMasterRepository.findByIdAndUserId(resolvedMasterId, userId).orElse(null) : null;
-        User user = userRepository.findById(userId).orElse(null);
-        Function<Integer, String> template = QUIZ_TEMPLATES.getOrDefault(lang, QUIZ_TEMPLATES.get("en"));
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
 
         List<DocumentPage> pages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
                 session.getDocument().getId(), session.getStartPage(), session.getEndPage());
@@ -113,12 +74,12 @@ public class QuizServiceImpl implements QuizService {
         List<QuizQuestionResponse> questions = pages.stream()
                 .limit(questionCount)
                 .map(p -> {
-                    String question = template.apply(p.getPageNumber());
-                    if (p.getPageNumber().equals(pages.get(0).getPageNumber())
-                            && user != null && user.getSystemPrompt() != null && !user.getSystemPrompt().isBlank()) {
-                        question += USER_NOTE_PREFIX.getOrDefault(lang, USER_NOTE_PREFIX.get("en"))
-                                .apply(user.getSystemPrompt());
-                    }
+                    String systemPrompt = sessionContextBuilder.buildSystemPrompt(
+                            session, "[Page " + p.getPageNumber() + "]\n" + p.getExtractedText());
+                    String instruction = "Write exactly one reading-comprehension question about the page above, "
+                            + "in " + languageName + ", calibrated to \"" + resolvedDifficulty + "\" difficulty. "
+                            + "Reply with only the question itself — no preamble, no quotes, no numbering.";
+                    String question = provider.converse(systemPrompt, List.of(), instruction).strip();
                     return new QuizQuestionResponse(p.getPageNumber(), p.getPageNumber(), question);
                 })
                 .toList();
@@ -131,18 +92,16 @@ public class QuizServiceImpl implements QuizService {
     @Override
     public QuizAnswerResponse submitAnswer(Long userId, Long sessionId, SubmitQuizAnswerRequest request) {
         Session session = findOwned(userId, sessionId);
-        String lang = resolveLanguage(session.getLanguage());
+        String languageName = sessionContextBuilder.languageName(session.getLanguage());
         String difficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
+        String answer = request.getAnswer() == null ? "" : request.getAnswer();
 
         DocumentPage page = documentPageRepository
                 .findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
                         session.getDocument().getId(), request.getPageNumber(), request.getPageNumber())
                 .stream().findFirst()
                 .orElse(null);
-
-        boolean isFirstAttempt = quizAttemptRepository.countBySessionId(sessionId) == 0;
-        String answer = request.getAnswer() == null ? "" : request.getAnswer();
 
         boolean correct;
         double score;
@@ -153,20 +112,21 @@ public class QuizServiceImpl implements QuizService {
             score = 0;
             feedback = "Page not found in this session.";
         } else {
-            DifficultySettings settings = DIFFICULTY_SETTINGS.getOrDefault(difficulty, DIFFICULTY_SETTINGS.get("medium"));
-            Set<String> pageWords = tokenize(page.getExtractedText());
-            Set<String> answerWords = tokenizeRaw(answer);
-            long matches = answerWords.stream().filter(pageWords::contains).count();
-            int denom = Math.max(1, Math.min(settings.denomCap(), pageWords.size()));
-            score = Math.min(1.0, (double) matches / denom);
-            correct = score >= settings.threshold() && !answer.isBlank();
-            Feedback fb = FEEDBACK.getOrDefault(lang, FEEDBACK.get("en"));
-            feedback = correct ? fb.correct() : fb.incorrect();
-        }
+            AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+            String systemPrompt = sessionContextBuilder.buildSystemPrompt(
+                    session, "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
+            String instruction = "Question: " + (request.getQuestion() == null ? "" : request.getQuestion()) + "\n"
+                    + "Reader's answer: " + (answer.isBlank() ? "(no answer given)" : answer) + "\n\n"
+                    + "Judge this answer against the reading above, calibrated to \"" + difficulty + "\" difficulty "
+                    + "(lenient on easy, strict on hard). Reply in " + languageName + " for the feedback sentence. "
+                    + "Reply in EXACTLY this three-line format and nothing else:\n"
+                    + "CORRECT: yes or no\nSCORE: a number from 0.0 to 1.0\nFEEDBACK: one short encouraging sentence";
 
-        User user = userRepository.findById(userId).orElse(null);
-        if (isFirstAttempt && user != null && user.getSystemPrompt() != null && !user.getSystemPrompt().isBlank()) {
-            feedback += USER_NOTE_PREFIX.getOrDefault(lang, USER_NOTE_PREFIX.get("en")).apply(user.getSystemPrompt());
+            String response = provider.converse(systemPrompt, List.of(), instruction);
+            GradeResult grade = parseGrade(response);
+            correct = grade.correct();
+            score = grade.score();
+            feedback = grade.feedback();
         }
 
         Long masterId = request.getProfileMasterId() != null
@@ -209,13 +169,30 @@ public class QuizServiceImpl implements QuizService {
         return new QuizReportResponse(responses, summary);
     }
 
+    private record GradeResult(boolean correct, double score, String feedback) {
+    }
+
+    /** Parses the AI's CORRECT/SCORE/FEEDBACK reply; degrades gracefully (score 0, raw text as feedback) if it didn't follow the format — e.g. the offline fallback message. */
+    private GradeResult parseGrade(String response) {
+        Matcher correctMatcher = CORRECT_PATTERN.matcher(response);
+        Matcher scoreMatcher = SCORE_PATTERN.matcher(response);
+        Matcher feedbackMatcher = FEEDBACK_PATTERN.matcher(response);
+
+        boolean correct = correctMatcher.find() && "yes".equalsIgnoreCase(correctMatcher.group(1));
+        double score;
+        try {
+            score = scoreMatcher.find() ? Math.max(0, Math.min(1, Double.parseDouble(scoreMatcher.group(1))))
+                    : (correct ? 1.0 : 0.0);
+        } catch (NumberFormatException e) {
+            score = correct ? 1.0 : 0.0;
+        }
+        String feedback = feedbackMatcher.find() ? feedbackMatcher.group(1).strip() : response.strip();
+        return new GradeResult(correct, score, feedback);
+    }
+
     private Session findOwned(Long userId, Long sessionId) {
         return sessionRepository.findByIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new NoSuchElementException("Session not found"));
-    }
-
-    private String resolveLanguage(String language) {
-        return (language != null && SUPPORTED_LANGUAGES.contains(language)) ? language : "en";
     }
 
     private String resolveDifficulty(String difficulty) {
@@ -228,26 +205,5 @@ public class QuizServiceImpl implements QuizService {
 
     private double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
-    }
-
-    /** Words > 4 chars, lowercased, letters-only, minus stopwords — matches the mock's tokenizer. */
-    private Set<String> tokenize(String text) {
-        Set<String> words = new LinkedHashSet<>();
-        for (String w : text.toLowerCase().replaceAll("[^\\p{L}\\s]", "").split("\\s+")) {
-            if (w.length() > 4 && !STOPWORDS.contains(w)) {
-                words.add(w);
-            }
-        }
-        return words;
-    }
-
-    private Set<String> tokenizeRaw(String text) {
-        Set<String> words = new LinkedHashSet<>();
-        for (String w : text.toLowerCase().replaceAll("[^\\p{L}\\s]", "").split("\\s+")) {
-            if (!w.isBlank()) {
-                words.add(w);
-            }
-        }
-        return words;
     }
 }

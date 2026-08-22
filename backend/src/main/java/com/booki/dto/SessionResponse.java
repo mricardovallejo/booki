@@ -15,5 +15,9 @@ public class SessionResponse {
     private String difficulty;
     private Long profileMasterId;
     private String language;
+
+    /** The resolved provider actually in effect for this session (never null, even if the session didn't pick one explicitly). */
+    private String aiProvider;
+
     private Instant createdAt;
 }

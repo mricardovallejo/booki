@@ -1,5 +1,6 @@
 export type SessionLanguage = 'en' | 'es' | 'fr';
 export type Difficulty = 'easy' | 'medium' | 'hard';
+export type AiProvider = 'claude' | 'openai' | 'kimi' | 'ollama';
 
 export interface User {
   id: number;
@@ -33,6 +34,7 @@ export interface Session {
   difficulty: Difficulty;
   profileMasterId?: number | null;
   language: SessionLanguage;
+  aiProvider: AiProvider;
   createdAt: string;
 }
 

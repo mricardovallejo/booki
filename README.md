@@ -14,6 +14,8 @@ booki/
 └── README.md
 ```
 
+> Practical guide to ports, ways to start each server, and how to stop them: [docs/local-dev.md](docs/local-dev.md).
+
 ## Requisitos
 
 - Java 21

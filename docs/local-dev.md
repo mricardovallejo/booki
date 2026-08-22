@@ -43,9 +43,18 @@ cd backend
 ./gradlew bootRun
 ```
 
+Requires Docker installed and your user in the `docker` group (`sudo usermod -aG docker $USER`, then log out/in or `newgrp docker` for just the current shell) so `docker`/`docker compose` work without `sudo`.
+
+Wait for MySQL to actually be ready before starting the backend — `docker compose ps` should show `booki-mysql` as `(healthy)`, not just `Up`. On a slow disk the very first startup (creating the data volume) can take a few minutes instead of the usual ~20s; if it gets interrupted mid-init you can end up with a half-initialized database (the `booki` user missing, `root` with an empty password instead of the configured one). The data lives in a Docker **volume**, which survives container restarts — so a plain restart won't fix a half-initialized one; you need to wipe the volume and let it redo the whole init:
+```bash
+docker compose down -v     # -v also removes the volume — nukes all MySQL data
+docker compose up -d
+```
+
 In both cases:
-- Keep the terminal open — that's where the logs show up (with `show-sql: true`, you'll even see the SQL for every request).
+- Keep the terminal open — that's where the logs show up. `local` (H2) has `show-sql: true`, so you'll see every SQL statement; `dev` (MySQL) deliberately doesn't, to keep the log readable once you're not debugging queries directly.
 - Stop it: `Ctrl+C` in that terminal.
+- Stop MySQL when you're done: `docker compose down` (no `-v`, so your data is still there next time).
 
 **c) From VS Code (Run/Debug button on `BookiApplication`):**
 
@@ -68,6 +77,7 @@ node src/index.js
 lsof -i:5173   # frontend
 lsof -i:8080   # real backend
 lsof -i:3001   # mock backend
+docker compose ps   # MySQL container + its health status
 ```
 
 If the command returns nothing, that port is free (nothing running there).

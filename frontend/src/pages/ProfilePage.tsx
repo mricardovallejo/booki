@@ -3,6 +3,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import { Field, Input, TextArea } from '../components/ui/FormField';
+import { getErrorMessage } from '../lib/errors';
 
 export default function ProfilePage() {
   const { user, saving, save } = useUserProfile();
@@ -10,6 +11,7 @@ export default function ProfilePage() {
   const [bio, setBio] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -22,8 +24,13 @@ export default function ProfilePage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaved(false);
-    await save({ name, bio, systemPrompt });
-    setSaved(true);
+    setError(null);
+    try {
+      await save({ name, bio, systemPrompt });
+      setSaved(true);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not save your profile.'));
+    }
   };
 
   return (
@@ -64,6 +71,7 @@ export default function ProfilePage() {
           </Button>
           {saved && !saving && <span className="text-xs text-emerald-400">Saved</span>}
         </div>
+        {error && <p className="text-sm text-rose-400">{error}</p>}
       </form>
 
       <Card className="mt-6">

@@ -87,7 +87,7 @@ public class DocumentServiceImpl implements DocumentService {
                 return toResponse(document);
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to process PDF", e);
+            throw new IllegalArgumentException("Invalid or unreadable PDF file", e);
         }
     }
 

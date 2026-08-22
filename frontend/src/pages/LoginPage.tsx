@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { login as loginRequest, register as registerRequest } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { ROUTES } from '../config/routes';
+import { getErrorMessage } from '../lib/errors';
 import Button from '../components/ui/Button';
 import { Field, Input } from '../components/ui/FormField';
 import Logo from '../components/Logo';
@@ -35,10 +36,7 @@ export default function LoginPage() {
       login(result.token, result.user);
       navigate(from, { replace: true });
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Could not complete the request.';
-      setError(message);
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }

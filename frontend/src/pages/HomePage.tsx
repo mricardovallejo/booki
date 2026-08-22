@@ -9,6 +9,7 @@ import HeroSection from '../components/HeroSection';
 import HorizontalRow from '../components/HorizontalRow';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Button from '../components/ui/Button';
+import { getErrorMessage } from '../lib/errors';
 import type { Document } from '../types';
 
 export default function HomePage() {
@@ -19,13 +20,17 @@ export default function HomePage() {
   const [organizingDocument, setOrganizingDocument] = useState<Document | null>(null);
   const [deletingDocument, setDeletingDocument] = useState<Document | null>(null);
   const [query, setQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setError(null);
     try {
       await upload(file);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not upload this file.'));
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -33,8 +38,13 @@ export default function HomePage() {
 
   const onConfirmDelete = async () => {
     if (!deletingDocument) return;
-    await removeDocument(deletingDocument.id);
-    setDeletingDocument(null);
+    setError(null);
+    try {
+      await removeDocument(deletingDocument.id);
+      setDeletingDocument(null);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not remove this book.'));
+    }
   };
 
   const recent = [...documents].sort(
@@ -100,6 +110,7 @@ export default function HomePage() {
             </Button>
           </div>
         </div>
+        {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
       </div>
 
       {documents.length > 0 && !trimmedQuery && (

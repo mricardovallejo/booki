@@ -2,11 +2,11 @@
 
 ## What we're building
 
-BooKI MVP: a PDF reader with page-range sessions and a contextual AI assistant over text/voice.
+BooKI: a PDF reader with page-range sessions and a contextual AI assistant over text/voice.
 
 ## Fixed stack
 
-- Backend: Spring Boot 3.3, Java 21, Gradle, JPA, Flyway, MySQL (dev), H2 (tests), Spring Security + JWT.
+- Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, MySQL (dev), H2 (tests), Spring Security + JWT.
 - Frontend: React + TypeScript + Vite + Tailwind + PWA + react-pdf.
 - Voice: browser Web Speech API.
 - AI: `AiProvider` interface; OpenAI by default.

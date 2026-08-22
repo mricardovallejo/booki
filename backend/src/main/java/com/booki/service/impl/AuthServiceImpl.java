@@ -22,13 +22,14 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse register(AuthRequest request) {
-        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+        String email = normalizeEmail(request.getEmail());
+        if (userRepository.findByEmail(email).isPresent()) {
             throw new IllegalArgumentException("Email already registered");
         }
         User user = new User();
-        user.setEmail(request.getEmail());
+        user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setName(resolveName(request));
+        user.setName(resolveName(request, email));
         user.setBio("");
         user.setSystemPrompt("");
         userRepository.save(user);
@@ -37,7 +38,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse login(AuthRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(normalizeEmail(request.getEmail()))
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BadCredentialsException("Invalid credentials");
@@ -45,11 +46,16 @@ public class AuthServiceImpl implements AuthService {
         return toAuthResponse(user);
     }
 
-    private String resolveName(AuthRequest request) {
+    /** Emails are case-insensitive in practice; normalizing avoids duplicate accounts and login mismatches. */
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase();
+    }
+
+    private String resolveName(AuthRequest request, String normalizedEmail) {
         if (request.getName() != null && !request.getName().isBlank()) {
             return request.getName().trim();
         }
-        return request.getEmail().split("@")[0];
+        return normalizedEmail.split("@")[0];
     }
 
     private AuthResponse toAuthResponse(User user) {

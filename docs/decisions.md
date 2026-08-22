@@ -19,6 +19,7 @@
 - **Context**: a relational database with structured data was needed.
 - **Decision**: MySQL via Docker Compose for development; in-memory H2 for tests.
 - **Reasons**: dev/prod parity with MySQL; fast, isolated tests with H2.
+- **Consequence (learned when first actually run)**: on a slow disk, MySQL's first-time volume initialization can take minutes instead of seconds and, if interrupted, leaves a half-initialized DB (missing app user, empty root password) — the container reports `healthy` even in that broken state, since the healthcheck only confirms the server accepts connections, not that init finished. Fix is `docker compose down -v` (wipes the volume) and a clean `up -d`, waited out fully this time. See `docs/local-dev.md` for the step-by-step.
 
 ## ADR-004: Local storage for PDFs
 

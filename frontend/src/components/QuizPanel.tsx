@@ -20,7 +20,7 @@ const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
 
 export default function QuizPanel({ sessionId, onActivity }: Props) {
   const { session } = useSession(sessionId);
-  const masters = useProfileMasters();
+  const { masters, error: mastersError } = useProfileMasters();
   const { config, setConfig, questions, activeConfig, results, generating, grading, generate, submitAnswer } =
     useQuiz(sessionId, session, onActivity);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -63,6 +63,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                 </option>
               ))}
             </Select>
+            {mastersError && <p className="mt-1 text-xs text-rose-400">{mastersError}</p>}
           </Field>
 
           <Field label="Difficulty">

@@ -363,11 +363,12 @@ paths:
   /profile-masters:
     get:
       tags: [Profile Masters]
-      summary: List available Profile Masters
+      summary: List my Profile Masters
       operationId: listProfileMasters
       description: >
-        Global, not per-user, in the current mock. A future version may scope
-        custom Masters to their creator while keeping built-in ones shared.
+        Per-user: each account gets its own editable copy of the 4 built-in
+        defaults, seeded at registration, plus any custom ones it creates.
+        Editing or deleting a Master never affects any other user's copy.
       responses:
         "200":
           description: OK
@@ -401,6 +402,45 @@ paths:
               schema: { $ref: "#/components/schemas/ProfileMaster" }
         "400":
           $ref: "#/components/responses/BadRequest"
+
+  /profile-masters/{id}:
+    patch:
+      tags: [Profile Masters]
+      summary: Update one of my Profile Masters
+      operationId: updateProfileMaster
+      parameters:
+        - $ref: "#/components/parameters/ProfileMasterId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                systemPrompt: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfileMaster" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Profile Masters]
+      summary: Delete one of my Profile Masters
+      operationId: deleteProfileMaster
+      description: >
+        Sessions and quiz attempts that already used this Master keep their
+        history — they just lose the persona tag (set to null).
+      parameters:
+        - $ref: "#/components/parameters/ProfileMasterId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /sessions:
     post:
@@ -821,6 +861,11 @@ components:
       required: true
       schema: { type: integer }
     TagId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    ProfileMasterId:
       name: id
       in: path
       required: true

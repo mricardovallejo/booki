@@ -13,3 +13,14 @@ export interface CreateProfileMasterRequest {
 
 export const createProfileMaster = (payload: CreateProfileMasterRequest) =>
   api.post<ProfileMaster>(ENDPOINTS.profileMasters.create, payload).then((r) => r.data);
+
+export interface UpdateProfileMasterRequest {
+  name?: string;
+  description?: string;
+  systemPrompt?: string;
+}
+
+export const updateProfileMaster = (id: number, payload: UpdateProfileMasterRequest) =>
+  api.patch<ProfileMaster>(ENDPOINTS.profileMasters.update(id), payload).then((r) => r.data);
+
+export const deleteProfileMaster = (id: number) => api.delete(ENDPOINTS.profileMasters.delete(id));

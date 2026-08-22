@@ -23,7 +23,9 @@ export const ENDPOINTS = {
   },
   profileMasters: {
     list: '/profile-masters',
-    create: '/profile-masters'
+    create: '/profile-masters',
+    update: (id: number) => `/profile-masters/${id}`,
+    delete: (id: number) => `/profile-masters/${id}`
   },
   sessions: {
     create: '/sessions',

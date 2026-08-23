@@ -6,6 +6,7 @@
 - Vite (dev server + build)
 - Tailwind CSS
 - react-pdf for PDF rendering
+- react-markdown + remark-gfm for rendering BooKI's chat replies (real AI output routinely comes back with `**bold**`, lists, headings, and tables — `ChatPanel` renders it through `ReactMarkdown` with a small Tailwind class set (`MARKDOWN_CLASSES`), not plain `<p>`; user-typed messages stay plain text). Base markdown (CommonMark, what `react-markdown` supports out of the box) has no table syntax at all — tables are a GitHub-specific extension (GFM), hence the separate `remark-gfm` plugin; without it a table comes back as literal `|` characters, not a parse error.
 - Web Speech API for voice (STT/TTS)
 - PWA via vite-plugin-pwa
 

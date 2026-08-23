@@ -1,7 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useChat } from '../hooks/useChat';
 import VoiceButton from './VoiceButton';
 import SummaryModal from './SummaryModal';
+
+// Un-opinionated markdown (react-markdown emits bare <strong>/<ul>/<h1>, no
+// Tailwind styling of its own) — these classes give it a look at home inside
+// a chat bubble without pulling in the Typography plugin for just this.
+// Tables need overflow-x-auto of their own since a chat bubble is narrow
+// (max-w-[85%]) and a wide table must scroll, not stretch the bubble.
+const MARKDOWN_CLASSES =
+  '[&_p]:mb-2 last:[&_p]:mb-0 [&_strong]:font-bold [&_em]:italic ' +
+  '[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1 ' +
+  '[&_h1]:mb-2 [&_h1]:mt-1 [&_h1]:text-base [&_h1]:font-bold ' +
+  '[&_h2]:mb-2 [&_h2]:mt-1 [&_h2]:text-sm [&_h2]:font-bold ' +
+  '[&_h3]:mb-1 [&_h3]:mt-1 [&_h3]:text-sm [&_h3]:font-semibold ' +
+  '[&_hr]:my-3 [&_hr]:border-white/10 ' +
+  '[&_code]:rounded [&_code]:bg-black/20 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs ' +
+  '[&_a]:underline [&_a]:underline-offset-2 ' +
+  '[&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-xs ' +
+  '[&_th]:border [&_th]:border-white/15 [&_th]:bg-white/5 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold ' +
+  '[&_td]:border [&_td]:border-white/15 [&_td]:px-2 [&_td]:py-1 [&_td]:align-top';
 
 interface Props {
   sessionId: number;
@@ -56,13 +76,30 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
             className={`mb-4 flex ${m.speaker === 'USER' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                 m.speaker === 'USER'
-                  ? 'rounded-br-none bg-booki-accent text-white'
+                  ? 'whitespace-pre-line rounded-br-none bg-booki-accent text-white'
                   : 'rounded-bl-none bg-booki-card text-white/90'
               }`}
             >
-              <p>{m.message}</p>
+              {m.speaker === 'BOOKI' ? (
+                <div className={MARKDOWN_CLASSES}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      table: ({ ...props }) => (
+                        <div className="overflow-x-auto">
+                          <table {...props} />
+                        </div>
+                      )
+                    }}
+                  >
+                    {m.message}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <p>{m.message}</p>
+              )}
               <span className="mt-2 block text-[10px] opacity-60">
                 {m.inputType === 'VOICE' ? 'Voice' : 'Text'}
               </span>

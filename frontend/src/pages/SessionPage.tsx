@@ -9,7 +9,7 @@ export default function SessionPage() {
   if (!id) return <p className="p-6 text-white">Invalid session</p>;
 
   return (
-    <div className="flex h-[calc(100vh-64px)] flex-col md:flex-row">
+    <div className="flex h-[calc(100vh-64px)] flex-row">
       <section className="flex-1 overflow-hidden">
         <PdfViewer sessionId={id} />
       </section>

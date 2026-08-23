@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import ChatPanel from './ChatPanel';
 import QuizPanel from './QuizPanel';
-import QuizReportPanel from './QuizReportPanel';
 import ProgressPanel from './ProgressPanel';
 import NotificationsBell from './NotificationsBell';
 import ContextInfoButton from './ContextInfoButton';
@@ -10,12 +9,11 @@ interface Props {
   sessionId: number;
 }
 
-type Tab = 'chat' | 'quiz' | 'report' | 'progress';
+type Tab = 'chat' | 'quiz' | 'progress';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'chat', label: 'Chat' },
   { id: 'quiz', label: 'Quiz' },
-  { id: 'report', label: 'Report' },
   { id: 'progress', label: 'Progress' }
 ];
 
@@ -59,7 +57,6 @@ export default function SessionSidebar({ sessionId }: Props) {
       <div className="flex-1 overflow-hidden">
         {tab === 'chat' && <ChatPanel sessionId={sessionId} onActivity={bumpActivity} />}
         {tab === 'quiz' && <QuizPanel sessionId={sessionId} onActivity={bumpActivity} />}
-        {tab === 'report' && <QuizReportPanel sessionId={sessionId} refreshKey={refreshKey} />}
         {tab === 'progress' && <ProgressPanel sessionId={sessionId} refreshKey={refreshKey} />}
       </div>
     </aside>

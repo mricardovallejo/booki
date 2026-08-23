@@ -33,6 +33,21 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
     }
   }, [session]);
 
+  const loadReport = useCallback(
+    () =>
+      getQuizReport(sessionId)
+        .then((result) => {
+          setReport(result);
+          setError(null);
+        })
+        .catch((err) => setError(getErrorMessage(err, 'Could not load the quiz report.'))),
+    [sessionId]
+  );
+
+  useEffect(() => {
+    loadReport();
+  }, [loadReport]);
+
   const generate = useCallback(async () => {
     setGenerating(true);
     setError(null);
@@ -62,6 +77,7 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
         });
         setResults((prev) => ({ ...prev, [question.id]: result }));
         onActivity?.();
+        loadReport();
         return result;
       } catch (err) {
         setError(getErrorMessage(err, 'Could not check this answer.'));
@@ -70,18 +86,7 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
         setGrading(null);
       }
     },
-    [sessionId, activeConfig, config, onActivity]
-  );
-
-  const loadReport = useCallback(
-    () =>
-      getQuizReport(sessionId)
-        .then((result) => {
-          setReport(result);
-          setError(null);
-        })
-        .catch((err) => setError(getErrorMessage(err, 'Could not load the quiz report.'))),
-    [sessionId]
+    [sessionId, activeConfig, config, onActivity, loadReport]
   );
 
   return {

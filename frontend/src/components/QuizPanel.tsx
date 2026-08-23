@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuiz } from '../hooks/useQuiz';
 import { useSession } from '../hooks/useSession';
 import { useProfileMasters } from '../hooks/useProfileMasters';
+import { useSessionReports } from '../hooks/useSessionReports';
 import Button from './ui/Button';
 import Card from './ui/Card';
-import { Field, Select, TextArea } from './ui/FormField';
+import { Field, Select, TextArea, Input } from './ui/FormField';
 import type { Difficulty } from '../types';
 
 interface Props {
@@ -21,19 +22,43 @@ const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
 export default function QuizPanel({ sessionId, onActivity }: Props) {
   const { session } = useSession(sessionId);
   const { masters, error: mastersError } = useProfileMasters();
-  const { config, setConfig, questions, activeConfig, results, generating, grading, error, generate, submitAnswer } =
-    useQuiz(sessionId, session, onActivity);
+  const {
+    config,
+    setConfig,
+    questions,
+    activeConfig,
+    results,
+    generating,
+    grading,
+    error,
+    generate,
+    submitAnswer,
+    report
+  } = useQuiz(sessionId, session, onActivity);
+  const { sending, lastSent, error: reportError, send, download } = useSessionReports(sessionId);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [showSetup, setShowSetup] = useState(true);
+  const [autoSend, setAutoSend] = useState(false);
+  const [reportEmail, setReportEmail] = useState('');
+  const autoSentRef = useRef(false);
 
   const onGenerate = async () => {
     setAnswers({});
+    autoSentRef.current = false;
     await generate();
     setShowSetup(false);
   };
 
   const answeredCount = Object.keys(results).length;
   const correctCount = Object.values(results).filter((r) => r.correct).length;
+  const roundComplete = questions.length > 0 && answeredCount === questions.length;
+
+  useEffect(() => {
+    if (roundComplete && autoSend && reportEmail.trim() && !autoSentRef.current) {
+      autoSentRef.current = true;
+      send('quiz', reportEmail.trim());
+    }
+  }, [roundComplete, autoSend, reportEmail, send]);
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-5 py-4">
@@ -96,6 +121,27 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
             />
           </Field>
 
+          <div className="rounded-lg bg-booki-bg/60 p-3">
+            <label className="flex items-center gap-2 text-xs text-white/80">
+              <input
+                type="checkbox"
+                checked={autoSend}
+                onChange={(e) => setAutoSend(e.target.checked)}
+                className="rounded border-white/20 bg-booki-card"
+              />
+              Email me a copy of the correction report when I finish this quiz
+            </label>
+            {autoSend && (
+              <Input
+                type="email"
+                value={reportEmail}
+                onChange={(e) => setReportEmail(e.target.value)}
+                placeholder="parent@email.com"
+                className="mt-2"
+              />
+            )}
+          </div>
+
           <Button onClick={onGenerate} disabled={generating} className="w-full">
             {generating ? 'Generating…' : questions.length > 0 ? 'Regenerate quiz' : 'Generate quiz'}
           </Button>
@@ -151,13 +197,69 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                       result.correct ? 'text-emerald-400' : 'text-amber-400'
                     }`}
                   >
-                    {result.correct ? '✓ ' : '✗ '}
-                    {result.feedback}
+                    {result.correct ? '✓' : '✗'} {Math.round(result.score * 100)}% — {result.feedback}
                   </p>
                 )}
               </Card>
             );
           })}
+
+          {report && report.attempts.length > 0 && (
+            <div className="space-y-3 border-t border-white/10 pt-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-booki-muted">
+                Correction report — this session
+              </p>
+
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="text-center">
+                  <p className="text-xl font-bold text-white">{report.summary.total}</p>
+                  <p className="mt-1 text-[11px] text-booki-muted">Answered</p>
+                </Card>
+                <Card className="text-center">
+                  <p className="text-xl font-bold text-emerald-400">{report.summary.correct}</p>
+                  <p className="mt-1 text-[11px] text-booki-muted">Correct</p>
+                </Card>
+                <Card className="text-center">
+                  <p className="text-xl font-bold text-white">{report.summary.averageScore}%</p>
+                  <p className="mt-1 text-[11px] text-booki-muted">Avg. score</p>
+                </Card>
+              </div>
+
+              <div className="rounded-xl bg-booki-card p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-booki-muted">
+                  Email this correction report
+                </p>
+                <p className="mt-1 text-[11px] text-white/40">
+                  Generates a real PDF. Email delivery is simulated in this demo — you can download it instead.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <Input
+                    type="email"
+                    value={reportEmail}
+                    onChange={(e) => setReportEmail(e.target.value)}
+                    placeholder="parent@email.com"
+                    className="flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => reportEmail.trim() && send('quiz', reportEmail.trim())}
+                    disabled={sending === 'quiz' || !reportEmail.trim()}
+                  >
+                    {sending === 'quiz' ? 'Sending…' : 'Send'}
+                  </Button>
+                </div>
+                {reportError && <p className="mt-2 text-xs text-rose-400">{reportError}</p>}
+                {lastSent && lastSent.type === 'quiz' && (
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-400">
+                    <span>Sent to {lastSent.email} (simulated)</span>
+                    <button onClick={() => download(lastSent)} className="font-bold text-white/80 hover:text-white">
+                      Download PDF
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

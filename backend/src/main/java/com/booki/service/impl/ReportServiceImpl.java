@@ -207,7 +207,8 @@ public class ReportServiceImpl implements ReportService {
      * Real AI call grounded in the book pages (scaled by lengthPages) and the
      * discussion so far, on top of the same three-layer prompt chat/quiz use.
      */
-    private String generateSummaryText(Session session, Integer lengthPages, String customPrompt) {
+    @Override
+    public String generateSummaryText(Session session, Integer lengthPages, String customPrompt) {
         int pages = Math.min(10, Math.max(1, lengthPages != null ? lengthPages : 2));
         int charsPerPage = Math.round(80 + pages * 90);
         int messageCount = Math.min(40, Math.max(2, pages * 4));

@@ -137,7 +137,8 @@ public class SessionServiceImpl implements SessionService {
         // Conversational orchestration now lives in ConversationEngine, shared by
         // text, quick actions and (later) voice. This stays as the REST adapter.
         ConversationResult result = conversationEngine.converse(new ConversationRequest(
-                userId, sessionId, request.getMessage(), parseInputType(request.getInputType())));
+                userId, sessionId, request.getMessage(), parseInputType(request.getInputType()),
+                request.getCapabilityHint()));
         return toResponse(result.botMessage());
     }
 

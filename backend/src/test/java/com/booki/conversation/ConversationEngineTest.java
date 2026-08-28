@@ -3,6 +3,8 @@ package com.booki.conversation;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.conversation.capability.CapabilityRegistry;
+import com.booki.conversation.capability.ConversationCapability;
 import com.booki.domain.Document;
 import com.booki.domain.Message;
 import com.booki.domain.Session;
@@ -28,6 +30,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,6 +47,7 @@ class ConversationEngineTest {
     @Mock private DocumentPageRepository documentPageRepository;
     @Mock private AiProviderRegistry aiProviderRegistry;
     @Mock private SessionContextBuilder sessionContextBuilder;
+    @Mock private CapabilityRegistry capabilityRegistry;
     @Mock private AiProvider aiProvider;
     @Mock private Session session;
     @Mock private Document document;
@@ -55,24 +60,26 @@ class ConversationEngineTest {
     @BeforeEach
     void setUp() {
         engine = new ConversationEngine(sessionRepository, messageRepository, documentPageRepository,
-                aiProviderRegistry, sessionContextBuilder, 20, 24000);
+                aiProviderRegistry, sessionContextBuilder, capabilityRegistry, 20, 24000);
 
         when(sessionRepository.findByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(Optional.of(session));
         lenientSession();
         when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(any(), any(), any()))
+        lenient().when(documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(any(), any(), any()))
                 .thenReturn(List.of());
-        when(sessionContextBuilder.buildSystemPrompt(any(), anyString())).thenReturn("system-prompt");
-        when(aiProviderRegistry.get(any())).thenReturn(aiProvider);
+        lenient().when(sessionContextBuilder.buildSystemPrompt(any(), anyString())).thenReturn("system-prompt");
+        lenient().when(aiProviderRegistry.get(any())).thenReturn(aiProvider);
+        lenient().when(capabilityRegistry.routerInstructions()).thenReturn("");
+        lenient().when(capabilityRegistry.parseDirective(anyString())).thenReturn(Optional.empty());
     }
 
     private void lenientSession() {
-        org.mockito.Mockito.lenient().when(session.getId()).thenReturn(SESSION_ID);
-        org.mockito.Mockito.lenient().when(session.getDocument()).thenReturn(document);
-        org.mockito.Mockito.lenient().when(session.getStartPage()).thenReturn(1);
-        org.mockito.Mockito.lenient().when(session.getEndPage()).thenReturn(3);
-        org.mockito.Mockito.lenient().when(session.getAiProvider()).thenReturn("claude");
-        org.mockito.Mockito.lenient().when(document.getId()).thenReturn(42L);
+        lenient().when(session.getId()).thenReturn(SESSION_ID);
+        lenient().when(session.getDocument()).thenReturn(document);
+        lenient().when(session.getStartPage()).thenReturn(1);
+        lenient().when(session.getEndPage()).thenReturn(3);
+        lenient().when(session.getAiProvider()).thenReturn("claude");
+        lenient().when(document.getId()).thenReturn(42L);
     }
 
     @Test
@@ -124,6 +131,60 @@ class ConversationEngineTest {
         // Only the user's turn was persisted — no fabricated BooKI reply.
         verify(messageRepository, times(1)).save(savedMessageCaptor.capture());
         assertThat(savedMessageCaptor.getValue().getSpeaker()).isEqualTo(Message.Speaker.USER);
+    }
+
+    @Test
+    void routesToCapabilityWhenModelEmitsDirective() {
+        when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
+        when(aiProvider.converse(anyString(), anyList(), anyString())).thenReturn("{\"capability\":\"quiz\"}");
+        ConversationCapability quiz = capability("quiz", "What is the capital of France?");
+        when(capabilityRegistry.parseDirective("{\"capability\":\"quiz\"}")).thenReturn(Optional.of("quiz"));
+        when(capabilityRegistry.find("quiz")).thenReturn(Optional.of(quiz));
+
+        ConversationResult result = engine.converse(
+                new ConversationRequest(USER_ID, SESSION_ID, "quiz me", Message.InputType.TEXT));
+
+        assertThat(result.botMessage().getMessage()).isEqualTo("What is the capital of France?");
+    }
+
+    @Test
+    void explicitHintRunsCapabilityAndSkipsRoutingCall() {
+        when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
+        ConversationCapability summary = capability("summary", "Here is your recap.");
+        when(capabilityRegistry.find("summary")).thenReturn(Optional.of(summary));
+
+        ConversationResult result = engine.converse(new ConversationRequest(
+                USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary"));
+
+        assertThat(result.botMessage().getMessage()).isEqualTo("Here is your recap.");
+        verify(aiProvider, never()).converse(anyString(), anyList(), anyString());
+        verify(capabilityRegistry, never()).routerInstructions();
+    }
+
+    @Test
+    void unknownHintIsRejected() {
+        when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
+        when(capabilityRegistry.find("bogus")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> engine.converse(new ConversationRequest(
+                USER_ID, SESSION_ID, "do a thing", Message.InputType.TEXT, "bogus")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static ConversationCapability capability(String name, String reply) {
+        return new ConversationCapability() {
+            @Override public String name() {
+                return name;
+            }
+
+            @Override public String modelDescription() {
+                return name;
+            }
+
+            @Override public String execute(com.booki.conversation.capability.CapabilityInvocation invocation) {
+                return reply;
+            }
+        };
     }
 
     private static Message message(Message.Speaker speaker, String text) {

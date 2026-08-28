@@ -73,20 +73,43 @@ public class QuizServiceImpl implements QuizService {
 
         List<QuizQuestionResponse> questions = pages.stream()
                 .limit(questionCount)
-                .map(p -> {
-                    String systemPrompt = sessionContextBuilder.buildSystemPrompt(
-                            session, "[Page " + p.getPageNumber() + "]\n" + p.getExtractedText());
-                    String instruction = "Write exactly one reading-comprehension question about the page above, "
-                            + "in " + languageName + ", calibrated to \"" + resolvedDifficulty + "\" difficulty. "
-                            + "Reply with only the question itself — no preamble, no quotes, no numbering.";
-                    String question = provider.converse(systemPrompt, List.of(), instruction).strip();
-                    return new QuizQuestionResponse(p.getPageNumber(), p.getPageNumber(), question);
-                })
+                .map(p -> new QuizQuestionResponse(p.getPageNumber(), p.getPageNumber(),
+                        questionForPage(session, p, resolvedDifficulty, languageName, provider)))
                 .toList();
 
         QuizConfigResponse config = new QuizConfigResponse(
                 resolvedMasterId, master != null ? master.getName() : null, resolvedDifficulty, questions.size());
         return new QuizGenerateResponse(questions, config);
+    }
+
+    @Override
+    public String generateComprehensionQuestion(Session session) {
+        String languageName = sessionContextBuilder.languageName(session.getLanguage());
+        String difficulty = resolveDifficulty(session.getDifficulty());
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+
+        int target = session.getCurrentPage() != null ? session.getCurrentPage() : session.getStartPage();
+        DocumentPage page = firstPageInRange(session, target, target)
+                .or(() -> firstPageInRange(session, session.getStartPage(), session.getEndPage()))
+                .orElseThrow(() -> new IllegalStateException(
+                        "This session has no extracted pages to build a question from."));
+
+        return questionForPage(session, page, difficulty, languageName, provider);
+    }
+
+    private java.util.Optional<DocumentPage> firstPageInRange(Session session, int start, int end) {
+        return documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
+                session.getDocument().getId(), start, end).stream().findFirst();
+    }
+
+    private String questionForPage(Session session, DocumentPage page, String difficulty,
+                                   String languageName, AiProvider provider) {
+        String systemPrompt = sessionContextBuilder.buildSystemPrompt(
+                session, "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
+        String instruction = "Write exactly one reading-comprehension question about the page above, "
+                + "in " + languageName + ", calibrated to \"" + difficulty + "\" difficulty. "
+                + "Reply with only the question itself — no preamble, no quotes, no numbering.";
+        return provider.converse(systemPrompt, List.of(), instruction).strip();
     }
 
     @Override

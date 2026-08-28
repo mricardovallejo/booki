@@ -3,6 +3,9 @@ package com.booki.conversation;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.conversation.capability.CapabilityInvocation;
+import com.booki.conversation.capability.CapabilityRegistry;
+import com.booki.conversation.capability.ConversationCapability;
 import com.booki.domain.DocumentPage;
 import com.booki.domain.Message;
 import com.booki.domain.Session;
@@ -46,6 +49,7 @@ public class ConversationEngine {
     private final DocumentPageRepository documentPageRepository;
     private final AiProviderRegistry aiProviderRegistry;
     private final SessionContextBuilder sessionContextBuilder;
+    private final CapabilityRegistry capabilityRegistry;
     private final int historyWindow;
     private final int maxContextChars;
 
@@ -54,6 +58,7 @@ public class ConversationEngine {
                               DocumentPageRepository documentPageRepository,
                               AiProviderRegistry aiProviderRegistry,
                               SessionContextBuilder sessionContextBuilder,
+                              CapabilityRegistry capabilityRegistry,
                               @Value("${booki.conversation.history-window:20}") int historyWindow,
                               @Value("${booki.conversation.max-context-chars:24000}") int maxContextChars) {
         this.sessionRepository = sessionRepository;
@@ -61,6 +66,7 @@ public class ConversationEngine {
         this.documentPageRepository = documentPageRepository;
         this.aiProviderRegistry = aiProviderRegistry;
         this.sessionContextBuilder = sessionContextBuilder;
+        this.capabilityRegistry = capabilityRegistry;
         this.historyWindow = Math.max(1, historyWindow);
         this.maxContextChars = Math.max(1000, maxContextChars);
     }
@@ -76,12 +82,11 @@ public class ConversationEngine {
 
         Message userMessage = persist(session, Message.Speaker.USER, request.inputType(), request.text());
 
-        String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, buildContextText(session));
+        String pageContext = buildContextText(session);
 
         String answer;
         try {
-            answer = aiProviderRegistry.get(session.getAiProvider())
-                    .converse(systemPrompt, history, request.text());
+            answer = generateAnswer(request, session, history, pageContext);
         } catch (AiProviderException e) {
             // The user's turn stays in history; we simply don't fabricate a reply.
             throw new ConversationFailedException(
@@ -90,6 +95,41 @@ public class ConversationEngine {
 
         Message botMessage = persist(session, Message.Speaker.BOOKI, Message.InputType.TEXT, answer);
         return new ConversationResult(userMessage, botMessage);
+    }
+
+    /**
+     * Produces the reply text: either a plain model answer, or a conversational
+     * capability's output when one applies.
+     *
+     * <ul>
+     *   <li>An explicit {@code capabilityHint} (from a quick-action button) runs
+     *       that capability directly — no routing model call.</li>
+     *   <li>Otherwise the session's normal {@code converse()} call carries the
+     *       router instructions; if the model replies with a capability
+     *       directive, that capability runs, else its reply is the answer.</li>
+     * </ul>
+     */
+    private String generateAnswer(ConversationRequest request, Session session,
+                                  List<AiProvider.Message> history, String pageContext) {
+        CapabilityInvocation invocation =
+                new CapabilityInvocation(session, request.text(), history, pageContext);
+
+        if (request.capabilityHint() != null && !request.capabilityHint().isBlank()) {
+            ConversationCapability capability = capabilityRegistry.find(request.capabilityHint())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Unknown capability: " + request.capabilityHint()));
+            return capability.execute(invocation);
+        }
+
+        String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, pageContext)
+                + capabilityRegistry.routerInstructions();
+        String reply = aiProviderRegistry.get(session.getAiProvider())
+                .converse(systemPrompt, history, request.text());
+
+        return capabilityRegistry.parseDirective(reply)
+                .flatMap(capabilityRegistry::find)
+                .map(capability -> capability.execute(invocation))
+                .orElse(reply);
     }
 
     /** Most recent {@code historyWindow} messages, returned in chronological order for the model. */

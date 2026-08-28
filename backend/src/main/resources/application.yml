@@ -20,6 +20,12 @@ booki:
   storage:
     pdf-path: ${PDF_STORAGE_PATH:./uploads}
     report-path: ${REPORT_STORAGE_PATH:./reports}
+  conversation:
+    # How many of the most recent messages are replayed to the model as context.
+    history-window: ${CONVERSATION_HISTORY_WINDOW:20}
+    # Upper bound on the session page-range text sent with a turn, so a very wide
+    # range cannot produce an unbounded LLM request.
+    max-context-chars: ${CONVERSATION_MAX_CONTEXT_CHARS:24000}
   ai:
     default-provider: ${AI_PROVIDER:claude}
     claude:

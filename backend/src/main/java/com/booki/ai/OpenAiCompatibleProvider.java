@@ -22,6 +22,11 @@ public abstract class OpenAiCompatibleProvider implements AiProvider {
     private final WebClient webClient;
     private final String model;
 
+    /** Lower-cased simple class name (e.g. "openaiprovider" -> "openai"), used to tag {@link AiProviderException}. */
+    private String providerName() {
+        return getClass().getSimpleName().toLowerCase().replace("provider", "");
+    }
+
     protected OpenAiCompatibleProvider(String baseUrl, String apiKey, String model) {
         this.model = model;
         this.webClient = WebClient.builder()
@@ -54,10 +59,17 @@ public abstract class OpenAiCompatibleProvider implements AiProvider {
                     .bodyToMono(String.class)
                     .block();
             JsonNode root = JSON.readTree(response);
-            return root.path("choices").get(0).path("message").path("content").asString();
+            JsonNode first = root.path("choices").path(0).path("message").path("content");
+            String content = first.isMissingNode() ? null : first.asString();
+            if (content == null || content.isBlank()) {
+                throw new AiProviderException(providerName(), "response contained no choices/content", null);
+            }
+            return content;
+        } catch (AiProviderException e) {
+            throw e;
         } catch (Exception e) {
             log.error("{} request failed", getClass().getSimpleName(), e);
-            return "Sorry, I couldn't reach the assistant right now. Can you try again?";
+            throw new AiProviderException(providerName(), e);
         }
     }
 }

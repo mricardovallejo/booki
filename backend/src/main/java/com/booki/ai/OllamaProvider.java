@@ -57,10 +57,16 @@ public class OllamaProvider implements AiProvider {
                     .bodyToMono(String.class)
                     .block();
             JsonNode root = JSON.readTree(response);
-            return root.path("message").path("content").asString();
+            String content = root.path("message").path("content").asString();
+            if (content == null || content.isBlank()) {
+                throw new AiProviderException("ollama", "response contained no message content", null);
+            }
+            return content;
+        } catch (AiProviderException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Ollama request failed", e);
-            return "Sorry, I couldn't reach the assistant right now. Can you try again?";
+            throw new AiProviderException("ollama", e);
         }
     }
 }

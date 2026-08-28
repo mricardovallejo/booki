@@ -67,13 +67,18 @@ public class ClaudeProvider implements AiProvider {
             JsonNode root = JSON.readTree(response);
             for (JsonNode block : root.path("content")) {
                 if ("text".equals(block.path("type").asString())) {
-                    return block.path("text").asString();
+                    String text = block.path("text").asString();
+                    if (text != null && !text.isBlank()) {
+                        return text;
+                    }
                 }
             }
-            return "";
+            throw new AiProviderException("claude", "response contained no text block", null);
+        } catch (AiProviderException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Claude request failed", e);
-            return "Sorry, I couldn't reach the assistant right now. Can you try again?";
+            throw new AiProviderException("claude", e);
         }
     }
 }

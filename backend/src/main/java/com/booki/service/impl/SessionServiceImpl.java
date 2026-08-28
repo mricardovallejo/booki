@@ -1,9 +1,10 @@
 package com.booki.service.impl;
 
-import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.conversation.ConversationEngine;
+import com.booki.conversation.ConversationRequest;
+import com.booki.conversation.ConversationResult;
 import com.booki.domain.Document;
-import com.booki.domain.DocumentPage;
 import com.booki.domain.Message;
 import com.booki.domain.ProfileMaster;
 import com.booki.domain.Session;
@@ -14,7 +15,6 @@ import com.booki.dto.SessionNotificationResponse;
 import com.booki.dto.SessionProgressResponse;
 import com.booki.dto.SessionRequest;
 import com.booki.dto.SessionResponse;
-import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.ProfileMasterRepository;
@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -36,11 +35,11 @@ public class SessionServiceImpl implements SessionService {
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
     private final DocumentRepository documentRepository;
-    private final DocumentPageRepository documentPageRepository;
     private final ProfileMasterRepository profileMasterRepository;
     private final AiProviderRegistry aiProviderRegistry;
     private final SessionContextBuilder sessionContextBuilder;
     private final SessionProgressCalculator progressCalculator;
+    private final ConversationEngine conversationEngine;
 
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
 
@@ -135,43 +134,11 @@ public class SessionServiceImpl implements SessionService {
 
     @Override
     public MessageResponse sendMessage(Long userId, Long sessionId, MessageRequest request) {
-        Session session = findOwned(userId, sessionId);
-
-        Message userMessage = new Message();
-        userMessage.setSession(session);
-        userMessage.setSpeaker(Message.Speaker.USER);
-        userMessage.setInputType(parseInputType(request.getInputType()));
-        userMessage.setMessage(request.getMessage());
-        messageRepository.save(userMessage);
-
-        List<DocumentPage> pages = documentPageRepository
-                .findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                        session.getDocument().getId(), session.getStartPage(), session.getEndPage());
-        String contextText = pages.stream()
-                .map(p -> "[Page " + p.getPageNumber() + "]\n" + p.getExtractedText())
-                .collect(Collectors.joining("\n\n"));
-
-        List<Message> recent = messageRepository.findBySessionIdOrderByCreatedAtAsc(session.getId())
-                .stream()
-                .limit(20)
-                .toList();
-        List<AiProvider.Message> aiContext = recent.stream()
-                .map(m -> new AiProvider.Message(
-                        m.getSpeaker() == Message.Speaker.USER ? "user" : "assistant",
-                        m.getMessage()))
-                .toList();
-
-        String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, contextText);
-        String answer = aiProviderRegistry.get(session.getAiProvider()).converse(systemPrompt, aiContext, request.getMessage());
-
-        Message botMessage = new Message();
-        botMessage.setSession(session);
-        botMessage.setSpeaker(Message.Speaker.BOOKI);
-        botMessage.setInputType(Message.InputType.TEXT);
-        botMessage.setMessage(answer);
-        messageRepository.save(botMessage);
-
-        return toResponse(botMessage);
+        // Conversational orchestration now lives in ConversationEngine, shared by
+        // text, quick actions and (later) voice. This stays as the REST adapter.
+        ConversationResult result = conversationEngine.converse(new ConversationRequest(
+                userId, sessionId, request.getMessage(), parseInputType(request.getInputType())));
+        return toResponse(result.botMessage());
     }
 
     @Override

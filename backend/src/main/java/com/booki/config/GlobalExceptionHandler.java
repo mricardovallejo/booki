@@ -1,5 +1,9 @@
 package com.booki.config;
 
+import com.booki.ai.AiProviderException;
+import com.booki.conversation.ConversationFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -20,6 +24,20 @@ import java.util.NoSuchElementException;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * An AI provider failed to produce a genuine response. Surfaced as 502 with
+     * a neutral message — the real cause is logged, never sent to the client and
+     * never persisted as a BooKI answer.
+     */
+    @ExceptionHandler({ConversationFailedException.class, AiProviderException.class})
+    public ResponseEntity<Map<String, String>> handleAiUnavailable(RuntimeException ex) {
+        log.warn("AI provider unavailable", ex);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(error("The reading assistant is temporarily unavailable. Please try again in a moment."));
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {

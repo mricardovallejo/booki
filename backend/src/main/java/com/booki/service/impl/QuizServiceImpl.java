@@ -172,7 +172,7 @@ public class QuizServiceImpl implements QuizService {
     private record GradeResult(boolean correct, double score, String feedback) {
     }
 
-    /** Parses the AI's CORRECT/SCORE/FEEDBACK reply; degrades gracefully (score 0, raw text as feedback) if it didn't follow the format — e.g. the offline fallback message. */
+    /** Parses the AI's CORRECT/SCORE/FEEDBACK reply; degrades gracefully (score 0, raw text as feedback) if the model didn't follow the format. Provider failures now surface as errors upstream rather than reaching here. */
     private GradeResult parseGrade(String response) {
         Matcher correctMatcher = CORRECT_PATTERN.matcher(response);
         Matcher scoreMatcher = SCORE_PATTERN.matcher(response);

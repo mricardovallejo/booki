@@ -3,6 +3,7 @@ package com.booki.conversation;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.ai.StreamingAiProvider;
 import com.booki.conversation.capability.CapabilityInvocation;
 import com.booki.conversation.capability.CapabilityRegistry;
 import com.booki.conversation.capability.ConversationCapability;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 /**
  * The single orchestrator for every conversational turn in BooKI, whatever its
@@ -43,6 +45,9 @@ import java.util.NoSuchElementException;
  */
 @Service
 public class ConversationEngine {
+
+    private static final String UNAVAILABLE =
+            "The reading assistant is temporarily unavailable. Please try again in a moment.";
 
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
@@ -89,12 +94,134 @@ public class ConversationEngine {
             answer = generateAnswer(request, session, history, pageContext);
         } catch (AiProviderException e) {
             // The user's turn stays in history; we simply don't fabricate a reply.
-            throw new ConversationFailedException(
-                    "The reading assistant is temporarily unavailable. Please try again in a moment.", e);
+            throw new ConversationFailedException(UNAVAILABLE, e);
         }
 
         Message botMessage = persist(session, Message.Speaker.BOOKI, Message.InputType.TEXT, answer);
         return new ConversationResult(userMessage, botMessage);
+    }
+
+    /**
+     * Streaming counterpart of {@link #converse} — additive, not a replacement.
+     * The plain-chat reply is streamed token-by-token; an explicit
+     * {@code capabilityHint} runs its capability and emits the result as one
+     * delta (capabilities aren't token-streamable). Model-driven capability
+     * routing still works: output is withheld only while the reply could still
+     * be a {@code {"capability":...}} directive, then flushed live once it
+     * can't be. The bot message is persisted before {@code onComplete}; nothing
+     * is persisted on {@code onError}.
+     *
+     * <p>No HTTP transport calls this yet — SSE/WebSocket arrive with a concrete
+     * streaming requirement (ADR-010). Setup errors (session not found, unknown
+     * hint) propagate as exceptions so the transport can answer 404/400 before
+     * any streaming begins.
+     */
+    public void converseStreaming(ConversationRequest request, ConversationStream out) {
+        Session session = sessionRepository.findByIdAndUserId(request.sessionId(), request.userId())
+                .orElseThrow(() -> new NoSuchElementException("Session not found"));
+
+        List<AiProvider.Message> history = recentHistory(session.getId());
+        Message userMessage = persist(session, Message.Speaker.USER, request.inputType(), request.text());
+        String pageContext = buildContextText(session);
+        CapabilityInvocation invocation = new CapabilityInvocation(session, request.text(), history, pageContext);
+
+        Optional<ConversationCapability> hinted = hintedCapability(request);
+        if (hinted.isPresent()) {
+            String answer;
+            try {
+                answer = hinted.get().execute(invocation);
+            } catch (AiProviderException e) {
+                out.onError(new ConversationFailedException(UNAVAILABLE, e));
+                return;
+            }
+            Message bot = persist(session, Message.Speaker.BOOKI, Message.InputType.TEXT, answer);
+            out.onDelta(answer);
+            out.onComplete(new ConversationResult(userMessage, bot));
+            return;
+        }
+
+        String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, pageContext)
+                + capabilityRegistry.routerInstructions();
+
+        aiProviderRegistry.converseStreaming(session.getAiProvider(), systemPrompt, history, request.text(),
+                new DirectiveGatingStream(out, invocation, userMessage, session));
+    }
+
+    /**
+     * Bridges the AI-layer {@link StreamingAiProvider.TokenStream} to the
+     * domain {@link ConversationStream}, holding back output until the reply is
+     * known not to be a capability-routing directive.
+     */
+    private final class DirectiveGatingStream implements StreamingAiProvider.TokenStream {
+
+        private final ConversationStream out;
+        private final CapabilityInvocation invocation;
+        private final Message userMessage;
+        private final Session session;
+        private final boolean gating = !capabilityRegistry.isEmpty();
+        private final int maxDirective = capabilityRegistry.maxDirectiveLength();
+        private final StringBuilder full = new StringBuilder();
+        private boolean flushed;
+
+        private DirectiveGatingStream(ConversationStream out, CapabilityInvocation invocation,
+                                      Message userMessage, Session session) {
+            this.out = out;
+            this.invocation = invocation;
+            this.userMessage = userMessage;
+            this.session = session;
+        }
+
+        @Override
+        public void onDelta(String text) {
+            full.append(text);
+            if (!gating || flushed) {
+                out.onDelta(text);
+                return;
+            }
+            String seen = full.toString().stripLeading();
+            if (!seen.isEmpty() && (seen.charAt(0) != '{' || seen.length() > maxDirective)) {
+                flushed = true;
+                out.onDelta(full.toString());
+            }
+        }
+
+        @Override
+        public void onComplete(String fullText) {
+            Optional<String> routed = gating ? capabilityRegistry.parseDirective(fullText) : Optional.empty();
+            if (routed.isPresent()) {
+                // A directive is short and starts with '{', so it was never flushed — nothing bogus was streamed.
+                String answer;
+                try {
+                    answer = capabilityRegistry.find(routed.get()).orElseThrow().execute(invocation);
+                } catch (AiProviderException e) {
+                    out.onError(new ConversationFailedException(UNAVAILABLE, e));
+                    return;
+                }
+                Message bot = persist(session, Message.Speaker.BOOKI, Message.InputType.TEXT, answer);
+                out.onDelta(answer);
+                out.onComplete(new ConversationResult(userMessage, bot));
+                return;
+            }
+            if (gating && !flushed) {
+                out.onDelta(fullText);
+            }
+            Message bot = persist(session, Message.Speaker.BOOKI, Message.InputType.TEXT, fullText);
+            out.onComplete(new ConversationResult(userMessage, bot));
+        }
+
+        @Override
+        public void onError(RuntimeException error) {
+            out.onError(new ConversationFailedException(UNAVAILABLE, error));
+        }
+    }
+
+    private Optional<ConversationCapability> hintedCapability(ConversationRequest request) {
+        if (request.capabilityHint() == null || request.capabilityHint().isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(capabilityRegistry.find(request.capabilityHint())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown capability: " + request.capabilityHint())));
     }
 
     /**
@@ -114,11 +241,9 @@ public class ConversationEngine {
         CapabilityInvocation invocation =
                 new CapabilityInvocation(session, request.text(), history, pageContext);
 
-        if (request.capabilityHint() != null && !request.capabilityHint().isBlank()) {
-            ConversationCapability capability = capabilityRegistry.find(request.capabilityHint())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Unknown capability: " + request.capabilityHint()));
-            return capability.execute(invocation);
+        Optional<ConversationCapability> hinted = hintedCapability(request);
+        if (hinted.isPresent()) {
+            return hinted.get().execute(invocation);
         }
 
         String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, pageContext)

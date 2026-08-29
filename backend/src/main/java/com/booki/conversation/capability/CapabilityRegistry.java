@@ -51,6 +51,11 @@ public class CapabilityRegistry {
         return byName.isEmpty();
     }
 
+    /** Max length of a bare routing directive — a streaming caller buffers only this much before deciding it's prose. */
+    public int maxDirectiveLength() {
+        return MAX_DIRECTIVE_LENGTH;
+    }
+
     /** System-prompt section that lets the model opt into a capability. Empty when none are registered. */
     public String routerInstructions() {
         if (byName.isEmpty()) {

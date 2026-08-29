@@ -114,9 +114,42 @@ call, with `InputType.VOICE`.
   fallback for browsers without `MediaRecorder` or deployments with no STT
   provider; it follows the session language and still posts through
   `POST /messages` with `InputType.VOICE`.
-- Not streaming yet (Phase 5): a voice turn is STT + conversation + TTS, all
-  synchronous, and the reply audio is base64 in the JSON body. Fine for "press,
-  speak, hear the answer".
+- Not streaming yet: a voice turn is STT + conversation + TTS, all synchronous,
+  and the reply audio is base64 in the JSON body. Fine for "press, speak, hear
+  the answer". See "Streaming" below.
+
+## Browser support
+
+BooKI targets Android / Windows / Linux through responsive web / PWA. What works
+where, as of Phases 1–5:
+
+| Feature | Chrome / Edge | Firefox | Safari | Notes |
+|---|---|---|---|---|
+| Everything text (chat, quick actions, quiz, progress, reports) | ✅ | ✅ | ✅ | plain REST, no special APIs |
+| **Voice — cloud path** (record audio → backend transcribes → spoken reply) | ✅ | ✅ | ✅ | uses `getUserMedia` + `MediaRecorder`, supported everywhere modern; needs an STT provider configured on the backend (see setup below) |
+| **Voice — browser fallback** (`SpeechRecognition`) | ✅ | ❌ | ⚠️ patchy | **plan B only** — used just when the browser has no `MediaRecorder` or the backend has no STT provider. Not the architecture. |
+
+So: the app is fully usable on every modern browser. The only Chromium-only
+piece is the *fallback* recognizer, and it is never the primary path. This is the
+whole point of ADR-009 superseding ADR-002.
+
+## Streaming
+
+"Streaming" = BooKI's reply appearing word-by-word as the model writes it
+(like ChatGPT), instead of all at once after a pause.
+
+**BooKI does not do this yet, on purpose.** Phase 5 was *preparation only*
+(ADR-010): the backend provider and engine interfaces were shaped so a streaming
+implementation can be added later without re-architecting anything —
+`AiProvider.converse()`, `ConversationEngine.converse()` and every HTTP endpoint
+are unchanged, and no code path calls the new streaming interfaces yet
+(`StreamingAiProvider`, `ConversationEngine.converseStreaming`,
+`Streaming{TextToSpeech,SpeechToText}Provider`).
+
+When a concrete low-latency requirement appears, the remaining work is: add an
+**SSE** endpoint (Server-Sent Events — supported by every browser, no WebSocket
+needed) and a native streaming method on one provider. Nothing about this
+changes browser support.
 
 ## Voice provider setup
 

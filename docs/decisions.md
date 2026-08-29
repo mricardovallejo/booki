@@ -83,6 +83,15 @@
 
 ## ADR-010: streaming-ready interfaces, but no streaming transport yet
 
+**In one paragraph:** "Streaming" here means BooKI's reply arriving word-by-word
+as the model writes it (like ChatGPT) instead of appearing all at once after a
+pause. Phase 5 did **not** build that. It only shaped the backend Java
+interfaces so streaming can be added later without re-architecting anything —
+`converse()` and every HTTP endpoint are unchanged, nothing calls the new
+streaming code yet. **This ADR has zero frontend impact and nothing to do with
+browser support** — that is ADR-002/ADR-009. When streaming is actually built it
+will use SSE, which every browser supports.
+
 - **Context**: the target voice experience is "first audible response as early as possible" — incremental STT → streaming LLM → streaming TTS. That needs SSE/WebSocket/WebRTC, none of which BooKI has. The brief is explicit: don't reactive-ify the app, don't add a streaming transport "merely because voice exists", get cloud conversation right first (done, Phases 1–4). Phase 5 is *preparation*: shape the interfaces so streaming implementations drop in later without a rewrite.
 - **Decision**:
   - **Optional companion interfaces**, never replacements. `StreamingAiProvider` sits alongside `AiProvider`; `StreamingTextToSpeechProvider` / `StreamingSpeechToTextProvider` alongside their blocking forms. A provider implements the streaming one only if it can; `AiProvider.converse()` and the TTS/STT contracts are byte-for-byte unchanged.

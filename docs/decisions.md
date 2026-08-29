@@ -13,6 +13,7 @@
 - **Decision**: browser-side STT with `SpeechRecognition`; TTS pending via `speechSynthesis`.
 - **Reasons**: reduces latency, zero cost, no need to send binary audio.
 - **Consequence**: depends on the browser; can migrate to a backend implementation later.
+- **Superseded by ADR-009**: `SpeechRecognition` is no longer the architectural voice dependency — it only works on Chromium and breaks exactly on Android-as-PWA, a target client. It stays as a fallback; the core path is cloud STT/TTS.
 
 ## ADR-003: MySQL for dev, H2 for tests
 
@@ -65,3 +66,17 @@
   - **Conversational quiz asks, it does not grade.** The reader's answer and any "give me a hint" are ordinary chat turns (the model has the question in history and the pages in context). Scored `QuizAttempt` rows — and everything Progress/Reports count — stay exclusive to the explicit `POST /sessions/{id}/quiz/answer` flow. This avoids a fragile "is the reader answering a quiz right now?" state machine.
 - **Reasons**: works identically on all four providers today; no schema change (`MessageRequest` only gains an optional nullable `capabilityHint`); the Quiz panel / Summary modal and their endpoints are untouched; native tool calling can replace the directive later behind the same `ConversationCapability` interface without touching callers.
 - **Consequence**: routing depends on the model emitting the exact directive, so it can miss (it then just answers in prose — still a fine response) or, for `explain`, over-trigger since plain chat already explains; capability `modelDescription()`s are worded narrowly and the buttons give readers a deterministic path. Latency is ~2× on a turn that invokes a capability.
+
+## ADR-009: voice is a cloud, provider-agnostic capability (supersedes ADR-002)
+
+- **Context**: ADR-002 put STT in the browser via `SpeechRecognition`. That API only works on Chromium, is unreliable in an installed PWA, and gives no TTS — and BooKI targets Android/Windows/Linux through responsive web/PWA, so a Chrome-only voice path is not acceptable as the architecture. Voice must also converge with text: same `Message`, same `ConversationEngine`, same session context.
+- **Decision**:
+  - Two backend interfaces, `SpeechToTextProvider` and `TextToSpeechProvider`, mirroring the `AiProvider` pattern — minimal and synchronous, credentials server-side. First implementation is OpenAI-compatible (`whisper-1` transcription, `/audio/speech` MP3); a Google/Azure/Deepgram impl slots in behind the same interface. Both report `isConfigured()` and are inert (throw `VoiceProviderException` on use) without an API key.
+  - `VoiceConversationService` is the voice adapter in front of the engine: `audio → SpeechToTextProvider → ConversationEngine.converse(…, InputType.VOICE) → TextToSpeechProvider → audio`. The transcript goes through the **exact same** engine call as a typed message; history, context and capabilities are all the engine's.
+  - Transport: `POST /api/sessions/{id}/voice` (multipart audio in) returns the two persisted `MessageResponse`s plus the reply audio as base64 (or `null`). `GET /api/voice/capabilities` → `{stt, tts}` so the client picks the cloud path or the browser fallback up front. No SSE/WebSocket — REST, like every other endpoint.
+  - **STT failure fails the turn** (`VoiceTranscriptionException` → 502, no input to run). **TTS failure is best-effort** — the text reply is already persisted and returned; the client shows text or uses browser `speechSynthesis`.
+  - Session language drives STT (and TTS where the provider uses it). The hardcoded `es-ES` in `useVoice` is gone; the fallback recognizer now also follows session language.
+  - **Raw audio is never persisted** — it lives only for the request. Upload capped (`booki.voice.max-audio-bytes`, 10 MB); TTS input capped (`tts-max-input-chars`, 1200) so a long summary read aloud can't produce a huge synchronous call.
+  - The frontend captures audio with `getUserMedia` + `MediaRecorder` (universal support). `SpeechRecognition` (`useVoice`) is kept **only** as a fallback for browsers without `MediaRecorder` or deployments with no STT provider — it still posts through `POST /messages` with `InputType.VOICE`.
+- **Reasons**: works on every modern browser; voice and text share one pipeline and one persistence model; the provider interfaces are shaped so a streaming implementation (Phase 5) is an additive method, not a rewrite; nothing forces WebSocket/WebRTC into the rest of the app.
+- **Consequence**: a voice turn costs an STT call + the conversation call + a TTS call, all synchronous — fine for "press, speak, hear the answer", not yet low-latency. Base64 audio in JSON is simple but not streamable; Phase 5 revisits this when there is a concrete streaming requirement. A deployment with no OpenAI key still has working voice via the browser fallback (Chromium only), matching pre-Phase-4 behavior.

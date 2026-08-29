@@ -32,6 +32,7 @@ export const ENDPOINTS = {
     byId: (id: number) => `/sessions/${id}`,
     currentPage: (id: number) => `/sessions/${id}/current-page`,
     messages: (id: number) => `/sessions/${id}/messages`,
+    voice: (id: number) => `/sessions/${id}/voice`,
     quiz: (id: number) => `/sessions/${id}/quiz`,
     quizAnswer: (id: number) => `/sessions/${id}/quiz/answer`,
     quizAttempts: (id: number) => `/sessions/${id}/quiz/attempts`,
@@ -45,5 +46,8 @@ export const ENDPOINTS = {
   },
   reports: {
     file: (id: number) => `/reports/${id}/file`
+  },
+  voice: {
+    capabilities: '/voice/capabilities'
   }
 } as const;

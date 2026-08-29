@@ -2,6 +2,7 @@ package com.booki.config;
 
 import com.booki.ai.AiProviderException;
 import com.booki.conversation.ConversationFailedException;
+import com.booki.voice.VoiceTranscriptionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -37,6 +38,17 @@ public class GlobalExceptionHandler {
         log.warn("AI provider unavailable", ex);
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(error("The reading assistant is temporarily unavailable. Please try again in a moment."));
+    }
+
+    /**
+     * Voice input could not be transcribed. 502 with a plain message — the
+     * reader can retry or switch to typing. A failed reply synthesis (TTS) does
+     * not reach here; that turn degrades to text-only.
+     */
+    @ExceptionHandler(VoiceTranscriptionException.class)
+    public ResponseEntity<Map<String, String>> handleVoiceTranscription(VoiceTranscriptionException ex) {
+        log.warn("Voice transcription failed", ex);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(error(ex.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

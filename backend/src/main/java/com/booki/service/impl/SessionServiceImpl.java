@@ -202,12 +202,6 @@ public class SessionServiceImpl implements SessionService {
     }
 
     private MessageResponse toResponse(Message message) {
-        MessageResponse response = new MessageResponse();
-        response.setId(message.getId());
-        response.setSpeaker(message.getSpeaker().name());
-        response.setInputType(message.getInputType().name());
-        response.setMessage(message.getMessage());
-        response.setCreatedAt(message.getCreatedAt());
-        return response;
+        return MessageResponse.of(message);
     }
 }

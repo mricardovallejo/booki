@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { listMessages, sendMessage } from '../api/sessions';
+import { sendVoiceTurn, type VoiceTurnResult } from '../api/voice';
 import { getErrorMessage } from '../lib/errors';
 import type { CapabilityHint, Message } from '../types';
 
@@ -45,5 +46,27 @@ export function useChat(sessionId: number, onActivity?: () => void) {
     [sessionId, refresh, onActivity]
   );
 
-  return { messages, sending, error, send, refresh };
+  // Cloud voice path: upload the recorded clip; the backend transcribes, runs
+  // the same conversation pipeline, and returns the persisted messages plus an
+  // optional spoken reply for the caller to play.
+  const sendVoice = useCallback(
+    async (audio: Blob, capabilityHint?: CapabilityHint): Promise<VoiceTurnResult | null> => {
+      setSending(true);
+      setError(null);
+      try {
+        const result = await sendVoiceTurn(sessionId, audio, capabilityHint);
+        await refresh();
+        onActivity?.();
+        return result;
+      } catch (err) {
+        setError(getErrorMessage(err, 'BooKI could not hear you. Try again.'));
+        return null;
+      } finally {
+        setSending(false);
+      }
+    },
+    [sessionId, refresh, onActivity]
+  );
+
+  return { messages, sending, error, send, sendVoice, refresh };
 }

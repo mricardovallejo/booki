@@ -3,6 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChat } from '../hooks/useChat';
 import { useSession } from '../hooks/useSession';
+import { useVoice } from '../hooks/useVoice';
+import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
+import { getVoiceCapabilities, type VoiceCapabilities } from '../api/voice';
 import VoiceButton from './VoiceButton';
 import SummaryModal from './SummaryModal';
 import type { CapabilityHint, SessionLanguage } from '../types';
@@ -80,12 +83,60 @@ interface Props {
 }
 
 export default function ChatPanel({ sessionId, onActivity }: Props) {
-  const { messages, sending, error, send, refresh } = useChat(sessionId, onActivity);
+  const { messages, sending, error, send, sendVoice, refresh } = useChat(sessionId, onActivity);
   const { session } = useSession(sessionId);
   const lang: SessionLanguage = session?.language ?? 'en';
   const [text, setText] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const recorder = useVoiceRecorder();
+  const fallbackVoice = useVoice(lang);
+  const [voiceCaps, setVoiceCaps] = useState<VoiceCapabilities | null>(null);
+  const replyAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    getVoiceCapabilities()
+      .then(setVoiceCaps)
+      .catch(() => setVoiceCaps({ stt: false, tts: false }));
+  }, []);
+
+  // Cloud path when the browser can record AND the backend has an STT provider;
+  // otherwise the browser SpeechRecognition fallback (posts a normal VOICE message).
+  const cloudVoice = recorder.supported && !!voiceCaps?.stt;
+  const voiceSupported = cloudVoice || fallbackVoice.supported;
+  const voiceActive = recorder.recording || fallbackVoice.listening;
+
+  const playReply = (audioBase64: string, contentType: string | null) => {
+    const audio = new Audio(`data:${contentType ?? 'audio/mpeg'};base64,${audioBase64}`);
+    replyAudioRef.current = audio;
+    audio.play().catch(() => undefined);
+  };
+
+  const onVoicePress = async () => {
+    if (cloudVoice) {
+      if (recorder.recording) {
+        const clip = await recorder.stop();
+        if (clip) {
+          const result = await sendVoice(clip);
+          if (result?.audioBase64) playReply(result.audioBase64, result.audioContentType);
+        }
+      } else {
+        try {
+          await recorder.start();
+        } catch {
+          // mic permission denied / no device — button returns to idle, nothing to send
+        }
+      }
+      return;
+    }
+    if (fallbackVoice.listening) {
+      fallbackVoice.stop();
+      return;
+    }
+    const transcript = await fallbackVoice.start();
+    if (transcript) await send(transcript, 'VOICE');
+  };
 
   const runQuickAction = (action: QuickAction) => send(action.text[lang], 'TEXT', action.hint);
 
@@ -179,7 +230,13 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
           ))}
         </div>
         <div className="flex items-center gap-3 rounded-2xl bg-booki-card px-3 py-2">
-          <VoiceButton onResult={(t) => send(t, 'VOICE')} size="sm" />
+          <VoiceButton
+            supported={voiceSupported}
+            active={voiceActive}
+            busy={sending}
+            onPress={onVoicePress}
+            size="sm"
+          />
           <input
             type="text"
             value={text}

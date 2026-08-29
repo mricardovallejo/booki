@@ -14,6 +14,7 @@ import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.impl.SessionContextBuilder;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ import java.util.Optional;
  * {@link ConversationRequest} and receive a {@link ConversationResult}.
  * Conversational capabilities (quiz, summary, explain) plug in here in Phase 2.
  */
+@Slf4j
 @Service
 public class ConversationEngine {
 
@@ -248,8 +250,19 @@ public class ConversationEngine {
 
         String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, pageContext)
                 + capabilityRegistry.routerInstructions();
-        String reply = aiProviderRegistry.get(session.getAiProvider())
-                .converse(systemPrompt, history, request.text());
+        String providerName = aiProviderRegistry.resolveName(session.getAiProvider());
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+        long startedAt = System.currentTimeMillis();
+        String reply;
+        try {
+            reply = provider.converse(systemPrompt, history, request.text());
+        } catch (RuntimeException e) {
+            log.warn("AI call failed provider={} model={} durationMs={}",
+                    providerName, provider.model(), System.currentTimeMillis() - startedAt);
+            throw e;
+        }
+        log.info("AI call completed provider={} model={} durationMs={}",
+                providerName, provider.model(), System.currentTimeMillis() - startedAt);
 
         return capabilityRegistry.parseDirective(reply)
                 .flatMap(capabilityRegistry::find)

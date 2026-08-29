@@ -63,6 +63,7 @@ public class OpenAiTextToSpeechProvider implements TextToSpeechProvider {
             throw new VoiceProviderException("tts", "nothing to synthesize", null);
         }
 
+        long startedAt = System.currentTimeMillis();
         try {
             byte[] audio = webClient.post()
                     .uri("/audio/speech")
@@ -78,11 +79,14 @@ public class OpenAiTextToSpeechProvider implements TextToSpeechProvider {
             if (audio == null || audio.length == 0) {
                 throw new VoiceProviderException("tts", "audio response was empty", null);
             }
+            log.info("TTS call completed model={} voice={} durationMs={}",
+                    model, voice, System.currentTimeMillis() - startedAt);
             return new Speech(audio, "audio/mpeg");
         } catch (VoiceProviderException e) {
             throw e;
         } catch (Exception e) {
-            log.error("OpenAI speech synthesis failed", e);
+            log.error("TTS call failed model={} voice={} durationMs={}",
+                    model, voice, System.currentTimeMillis() - startedAt, e);
             throw new VoiceProviderException("tts", e);
         }
     }

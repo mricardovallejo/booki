@@ -114,7 +114,7 @@ docker compose up -d
 ```
 
 In both cases:
-- Keep the terminal open — that's where the logs show up. `local` (H2) has `show-sql: true`, so you'll see every SQL statement; `dev` (MySQL) deliberately doesn't, to keep the log readable once you're not debugging queries directly.
+- Keep the terminal open — that's where the logs show up. Every request logs one line (`http.request method=... path=... status=... userId=... durationMs=...`); raw SQL is off by default in both profiles (too noisy for day-to-day reading) — turn it on for one run with `LOGGING_LEVEL_ORG_HIBERNATE_SQL=debug ./gradlew bootRunLocal`, no file edits needed.
 - Stop it: `Ctrl+C` in that terminal.
 - Stop MySQL when you're done: `docker compose down` (no `-v`, so your data is still there next time).
 

@@ -46,6 +46,11 @@ public class ClaudeProvider implements AiProvider, StreamingAiProvider {
     }
 
     @Override
+    public String model() {
+        return model;
+    }
+
+    @Override
     public String converse(String systemPrompt, List<Message> context, String userMessage) {
         Map<String, Object> body = requestBody(systemPrompt, context, userMessage, false);
 

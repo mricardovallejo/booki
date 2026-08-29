@@ -11,6 +11,15 @@ spring:
 server:
   port: 8080
 
+logging:
+  level:
+    # Off by default — very noisy, and rarely what you actually want to read.
+    # Turn it on for one run without touching this file:
+    #   LOGGING_LEVEL_ORG_HIBERNATE_SQL=debug ./gradlew bootRunLocal
+    org.hibernate.SQL: warn
+    org.hibernate.orm.jdbc.bind: warn
+    com.booki: info
+
 booki:
   jwt:
     secret: ${JWT_SECRET:change-me-in-production-this-is-a-dev-secret-32bytes}
@@ -87,7 +96,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
   flyway:
     enabled: true
     locations: classpath:db/migration

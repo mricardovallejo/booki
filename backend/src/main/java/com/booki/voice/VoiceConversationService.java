@@ -43,6 +43,8 @@ public class VoiceConversationService {
 
     public VoiceTurnResult processTurn(Long userId, Long sessionId, byte[] audio,
                                        String contentType, String capabilityHint, boolean wantsAudioReply) {
+        log.info("Voice turn received sessionId={} audioBytes={} wantsAudioReply={}",
+                sessionId, audio == null ? 0 : audio.length, wantsAudioReply);
         Session session = sessionRepository.findByIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new NoSuchElementException("Session not found"));
 
@@ -81,6 +83,8 @@ public class VoiceConversationService {
             } catch (VoiceProviderException e) {
                 log.warn("TTS failed; returning a text-only voice turn", e);
             }
+        } else if (!wantsAudioReply) {
+            log.info("TTS skipped by request (wantsAudioReply=false) sessionId={}", sessionId);
         }
 
         return new VoiceTurnResult(result.userMessage(), result.botMessage(), replyAudio, replyAudioType);

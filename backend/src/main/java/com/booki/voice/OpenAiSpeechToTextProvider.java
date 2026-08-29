@@ -63,6 +63,7 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
             form.part("language", language);
         }
 
+        long startedAt = System.currentTimeMillis();
         try {
             String response = webClient.post()
                     .uri("/audio/transcriptions")
@@ -76,11 +77,12 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
             if (text == null || text.isBlank()) {
                 throw new VoiceProviderException("stt", "transcript was empty", null);
             }
+            log.info("STT call completed model={} durationMs={}", model, System.currentTimeMillis() - startedAt);
             return new Transcript(text.strip());
         } catch (VoiceProviderException e) {
             throw e;
         } catch (Exception e) {
-            log.error("OpenAI transcription failed", e);
+            log.error("STT call failed model={} durationMs={}", model, System.currentTimeMillis() - startedAt, e);
             throw new VoiceProviderException("stt", e);
         }
     }

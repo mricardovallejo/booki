@@ -57,37 +57,44 @@ public class GlobalExceptionHandler {
                 .findFirst()
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .orElse("Invalid request");
+        log.warn("Validation failed: {}", message);
         return ResponseEntity.badRequest().body(error(message));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+        log.warn("Bad request: {}", ex.getMessage());
         return ResponseEntity.badRequest().body(error(ex.getMessage()));
     }
 
     @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
     public ResponseEntity<Map<String, String>> handleBadCredentials(
             org.springframework.security.authentication.BadCredentialsException ex) {
+        log.warn("Login attempt rejected: bad credentials");
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error(ex.getMessage()));
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)
     public ResponseEntity<Map<String, String>> handleMissingPart(MissingServletRequestPartException ex) {
+        log.warn("Missing required part: {}", ex.getRequestPartName());
         return ResponseEntity.badRequest().body(error("'" + ex.getRequestPartName() + "' is required"));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, String>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        log.warn("Upload rejected: exceeds max size");
         return ResponseEntity.badRequest().body(error("File is too large"));
     }
 
     @ExceptionHandler(NoSuchElementException.class)
     public ResponseEntity<Map<String, String>> handleNotFound(NoSuchElementException ex) {
+        log.warn("Not found: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error("Resource not found"));
     }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntime(RuntimeException ex) {
+        log.error("Unexpected error", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error(ex.getMessage()));
     }
 

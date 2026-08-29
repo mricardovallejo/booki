@@ -35,6 +35,11 @@ public class OllamaProvider implements AiProvider {
     }
 
     @Override
+    public String model() {
+        return model;
+    }
+
+    @Override
     public String converse(String systemPrompt, List<Message> context, String userMessage) {
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", systemPrompt));

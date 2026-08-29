@@ -1,11 +1,11 @@
 # Architecture decisions (ADRs)
 
-## ADR-001: React + PWA instead of Flutter
+## ADR-001: React + Vite + responsive PWA as the primary client
 
-- **Context**: cross-platform support was required (Linux, Raspberry Pi, Android, Mac tablet).
-- **Decision**: React + Vite + PWA.
-- **Reasons**: the developer already knows React/Angular, deployment is instant in any browser, no app store submissions are needed, and the Web Speech API simplifies voice.
-- **Consequence**: the experience isn't 100% native, but it's stable and accessible enough to validate the MVP.
+- **Context**: BooKI must be usable on Android, Windows and Linux.
+- **Decision**: one responsive React + Vite + PWA application is the primary (and only) BooKI client. No Flutter, React Native, Tauri, or native apps.
+- **Reasons**: a single responsive web app covers all three targets at once while preserving the existing React codebase; it deploys instantly in any browser with no app-store step; and it installs as a PWA where the user wants an app-like entry point. This choice stands on cross-platform reach and code reuse — **not** on any browser API (voice is a backend concern, see ADR-009).
+- **Consequence**: the experience isn't 100% native, which is an accepted trade-off for one codebase across every target. Anything genuinely platform-specific would need justification against this decision.
 
 ## ADR-002: Web Speech API for voice
 
@@ -22,12 +22,12 @@
 - **Reasons**: dev/prod parity with MySQL; fast, isolated tests with H2.
 - **Consequence (learned when first actually run)**: on a slow disk, MySQL's first-time volume initialization can take minutes instead of seconds and, if interrupted, leaves a half-initialized DB (missing app user, empty root password) — the container reports `healthy` even in that broken state, since the healthcheck only confirms the server accepts connections, not that init finished. Fix is `docker compose down -v` (wipes the volume) and a clean `up -d`, waited out fully this time. See `docs/local-dev.md` for the step-by-step.
 
-## ADR-004: Local storage for PDFs
+## ADR-004: file storage stays behind the application services (local disk today)
 
-- **Context**: PDF file uploads in the MVP.
-- **Decision**: store the file on disk (`./uploads`) and extract text into the database per page.
-- **Reasons**: simple, avoids MinIO/S3 in the MVP, allows serving the PDF directly.
-- **Consequence**: doesn't scale to multiple replicas; will migrate to object storage later.
+- **Context**: BooKI stores two kinds of files — uploaded PDFs and generated report/summary PDFs. It's intended to run as a cloud application, eventually on more than one instance.
+- **Decision**: keep writing to local disk for now (`booki.storage.pdf-path` / `report-path`, defaulting to `./uploads` and `./reports`), but only ever through `DocumentService` / `ReportService`. Nothing outside those services touches a `Path`; reads are handed out as Spring `Resource`, not `File`. PDF text is still extracted per page into the database (`DocumentPage`), which is where the AI context comes from — no object store needed for that.
+- **Reasons**: local disk is the simplest thing that works and needs no infrastructure; the service seam means swapping in S3/MinIO/GCS later is a new implementation of the same methods, with no change to controllers, the frontend, or the DB.
+- **Consequence (known limitation)**: local disk does not survive a redeploy on ephemeral infrastructure and is not shared between instances, so multi-instance deployment needs the object-storage implementation first. Until then BooKI runs as a single instance. This is a deployment-readiness gap, not an architecture one.
 
 ## ADR-005: OpenAI as the initial AI provider
 

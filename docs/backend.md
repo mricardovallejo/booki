@@ -23,7 +23,7 @@ This starts the backend on `http://localhost:8080` without needing MySQL or Dock
 - `ProfileMaster`: an expert persona (name, short description, system prompt, `isActive` flag) selectable when creating a session. **Per-user, not global**: every account gets its own editable copy of the 4 built-in defaults, seeded from template rows (`user_id IS NULL`) at registration; editing or deleting one never affects any other user's copy. Deleting one clears (sets to `null`) the `profileMasterId` on any `Session`/`QuizAttempt` that referenced it — their history is kept, they just lose the persona tag.
 - `Tag`: a per-user label a document can be filed under (many-to-many with `Document`); exposed via the `/api/collections` endpoints for historical reasons — see note below.
 - `Session`: a page range (`startPage`/`endPage`) of a document, with `currentPage`, chosen `difficulty`, `language`, `aiProvider` (nullable — see AI configuration below), and an optional `ProfileMaster`.
-- `Message`: one turn of conversation history in a session (`USER` / `BOOKI`, `TEXT` / `VOICE`).
+- `Message`: one turn of conversation history in a session (`USER` / `BOOKI`, `TEXT` / `VOICE`). Text and voice turns share this single model — a voice turn is just a `Message` whose `inputType` is `VOICE`; raw audio is never stored.
 - `QuizAttempt`: a generated quiz question for a page plus the reader's answer, correctness, score, and feedback.
 - `SentReport`: a record of a progress/quiz report generated (and optionally emailed) for a session.
 
@@ -88,7 +88,8 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 | GET | `/api/sessions/{id}/context` | Inspect the raw prompt pieces BooKI will use (app prompt, master prompt, user prompt) — for transparency/debugging |
 | PATCH | `/api/sessions/{id}/current-page` | Update the reader's current page; `400` if outside `[startPage, endPage]` |
 | GET | `/api/sessions/{id}/messages` | Conversation history |
-| POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply |
+| POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `502` if the AI provider fails |
+| POST | `/api/sessions/{id}/voice` | Voice turn: multipart `audio` (+ optional `capabilityHint`). Backend transcribes → same `ConversationEngine` → optional spoken reply. Returns the persisted user + bot messages and a base64 MP3 (or `null`). `502` if transcription fails |
 | GET | `/api/sessions/{id}/progress` | Reading progress for the session |
 | GET | `/api/sessions/{id}/notifications` | Contextual nudges (halfway, done, say hi, try a quiz), localized per session language |
 | GET | `/api/sessions/{id}/reports` | List reports already generated/sent for this session |
@@ -103,6 +104,14 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 | POST | `/api/sessions/{sessionId}/quiz` | Generate a quiz question for the session |
 | POST | `/api/sessions/{sessionId}/quiz/answer` | Submit an answer, get correctness/feedback |
 | GET | `/api/sessions/{sessionId}/quiz/attempts` | Quiz attempt history/report for the session |
+
+### Voice — `/api/voice`
+
+| Method | Route | Description |
+|--------|------|-------------|
+| GET | `/api/voice/capabilities` | `{ stt, tts }` — whether the deployment has server-side speech providers configured, so the client picks the cloud path or the browser fallback |
+
+(the voice *turn* endpoint lives under Sessions — `POST /api/sessions/{id}/voice`, above.)
 
 ### Reports — `/api/reports`
 
@@ -120,10 +129,61 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 
 - JWT Bearer token in the `Authorization` header (`security/JwtAuthenticationFilter`, `security/JwtUtil`).
 - Passwords hashed with BCrypt.
-- CORS configured for `http://localhost:5173` only (see `config/SecurityConfig`) — any other origin, including `http://127.0.0.1:5173`, is rejected with a 403 "Invalid CORS request".
+- CORS origins come from `booki.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`, comma-separated; defaults to `http://localhost:5173`) — see `config/SecurityConfig`. Any origin not on the list, including `http://127.0.0.1:5173` in the default dev setup, is rejected with a 403 "Invalid CORS request". For production, set it to the deployed frontend origin(s); credentials are allowed, so `*` is not an option and authentication is never relaxed to work around CORS.
 - `/api/auth/**` and `/api/health` are public; every other `/api/**` route requires a valid JWT.
 - The JWT is stateless: a valid signature is enough to authenticate, even if the `userId` it carries no longer exists (e.g. after a local DB reset, or after switching between the `local`/`dev` profiles — H2 and MySQL are entirely separate user sets). Any endpoint that then looks up that user throws `NoSuchElementException` → `404 {"error": "Resource not found"}`. `GET /profile-masters` is a quieter variant of the same symptom: it doesn't `orElseThrow` on the user, it just returns an empty list for a `userId` matching nobody — so a stale token there looks like "no Masters" with no error at all, not a `404`. Either way, the fix is the same: log out and back in (or register fresh) to get a token for a user that actually exists in whichever DB the backend is currently pointed at.
 - Every error response, from every handler in `config/GlobalExceptionHandler`, uses the same `{"error": "..."}` shape — including validation (`400`), auth (`401`), not-found (`404`), and the two multipart-specific cases (missing file part, file too large). The frontend's `lib/errors.ts` (see `docs/frontend.md`) relies on this being consistent everywhere.
+
+## Conversation engine, capabilities and voice
+
+### `ConversationEngine` (package `conversation`)
+
+Every conversational turn — text, quick action, or transcribed voice — goes
+through `ConversationEngine.converse(ConversationRequest)`. It:
+
+1. resolves and ownership-checks the `Session`;
+2. builds the history window — the **most recent N** messages
+   (`booki.conversation.history-window`, default 20), in chronological order;
+3. persists the user turn;
+4. assembles the system prompt via `SessionContextBuilder` (app baseline +
+   Profile Master persona + user prompt) plus the session's page-range text,
+   **capped** at `booki.conversation.max-context-chars` (default 24000) so a very
+   wide range can't produce an unbounded request;
+5. calls the session's `AiProvider` — via a capability if one applies (below);
+6. persists BooKI's reply, or raises `ConversationFailedException`.
+
+It's transport-neutral: `SessionServiceImpl.sendMessage` and
+`VoiceConversationService` are adapters; the engine never sees HTTP.
+
+### Conversational capabilities (`conversation/capability`)
+
+`ConversationCapability` beans — `quiz`, `summary`, `explain`, `mnemonic` —
+each produce the reply text for one turn. Not an agent framework. Routing is
+**provider-neutral** (no native tool calling, no keyword matching): the router
+instructions are appended to the system prompt, and when a capability fits the
+model replies with only `{"capability":"<name>"}`, which `CapabilityRegistry`
+recognises strictly. A quick-action button skips routing by passing
+`capabilityHint`. `quiz` and `summary` reuse
+`QuizService.generateComprehensionQuestion` / `ReportService.generateSummaryText`.
+The conversational quiz only *asks* — scored `QuizAttempt` rows stay on the
+`POST /quiz/answer` panel flow. See ADR-008.
+
+### Voice (`voice`)
+
+`SpeechToTextProvider` / `TextToSpeechProvider` — server-side, credentials
+server-side. First impl is OpenAI-compatible (`whisper-1`,
+`/audio/speech`), inert without an API key. `VoiceConversationService` bridges
+audio → STT → the same `ConversationEngine` (`InputType.VOICE`) → TTS
+(best-effort). Session language drives the locale; raw audio is never persisted;
+uploads and TTS input are size-capped (`booki.voice.*`). See ADR-009 and
+`docs/ai-voice.md` for provider setup.
+
+### Streaming readiness
+
+`StreamingAiProvider` / `ConversationEngine.converseStreaming` are opt-in
+companions — nothing calls them over HTTP yet. When a low-latency requirement
+appears the work is "add an SSE endpoint + a streaming provider method", not a
+rewrite. See ADR-010.
 
 ## AI configuration
 
@@ -150,7 +210,7 @@ The `AiProvider` interface (package `ai`) has 4 implementations, **all always re
 
 ### Where AI is actually called vs. templated
 
-- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the same three-layer prompt `SessionContextBuilder` builds (app baseline + Profile Master persona + the user's own `systemPrompt`). Quiz grading asks the model to reply in a strict `CORRECT:`/`SCORE:`/`FEEDBACK:` format that `QuizServiceImpl.parseGrade` parses; a response that doesn't follow the format (e.g. the offline fallback message) degrades to `correct=false, score=0`, feedback = the raw text.
+- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the same three-layer prompt `SessionContextBuilder` builds (app baseline + Profile Master persona + the user's own `systemPrompt`). Quiz grading asks the model to reply in a strict `CORRECT:`/`SCORE:`/`FEEDBACK:` format that `QuizServiceImpl.parseGrade` parses; a response that doesn't follow the format degrades to `correct=false, score=0`, feedback = the raw text. (Provider *failures* no longer reach the parser — see below.)
 - **Progress/quiz-correction PDF reports** (`POST /sessions/{id}/reports/*`) — deliberately stay template-based, no AI call. These are factual recaps (page counts, past Q&A already graded) where a template is more reliable than an LLM restating numbers.
 
 Variables, in `.env` at the **repo root** (sibling of `.env.example`, not inside `backend/`) or the shell environment:
@@ -167,9 +227,9 @@ OLLAMA_MODEL=llama3.2:1b                 # optional, this is already the default
 
 `.env` isn't read by Spring Boot itself — `backend/build.gradle`'s `bootRun`/`bootRunLocal` tasks parse it and inject each `KEY=VALUE` line as a JVM environment variable before launching, so it works no matter which terminal you run `./gradlew` from. A variable already `export`ed in the real shell always wins over `.env` (same convention as dotenv tooling elsewhere) — `.env` only fills in what's missing. `.env` is gitignored (`.env.example` is the tracked template).
 
-Every provider degrades the same way on failure (network error, missing/invalid key, model not found, or Ollama simply not running): logs the exception and returns a friendly fallback message instead of a `500` — verified with no `ANTHROPIC_API_KEY` set. Separately verified end-to-end **with a real, funded Anthropic key**: chat, quiz generation, quiz grading, and summary all produce genuine, content-grounded responses (not just the fallback).
+On failure (network error, missing/invalid key, model not found, Ollama not running, or an empty/unparseable payload) a provider now throws `AiProviderException` instead of returning canned apology text. `ConversationEngine` turns that into `ConversationFailedException`, and `GlobalExceptionHandler` returns **`502` `{"error": "The reading assistant is temporarily unavailable…"}`** — a real, distinguishable error the frontend surfaces instead of persisting a fake BooKI answer. Quiz/summary endpoints propagate it the same way. Verified end-to-end **with a real, funded Anthropic key**: chat, quiz generation, quiz grading, and summary all produce genuine, content-grounded responses.
 
-Two Anthropic-specific errors worth recognizing from the backend's own log (not returned in the API response, since callers always get the same friendly fallback):
+Two Anthropic-specific errors worth recognizing from the backend's own log (the API response is the generic `502` above):
 - **`401 Unauthorized`** — the key was copied from the wrong place. It must come from console.anthropic.com → API Keys, not a claude.ai chat session (a different account/system entirely).
 - **`400 Bad Request` with `"Your credit balance is too low..."`** — the API console account itself has no credits/billing set up. This is separate from any claude.ai subscription; add a payment method or buy credits at console.anthropic.com → Plans & Billing.
 

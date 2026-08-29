@@ -1,28 +1,21 @@
 openapi: 3.0.3
 info:
-  title: kobi-backend-api
+  title: booki-backend-api
   description: >
-    API contract for BooKI's backend. This spec is reverse-engineered from the
-    mock-backend's real, verified behavior (Express, in-memory) and from the
-    frontend's existing types (`frontend/src/types/index.ts`) and endpoint map
-    (`frontend/src/config/endpoints.ts`). It is meant to be the single source
-    of truth while the real Spring Boot backend (`backend/`) is implemented,
-    so both sides can be checked against the same shapes before writing more
-    Java code.
-
-    Endpoints that currently only exist in mock form (chat replies, quiz
-    grading, summaries, PDF reports) are marked in their description as
-    "mock logic" — the real backend is expected to replace the *logic*
-    behind them (e.g. call a real AI provider) while keeping the *shape*
-    of the request/response the same, so the frontend does not need to change.
+    API contract for BooKI's backend (Spring Boot, `backend/`). Text, quick
+    actions and voice all run through one `ConversationEngine`; quiz, summary,
+    explain and mnemonic are conversational capabilities on top of it. STT/TTS
+    run server-side. Some descriptions still reference the older Node
+    mock-backend under `mock-backend/`, which tracks the same request/response
+    shapes.
   version: "1.0.0"
   license:
     name: Proprietary — internal use only
 servers:
-  - url: http://localhost:3001/api
-    description: Mock backend (Node/Express, in-memory data)
   - url: http://localhost:8080/api
-    description: Real backend (Spring Boot)
+    description: Backend (Spring Boot)
+  - url: http://localhost:3001/api
+    description: Mock backend (Node/Express, in-memory) — shape parity only
 
 tags:
   - name: Auth
@@ -43,6 +36,8 @@ tags:
     description: PDF generation for session progress and quiz corrections, optionally "sent" by email.
   - name: Summary
     description: On-demand summarization of a session's book pages plus its discussion so far.
+  - name: Voice
+    description: Server-side speech-to-text / text-to-speech. The browser only captures and plays audio; a voice turn runs through the same conversation pipeline as text.
   - name: Health
     description: Liveness check.
 
@@ -564,12 +559,12 @@ paths:
       summary: Send a message to BooKI
       operationId: sendMessage
       description: >
-        Mock logic: keyword-matched canned replies in the session's language,
-        grounded in the actual page text for that session, with the user's
-        own `systemPrompt` echoed once on the first exchange of the session.
-        Real backend: replace with a real `AiProvider.converse(...)` call
-        using the same layered context (see `/sessions/{id}/context`),
-        keeping the request/response shape identical.
+        Runs one conversational turn through `ConversationEngine`: the session's
+        layered prompt (see `/sessions/{id}/context`) + recent history + the
+        session's `AiProvider`. If `capabilityHint` is set (or the model routes
+        to one), a conversational capability produces the reply instead — a
+        `quiz` question, a `summary`, an `explain`, or a `mnemonic`. The user
+        turn is persisted even if the provider then fails.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -582,14 +577,80 @@ paths:
               properties:
                 message: { type: string }
                 inputType: { $ref: "#/components/schemas/InputType" }
+                capabilityHint:
+                  allOf: [{ $ref: "#/components/schemas/CapabilityHint" }]
+                  description: Optional — set by a quick-action button to run that capability directly, skipping model routing.
       responses:
         "201":
           description: BooKI's reply
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Message" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/AiUnavailable"
+
+  /sessions/{id}/voice:
+    post:
+      tags: [Voice]
+      summary: Send a voice turn to BooKI
+      operationId: voiceTurn
+      description: >
+        The audio-in / (text + optional audio)-out counterpart of
+        `POST /sessions/{id}/messages`. The backend transcribes the clip with
+        its `SpeechToTextProvider` (session language drives the locale), runs
+        the transcript through the same `ConversationEngine` with
+        `inputType=VOICE`, then synthesizes the reply with its
+        `TextToSpeechProvider`. Raw audio is never stored. If STT is not
+        configured or fails, this returns `502`; if only TTS is unavailable the
+        turn still succeeds with `audioBase64: null`.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: The recorded clip (e.g. webm/opus from MediaRecorder).
+                capabilityHint:
+                  $ref: "#/components/schemas/CapabilityHint"
+      responses:
+        "201":
+          description: Persisted user + bot messages, plus the spoken reply
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VoiceTurnResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/AiUnavailable"
+
+  /voice/capabilities:
+    get:
+      tags: [Voice]
+      summary: Which voice providers the deployment has
+      operationId: voiceCapabilities
+      description: >
+        The client calls this on load to decide between the cloud voice path
+        (record audio, upload to `/sessions/{id}/voice`) and the browser
+        `SpeechRecognition` fallback.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VoiceCapabilities" }
 
   /sessions/{id}/quiz:
     post:
@@ -621,6 +682,8 @@ paths:
               schema: { $ref: "#/components/schemas/QuizGenerateResult" }
         "404":
           $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/AiUnavailable"
 
   /sessions/{id}/quiz/answer:
     post:
@@ -658,6 +721,8 @@ paths:
               schema: { $ref: "#/components/schemas/QuizAnswerResult" }
         "404":
           $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/AiUnavailable"
 
   /sessions/{id}/quiz/attempts:
     get:
@@ -796,13 +861,14 @@ paths:
       summary: Summarize the book pages + discussion so far
       operationId: generateSummary
       description: >
-        Real backend: a genuine AI call (the session's `aiProvider`) that
-        combines the session's page text with its chat history, in the
-        Profile Master's tone and the user's own stated preferences, plus an
-        optional free-text instruction (`prompt`). `lengthPages` scales how
-        much of each is included (roughly 1–10 "pages" of density). Delivered
-        either as a new BooKI chat message, or as a downloadable PDF
-        (optionally also "sent" by email, same caveat as the other reports).
+        A genuine AI call (the session's `aiProvider`) that combines the
+        session's page text with its chat history, in the Profile Master's tone
+        and the user's own stated preferences, plus an optional free-text
+        instruction (`prompt`). `lengthPages` scales how much of each is
+        included (roughly 1–10 "pages" of density). Delivered either as a new
+        BooKI chat message, or as a downloadable PDF (optionally also "sent" by
+        email, same caveat as the other reports). Same generator as the `summary`
+        conversational capability.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -825,6 +891,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/AiUnavailable"
 
   /reports/{id}/file:
     get:
@@ -900,12 +968,43 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    AiUnavailable:
+      description: >
+        The AI provider (or, for voice, speech-to-text) failed to produce a
+        genuine response. The failure is never persisted as a BooKI answer.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
     Error:
       type: object
       properties:
         error: { type: string }
+
+    CapabilityHint:
+      type: string
+      enum: [quiz, summary, explain, mnemonic]
+      description: A conversational capability to run directly for this turn.
+
+    VoiceCapabilities:
+      type: object
+      properties:
+        stt: { type: boolean, description: Server-side speech-to-text is configured }
+        tts: { type: boolean, description: Server-side text-to-speech is configured }
+      required: [stt, tts]
+
+    VoiceTurnResponse:
+      type: object
+      properties:
+        userMessage: { $ref: "#/components/schemas/Message" }
+        botMessage: { $ref: "#/components/schemas/Message" }
+        audioBase64:
+          type: string
+          nullable: true
+          description: BooKI's spoken reply (base64 MP3), or null when TTS is unavailable.
+        audioContentType: { type: string, nullable: true, example: audio/mpeg }
+      required: [userMessage, botMessage]
 
     Difficulty:
       type: string

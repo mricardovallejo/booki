@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChat } from '../hooks/useChat';
+import { useSession } from '../hooks/useSession';
 import VoiceButton from './VoiceButton';
 import SummaryModal from './SummaryModal';
+import type { CapabilityHint, SessionLanguage } from '../types';
 
 // Un-opinionated markdown (react-markdown emits bare <strong>/<ul>/<h1>, no
 // Tailwind styling of its own) — these classes give it a look at home inside
@@ -23,6 +25,55 @@ const MARKDOWN_CLASSES =
   '[&_th]:border [&_th]:border-white/15 [&_th]:bg-white/5 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold ' +
   '[&_td]:border [&_td]:border-white/15 [&_td]:px-2 [&_td]:py-1 [&_td]:align-top';
 
+// Quick actions are shortcuts for conversational intentions, not a separate
+// system: each one posts a natural-language message (localized to the session
+// language) plus a capabilityHint on the SAME POST /messages endpoint, so the
+// transcript reads naturally and the backend runs that capability directly.
+interface QuickAction {
+  hint: CapabilityHint;
+  label: Record<SessionLanguage, string>;
+  text: Record<SessionLanguage, string>;
+}
+
+const QUICK_ACTIONS: QuickAction[] = [
+  {
+    hint: 'quiz',
+    label: { en: 'Ask me', es: 'Pregúntame', fr: 'Interroge-moi' },
+    text: {
+      en: 'Ask me a question about what I just read.',
+      es: 'Hazme una pregunta sobre lo que acabo de leer.',
+      fr: 'Pose-moi une question sur ce que je viens de lire.'
+    }
+  },
+  {
+    hint: 'explain',
+    label: { en: 'Explain', es: 'Explica', fr: 'Explique' },
+    text: {
+      en: "I didn't understand this part — can you explain it?",
+      es: 'No entendí esta parte, ¿me la puedes explicar?',
+      fr: "Je n'ai pas compris ce passage, peux-tu l'expliquer ?"
+    }
+  },
+  {
+    hint: 'summary',
+    label: { en: 'Summarize', es: 'Resume', fr: 'Résume' },
+    text: {
+      en: 'Summarize these pages for me.',
+      es: 'Resúmeme estas páginas.',
+      fr: 'Résume-moi ces pages.'
+    }
+  },
+  {
+    hint: 'mnemonic',
+    label: { en: 'Memorize', es: 'Memoriza', fr: 'Mémorise' },
+    text: {
+      en: 'Help me remember the key ideas from these pages.',
+      es: 'Ayúdame a recordar las ideas clave de estas páginas.',
+      fr: 'Aide-moi à retenir les idées clés de ces pages.'
+    }
+  }
+];
+
 interface Props {
   sessionId: number;
   onActivity?: () => void;
@@ -30,9 +81,13 @@ interface Props {
 
 export default function ChatPanel({ sessionId, onActivity }: Props) {
   const { messages, sending, error, send, refresh } = useChat(sessionId, onActivity);
+  const { session } = useSession(sessionId);
+  const lang: SessionLanguage = session?.language ?? 'en';
   const [text, setText] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const runQuickAction = (action: QuickAction) => send(action.text[lang], 'TEXT', action.hint);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -54,7 +109,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h4m1 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          Summarize
+          Summary…
         </button>
       </div>
 
@@ -111,6 +166,18 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
 
       <div className="border-t border-white/10 p-4">
         {error && <p className="mb-2 text-xs text-rose-400">{error}</p>}
+        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+          {QUICK_ACTIONS.map((action) => (
+            <button
+              key={action.hint}
+              onClick={() => runQuickAction(action)}
+              disabled={sending}
+              className="shrink-0 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+            >
+              {action.label[lang]}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-3 rounded-2xl bg-booki-card px-3 py-2">
           <VoiceButton onResult={(t) => send(t, 'VOICE')} size="sm" />
           <input

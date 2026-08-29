@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { listMessages, sendMessage } from '../api/sessions';
 import { getErrorMessage } from '../lib/errors';
-import type { Message } from '../types';
+import type { CapabilityHint, Message } from '../types';
 
 export function useChat(sessionId: number, onActivity?: () => void) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -24,12 +24,16 @@ export function useChat(sessionId: number, onActivity?: () => void) {
   }, [refresh]);
 
   const send = useCallback(
-    async (text: string, inputType: 'TEXT' | 'VOICE' = 'TEXT') => {
+    async (
+      text: string,
+      inputType: 'TEXT' | 'VOICE' = 'TEXT',
+      capabilityHint?: CapabilityHint
+    ) => {
       if (!text.trim()) return;
       setSending(true);
       setError(null);
       try {
-        await sendMessage(sessionId, text.trim(), inputType);
+        await sendMessage(sessionId, text.trim(), inputType, capabilityHint);
         await refresh();
         onActivity?.();
       } catch (err) {

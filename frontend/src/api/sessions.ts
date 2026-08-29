@@ -2,6 +2,7 @@ import api from './client';
 import { ENDPOINTS } from '../config/endpoints';
 import type {
   AiProvider,
+  CapabilityHint,
   Difficulty,
   GenerateSummaryRequest,
   Message,
@@ -38,8 +39,15 @@ export const updateCurrentPage = (id: number, currentPage: number) =>
 export const listMessages = (id: number) =>
   api.get<Message[]>(ENDPOINTS.sessions.messages(id)).then((r) => r.data);
 
-export const sendMessage = (id: number, message: string, inputType: 'TEXT' | 'VOICE' = 'TEXT') =>
-  api.post<Message>(ENDPOINTS.sessions.messages(id), { message, inputType }).then((r) => r.data);
+export const sendMessage = (
+  id: number,
+  message: string,
+  inputType: 'TEXT' | 'VOICE' = 'TEXT',
+  capabilityHint?: CapabilityHint
+) =>
+  api
+    .post<Message>(ENDPOINTS.sessions.messages(id), { message, inputType, capabilityHint })
+    .then((r) => r.data);
 
 export interface GenerateQuizRequest {
   profileMasterId?: number | null;

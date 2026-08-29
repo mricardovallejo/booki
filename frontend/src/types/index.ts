@@ -1,4 +1,6 @@
 export type SessionLanguage = 'en' | 'es' | 'fr';
+/** Conversational capability a quick-action button asks the backend to run directly. */
+export type CapabilityHint = 'quiz' | 'summary' | 'explain' | 'mnemonic';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type AiProvider = 'claude' | 'openai' | 'kimi' | 'ollama';
 

@@ -58,7 +58,7 @@ class VoiceConversationServiceTest {
                 .thenReturn(new TextToSpeechProvider.Speech(new byte[]{1, 2, 3}, "audio/mpeg"));
 
         VoiceConversationService.VoiceTurnResult result =
-                service.processTurn(USER_ID, SESSION_ID, new byte[]{9, 9}, "audio/webm", null);
+                service.processTurn(USER_ID, SESSION_ID, new byte[]{9, 9}, "audio/webm", null, true);
 
         ArgumentCaptor<ConversationRequest> captor = ArgumentCaptor.forClass(ConversationRequest.class);
         verify(conversationEngine).converse(captor.capture());
@@ -75,7 +75,7 @@ class VoiceConversationServiceTest {
         when(speechToText.transcribe(any(), any(), any()))
                 .thenThrow(new VoiceProviderException("stt", new RuntimeException("boom")));
 
-        assertThatThrownBy(() -> service.processTurn(USER_ID, SESSION_ID, new byte[]{9}, "audio/webm", null))
+        assertThatThrownBy(() -> service.processTurn(USER_ID, SESSION_ID, new byte[]{9}, "audio/webm", null, true))
                 .isInstanceOf(VoiceTranscriptionException.class);
 
         verify(conversationEngine, never()).converse(any());
@@ -87,10 +87,23 @@ class VoiceConversationServiceTest {
         when(textToSpeech.isConfigured()).thenReturn(false);
 
         VoiceConversationService.VoiceTurnResult result =
-                service.processTurn(USER_ID, SESSION_ID, new byte[]{9}, "audio/webm", null);
+                service.processTurn(USER_ID, SESSION_ID, new byte[]{9}, "audio/webm", null, true);
 
         assertThat(result.replyAudio()).isNull();
         assertThat(result.botMessage().getMessage()).isEqualTo("reply");
+        verify(textToSpeech, never()).synthesize(anyString(), any());
+    }
+
+    @Test
+    void wantsAudioReplyFalseSkipsTtsEntirely() {
+        when(speechToText.transcribe(any(), any(), any())).thenReturn(new SpeechToTextProvider.Transcript("hola"));
+
+        VoiceConversationService.VoiceTurnResult result =
+                service.processTurn(USER_ID, SESSION_ID, new byte[]{9}, "audio/webm", null, false);
+
+        assertThat(result.replyAudio()).isNull();
+        assertThat(result.botMessage().getMessage()).isEqualTo("reply");
+        verify(textToSpeech, never()).isConfigured();
         verify(textToSpeech, never()).synthesize(anyString(), any());
     }
 
@@ -102,7 +115,7 @@ class VoiceConversationServiceTest {
                 .thenThrow(new VoiceProviderException("tts", new RuntimeException("nope")));
 
         VoiceConversationService.VoiceTurnResult result =
-                service.processTurn(USER_ID, SESSION_ID, new byte[]{9}, "audio/webm", null);
+                service.processTurn(USER_ID, SESSION_ID, new byte[]{9}, "audio/webm", null, true);
 
         assertThat(result.replyAudio()).isNull();
         assertThat(result.userMessage().getMessage()).isEqualTo("hola");
@@ -112,7 +125,7 @@ class VoiceConversationServiceTest {
     void rejectsOversizedAudio() {
         ReflectionTestUtils.setField(service, "maxAudioBytes", 1L);
 
-        assertThatThrownBy(() -> service.processTurn(USER_ID, SESSION_ID, new byte[]{1, 2, 3}, "audio/webm", null))
+        assertThatThrownBy(() -> service.processTurn(USER_ID, SESSION_ID, new byte[]{1, 2, 3}, "audio/webm", null, true))
                 .isInstanceOf(IllegalArgumentException.class);
         verify(speechToText, never()).transcribe(any(), any(), any());
     }

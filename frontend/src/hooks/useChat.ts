@@ -50,11 +50,15 @@ export function useChat(sessionId: number, onActivity?: () => void) {
   // the same conversation pipeline, and returns the persisted messages plus an
   // optional spoken reply for the caller to play.
   const sendVoice = useCallback(
-    async (audio: Blob, capabilityHint?: CapabilityHint): Promise<VoiceTurnResult | null> => {
+    async (
+      audio: Blob,
+      capabilityHint?: CapabilityHint,
+      wantsAudioReply = true
+    ): Promise<VoiceTurnResult | null> => {
       setSending(true);
       setError(null);
       try {
-        const result = await sendVoiceTurn(sessionId, audio, capabilityHint);
+        const result = await sendVoiceTurn(sessionId, audio, capabilityHint, wantsAudioReply);
         await refresh();
         onActivity?.();
         return result;

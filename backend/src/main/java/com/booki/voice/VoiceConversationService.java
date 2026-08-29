@@ -42,7 +42,7 @@ public class VoiceConversationService {
     private long maxAudioBytes;
 
     public VoiceTurnResult processTurn(Long userId, Long sessionId, byte[] audio,
-                                       String contentType, String capabilityHint) {
+                                       String contentType, String capabilityHint, boolean wantsAudioReply) {
         Session session = sessionRepository.findByIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new NoSuchElementException("Session not found"));
 
@@ -67,10 +67,12 @@ public class VoiceConversationService {
         ConversationResult result = conversationEngine.converse(new ConversationRequest(
                 userId, sessionId, transcript, Message.InputType.VOICE, capabilityHint));
 
-        // TTS is best-effort: the text reply is already persisted and returned.
+        // TTS is best-effort, and skippable: the text reply is already persisted
+        // and returned either way, so a reader who wants text-only replies (e.g.
+        // studying together, or just saving the TTS cost) can opt out per turn.
         byte[] replyAudio = null;
         String replyAudioType = null;
-        if (textToSpeech.isConfigured()) {
+        if (wantsAudioReply && textToSpeech.isConfigured()) {
             try {
                 TextToSpeechProvider.Speech speech =
                         textToSpeech.synthesize(result.botMessage().getMessage(), language);

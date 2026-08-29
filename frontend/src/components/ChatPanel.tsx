@@ -7,6 +7,7 @@ import { useVoice } from '../hooks/useVoice';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { getVoiceCapabilities, type VoiceCapabilities } from '../api/voice';
 import VoiceButton from './VoiceButton';
+import AudioReplyToggle from './AudioReplyToggle';
 import SummaryModal from './SummaryModal';
 import type { CapabilityHint, SessionLanguage } from '../types';
 
@@ -94,6 +95,10 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
   const fallbackVoice = useVoice(lang);
   const [voiceCaps, setVoiceCaps] = useState<VoiceCapabilities | null>(null);
   const replyAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Per-turn choice, not persisted: whether a voice question gets a spoken
+  // reply back, or text-only (cheaper, and better for reading together — see
+  // docs/decisions.md ADR-009 addendum). Independent of the mic itself.
+  const [wantsAudioReply, setWantsAudioReply] = useState(true);
 
   useEffect(() => {
     getVoiceCapabilities()
@@ -118,7 +123,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
       if (recorder.recording) {
         const clip = await recorder.stop();
         if (clip) {
-          const result = await sendVoice(clip);
+          const result = await sendVoice(clip, undefined, wantsAudioReply);
           if (result?.audioBase64) playReply(result.audioBase64, result.audioContentType);
         }
       } else {
@@ -237,6 +242,9 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
             onPress={onVoicePress}
             size="sm"
           />
+          {cloudVoice && (
+            <AudioReplyToggle enabled={wantsAudioReply} onToggle={() => setWantsAudioReply((v) => !v)} />
+          )}
           <input
             type="text"
             value={text}

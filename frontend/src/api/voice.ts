@@ -21,10 +21,16 @@ export interface VoiceTurnResult {
 }
 
 /** One audio-in / (text + optional audio)-out turn through the same conversation pipeline as text. */
-export const sendVoiceTurn = (sessionId: number, audio: Blob, capabilityHint?: CapabilityHint) => {
+export const sendVoiceTurn = (
+  sessionId: number,
+  audio: Blob,
+  capabilityHint?: CapabilityHint,
+  wantsAudioReply = true
+) => {
   const form = new FormData();
   form.append('audio', audio, 'turn.webm');
   if (capabilityHint) form.append('capabilityHint', capabilityHint);
+  form.append('wantsAudioReply', String(wantsAudioReply));
   return api
     .post<VoiceTurnResult>(ENDPOINTS.sessions.voice(sessionId), form, {
       headers: { 'Content-Type': undefined }

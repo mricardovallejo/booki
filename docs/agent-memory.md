@@ -2,14 +2,17 @@
 
 ## What we're building
 
-BooKI: a PDF reader with page-range sessions and a contextual AI assistant over text/voice.
+BooKI: a cloud conversational reading assistant. PDF reading in page-range
+sessions; one `ConversationEngine` behind text, quick actions and voice;
+quiz/summary/explain/mnemonic as conversational capabilities. One responsive
+PWA for Android/Windows/Linux.
 
 ## Fixed stack
 
-- Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, MySQL (dev), H2 (tests), Spring Security + JWT.
+- Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, MySQL (dev), H2 (tests/no-Docker), Spring Security + JWT, WebClient.
 - Frontend: React + TypeScript + Vite + Tailwind + PWA + react-pdf.
-- Voice: browser Web Speech API.
-- AI: `AiProvider` interface; OpenAI by default.
+- AI: `AiProvider` interface, 4 providers (`claude` default, `openai`, `kimi`, `ollama`), per-session choice.
+- Voice: server-side `SpeechToTextProvider` / `TextToSpeechProvider` (OpenAI impl); browser `SpeechRecognition` only as a fallback.
 
 ## Conventions
 
@@ -20,10 +23,11 @@ BooKI: a PDF reader with page-range sessions and a contextual AI assistant over 
 
 ## What NOT to do without asking
 
-- Don't add microservices.
+- Don't add microservices, Kafka, Redis, a vector DB, an agent framework, or a new client stack (Flutter/RN/Tauri).
 - Don't change the database without agreement.
 - Don't introduce heavy new dependencies.
-- Don't change the product principles (reading is never blocked, not an LMS).
+- Don't introduce SSE/WebSocket/WebRTC without a concrete streaming requirement.
+- Don't change the product principles (reading is never blocked, not an LMS, PDF stays the protagonist).
 
 ## Usual next steps
 

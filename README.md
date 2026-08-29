@@ -1,6 +1,9 @@
 # BooKI
 
-A PDF reader with page-range sessions and a contextual learning/discussion assistant, controllable by text and voice.
+A cloud-based conversational reading assistant: PDF reading in page-range
+sessions, with a context-aware AI you talk to by text or voice — and that can
+quiz you, summarize, or explain a passage without leaving the conversation.
+One responsive web / PWA app for Android, Windows and Linux.
 
 ## Monorepo structure
 
@@ -22,7 +25,8 @@ booki/
 - Gradle (wrapper included at `backend/gradlew`)
 - Node.js 20+ and npm (for the frontend)
 - Docker and Docker Compose **optional** (for MySQL; you can also use H2)
-- An OpenAI (or Kimi) API key for the assistant
+- An AI provider API key for the assistant (Anthropic by default; OpenAI / Kimi / local Ollama also supported)
+- Optional: an OpenAI key for cloud voice (STT/TTS) — without it, voice falls back to the browser recognizer (Chromium only)
 
 ## Quick start with H2 (no Docker)
 
@@ -64,21 +68,19 @@ cd frontend && npm run dev
 
 ## AI configuration
 
-Edit `.env` or set environment variables:
+Edit `.env` (at the repo root) or set environment variables. All four providers
+— `claude`, `openai`, `kimi`, `ollama` — are always available; a session picks
+one at creation, falling back to `AI_PROVIDER` (default `claude` on `dev`,
+`ollama` on `local`).
 
 ```bash
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-...
+AI_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+# or: OPENAI_API_KEY=sk-...  /  KIMI_API_KEY=...  /  (ollama needs no key)
 ```
 
-To use Kimi:
-
-```bash
-AI_PROVIDER=kimi
-KIMI_API_KEY=...
-```
-
-Note: as of now, only the OpenAI provider is actually implemented (`OpenAiProvider`) — `AI_PROVIDER=kimi` will fail to start until a `KimiProvider` is added.
+Cloud voice (optional) reuses `OPENAI_API_KEY` for backend STT/TTS. Model and
+voice options: see [docs/ai-voice.md](docs/ai-voice.md).
 
 ## Agent memory profiles
 
@@ -91,12 +93,10 @@ Note: as of now, only the OpenAI provider is actually implemented (`OpenAiProvid
 - `docs/agent-memory.md` — compact summary.
 - `docs/local-dev.md` — how to run/stop each server locally.
 
-## MVP status
+## Status
 
-Base structure ready to iterate on. Immediate pending items:
-
-- [x] UI to create a session by selecting a page range.
-- [x] Improve reader and chat UX.
-- [x] Login/register UI in the frontend.
-- [ ] Integrate TTS with the Web Speech API.
-- [ ] Integration tests with H2.
+Core product in place: authentication, PDF library and per-page extraction,
+page-range sessions, Profile Masters, the unified conversation engine (text +
+voice + capabilities), per-session AI provider, quiz, progress, reports, and
+cloud STT/TTS. Voice streaming (incremental STT/TTS) is architected but not
+wired — see [docs/ai-voice.md](docs/ai-voice.md) "Streaming".

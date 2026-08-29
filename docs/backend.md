@@ -202,9 +202,9 @@ The `AiProvider` interface (package `ai`) has 4 implementations, **all always re
 
 `Session.aiProvider` (nullable) is set once at `POST /sessions` and used for the lifetime of that session — chat, quiz question generation, quiz grading, and summary generation all resolve the same `AiProvider` via `AiProviderRegistry.get(session.getAiProvider())`. Passing an unrecognized name is a `400`; passing none falls back to `booki.ai.default-provider`, which is **profile-dependent**:
 
+- `dev` / `test` → defaults to `openai` (one key also covers cloud voice STT/TTS).
 - `local` profile → defaults to `ollama` (no cost, no key, good for offline iteration).
-- `dev` profile → defaults to `claude`.
-- Either can be overridden per-run with the `AI_PROVIDER` env var regardless of profile.
+- Any profile can be overridden per-run with the `AI_PROVIDER` env var.
 
 `GET/POST /sessions` always echoes the **resolved** name in `aiProvider` (never null), even for a session that didn't pick one explicitly.
 
@@ -216,10 +216,11 @@ The `AiProvider` interface (package `ai`) has 4 implementations, **all always re
 Variables, in `.env` at the **repo root** (sibling of `.env.example`, not inside `backend/`) or the shell environment:
 
 ```
-AI_PROVIDER=claude
+AI_PROVIDER=openai                       # default; also: claude | kimi | ollama
+OPENAI_API_KEY=sk-proj-...               # covers chat AND cloud voice (STT/TTS)
+OPENAI_MODEL=gpt-4o-mini                 # optional, this is the default
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-5   # optional, this is already the default
-OPENAI_API_KEY=sk-...
+ANTHROPIC_MODEL=claude-sonnet-5          # optional, this is already the default
 KIMI_API_KEY=...
 OLLAMA_BASE_URL=http://localhost:11434   # optional, this is already the default
 OLLAMA_MODEL=llama3.2:1b                 # optional, this is already the default — must be `ollama pull`ed first

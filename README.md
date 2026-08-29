@@ -70,17 +70,19 @@ cd frontend && npm run dev
 
 Edit `.env` (at the repo root) or set environment variables. All four providers
 — `claude`, `openai`, `kimi`, `ollama` — are always available; a session picks
-one at creation, falling back to `AI_PROVIDER` (default `claude` on `dev`,
-`ollama` on `local`).
+one at creation, falling back to `AI_PROVIDER` (default `openai`, or `ollama` on
+the `local` profile).
 
 ```bash
-AI_PROVIDER=claude
-ANTHROPIC_API_KEY=sk-ant-...
-# or: OPENAI_API_KEY=sk-...  /  KIMI_API_KEY=...  /  (ollama needs no key)
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-proj-...
+OPENAI_MODEL=gpt-4o-mini        # optional; a stronger model (gpt-4o / newer) is better for the assistant
+# other providers: ANTHROPIC_API_KEY=sk-ant-...  /  KIMI_API_KEY=...  /  (ollama needs no key)
 ```
 
-Cloud voice (optional) reuses `OPENAI_API_KEY` for backend STT/TTS. Model and
-voice options: see [docs/ai-voice.md](docs/ai-voice.md).
+The **same `OPENAI_API_KEY`** also powers cloud voice (backend STT/TTS) — one
+key covers chat and voice. Model and voice options: see
+[docs/ai-voice.md](docs/ai-voice.md).
 
 ## Agent memory profiles
 

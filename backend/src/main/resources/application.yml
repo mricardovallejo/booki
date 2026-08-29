@@ -39,17 +39,17 @@ booki:
       tts-voice: ${VOICE_TTS_VOICE:alloy}
       tts-max-input-chars: ${VOICE_TTS_MAX_INPUT_CHARS:1200}
   ai:
-    default-provider: ${AI_PROVIDER:claude}
+    default-provider: ${AI_PROVIDER:openai}
     claude:
       api-key: ${ANTHROPIC_API_KEY:}
       model: ${ANTHROPIC_MODEL:claude-sonnet-5}
     openai:
       api-key: ${OPENAI_API_KEY:}
-      model: gpt-4o-mini
+      model: ${OPENAI_MODEL:gpt-4o-mini}
     kimi:
       api-key: ${KIMI_API_KEY:}
-      base-url: https://api.moonshot.cn/v1
-      model: kimi-k2
+      base-url: ${KIMI_BASE_URL:https://api.moonshot.cn/v1}
+      model: ${KIMI_MODEL:kimi-k2}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       model: ${OLLAMA_MODEL:llama3.2:1b}
@@ -72,7 +72,7 @@ spring:
     locations: classpath:db/migration
 booki:
   ai:
-    default-provider: ${AI_PROVIDER:claude}
+    default-provider: ${AI_PROVIDER:openai}
 
 ---
 spring:

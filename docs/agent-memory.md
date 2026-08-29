@@ -11,7 +11,7 @@ PWA for Android/Windows/Linux.
 
 - Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, MySQL (dev), H2 (tests/no-Docker), Spring Security + JWT, WebClient.
 - Frontend: React + TypeScript + Vite + Tailwind + PWA + react-pdf.
-- AI: `AiProvider` interface, 4 providers (`claude` default, `openai`, `kimi`, `ollama`), per-session choice.
+- AI: `AiProvider` interface, 4 providers (`openai` default, `claude`, `kimi`, `ollama`), per-session choice. `openai` default because the same key also covers cloud voice.
 - Voice: server-side `SpeechToTextProvider` / `TextToSpeechProvider` (OpenAI impl); browser `SpeechRecognition` only as a fallback.
 
 ## Conventions

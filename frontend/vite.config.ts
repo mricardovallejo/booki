@@ -1,6 +1,21 @@
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// getUserMedia (mic access, used by voice) only works in a "secure context":
+// https://, or the special http://localhost exception. That exception does NOT
+// cover a phone hitting your machine's LAN IP over plain http, so mobile voice
+// testing needs real (if self-signed) TLS. See docs/local-dev.md "HTTPS for
+// mobile testing" for how to (re)generate frontend/.certs/*.pem — gitignored,
+// so this stays a no-op on machines without them (plain http, as before).
+const certKeyPath = resolve(__dirname, '.certs/dev-key.pem');
+const certPath = resolve(__dirname, '.certs/dev-cert.pem');
+const https =
+  existsSync(certKeyPath) && existsSync(certPath)
+    ? { key: readFileSync(certKeyPath), cert: readFileSync(certPath) }
+    : undefined;
 
 export default defineConfig({
   plugins: [
@@ -25,6 +40,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    https,
     proxy: {
       '/api': 'http://localhost:8080'
     }

@@ -30,8 +30,59 @@ npm run dev
 ```
 
 - Keep this terminal open: it shows compile errors/HMR output.
-- Opens at `http://localhost:5173` — **always use `localhost`, not `127.0.0.1`** (the backend only allows CORS from `http://localhost:5173`, see `backend/src/main/java/com/booki/config/SecurityConfig.java`; `127.0.0.1` gets a 403 "Invalid CORS request").
+- Opens at `https://localhost:5173` if `frontend/.certs/*.pem` exist (see "HTTPS for
+  mobile testing" below), otherwise plain `http://localhost:5173` — **always use
+  `localhost`, not `127.0.0.1`** (the backend only allows CORS from whatever's in
+  `CORS_ALLOWED_ORIGINS`, see `backend/src/main/java/com/booki/config/SecurityConfig.java`;
+  `127.0.0.1` isn't in that list by default, so it gets a 403 "Invalid CORS request").
 - Stop it: `Ctrl+C` in that terminal.
+
+### HTTPS for mobile testing
+
+`getUserMedia` (the mic, used by voice) only works in a **secure context**:
+`https://`, or the special `http://localhost` exception. That exception does
+**not** cover a phone hitting your machine's LAN IP over plain `http://` — so
+without HTTPS, voice silently looks unsupported on a phone (no permission
+prompt at all, not even a denial) even though it works fine on your own
+machine's `localhost`.
+
+`frontend/vite.config.ts` turns on HTTPS automatically **only if**
+`frontend/.certs/dev-key.pem` and `dev-cert.pem` exist — no certs, no change in
+behavior (plain `http://localhost:5173`, as before). To generate them (self-signed,
+gitignored, one-time per machine — replace `192.168.2.22` with your own LAN IP,
+`ip addr` or your router's device list will show it):
+
+```bash
+mkdir -p frontend/.certs && cd frontend/.certs
+cat > openssl-san.cnf <<'EOF'
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+[req_distinguished_name]
+CN = booki-local-dev
+[v3_req]
+keyUsage = keyEncipherment, digitalSignature
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = localhost
+IP.1 = 127.0.0.1
+IP.2 = 192.168.2.22
+EOF
+openssl req -x509 -nodes -newkey rsa:2048 -keyout dev-key.pem -out dev-cert.pem -days 825 -config openssl-san.cnf
+```
+
+Once HTTPS is on, the **whole** dev server is TLS-only (no more plain `http://`
+on that port), so:
+- Update `.env`'s `CORS_ALLOWED_ORIGINS` to `https://` origins:
+  `CORS_ALLOWED_ORIGINS=https://localhost:5173,https://<your-LAN-IP>:5173`.
+- On your phone, open `https://<your-LAN-IP>:5173` — Chrome/Firefox will warn
+  "connection not private" (expected: it's a self-signed cert, not from a real
+  CA). Tap **Advanced → Proceed** once; after that the mic prompt works
+  normally.
+- Restart both the backend (to re-read `.env`) and the frontend after touching
+  either of these.
 
 ## 2. Real backend — two ways (Gradle)
 

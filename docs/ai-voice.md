@@ -106,6 +106,11 @@ call, with `InputType.VOICE`.
 - **STT failure fails the turn** (`VoiceTranscriptionException` → 502). **TTS
   failure is best-effort** — the text reply is already persisted and returned;
   the client shows text (or, on Chromium, browser `speechSynthesis`).
+  `OpenAiTextToSpeechProvider`'s `WebClient` raises its `maxInMemorySize` to 5 MB
+  for this reason: Spring's default (256 KB) is smaller than a typical mp3 reply,
+  so without it every TTS call fails with `DataBufferLimitException` even though
+  OpenAI returned `200 OK` — a silent "text-only" fallback that looks like a
+  broken feature rather than a config gap.
 - **Session language drives STT/TTS.** No hardcoded `es-ES` anywhere.
 - **Raw audio is never persisted** — it lives only for the request. Upload capped
   at `booki.voice.max-audio-bytes` (10 MB); TTS input capped at

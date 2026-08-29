@@ -4,7 +4,11 @@ Practical guide: what runs on which port, the different ways to start each piece
 
 ## API keys: put them in `.env`, not `export`
 
-`cp .env.example .env` at the **repo root**, fill in real values (e.g. `ANTHROPIC_API_KEY`), save. `backend/build.gradle`'s `bootRun`/`bootRunLocal` tasks read that file automatically and inject each value as an environment variable — no more "which terminal did I `export` it in" — it works the same regardless of which terminal runs `./gradlew`. `.env` is gitignored, so this never gets committed. See `docs/backend.md`'s AI configuration section for the full variable list.
+`cp .env.example .env` at the **repo root**, fill in real values (e.g. `ANTHROPIC_API_KEY`), save. 
+`backend/build.gradle`'s `bootRun`/`bootRunLocal` tasks read that file automatically 
+`export` it in" — it works the same regardless of which terminal runs `./gradlew`. 
+`.env` is gitignored, so this never gets committed. See 
+`docs/backend.md`'s AI configuration section for the full variable list.
 
 ## Port map
 
@@ -14,7 +18,7 @@ Practical guide: what runs on which port, the different ways to start each piece
 | `8080` | Real backend (Spring Boot) | The frontend actually working (login, uploading PDFs, AI) |
 | `3001` | Mock backend (Node/Express) | Testing the frontend WITHOUT Java/DB/API keys |
 | `3306` | MySQL (if using Docker) | Only needed if the backend runs with the `dev` profile (not needed with `local`) |
-| `11434` | Ollama daemon (if installed) | Only needed if a session's `aiProvider` is `ollama` — see §4 below |
+| `11434`| Ollama daemon (if installed) | Only needed if a session's `aiProvider` is `ollama` — see §4 below |
 
 **Important:** the frontend always requests `/api/...` on its own port (5173), and Vite forwards (proxies) that to `http://localhost:8080` — that's set in `frontend/vite.config.ts`. This means it can **only talk to ONE backend at a time** (the real one, on 8080). The mock on 3001 is a completely separate server, only useful if you change the proxy or hit `localhost:3001` directly with `curl`/Postman.
 

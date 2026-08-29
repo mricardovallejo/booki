@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.Map;
@@ -33,9 +34,15 @@ public class OpenAiTextToSpeechProvider implements TextToSpeechProvider {
         this.model = model;
         this.voice = voice;
         this.maxInputChars = Math.max(200, maxInputChars);
+        // Spring's default in-memory buffer for WebClient responses is 256 KB; a
+        // TTS mp3 clip routinely exceeds that, which fails the whole response
+        // with a DataBufferLimitException even though OpenAI returned 200 OK.
         this.webClient = WebClient.builder()
                 .baseUrl(baseUrl)
                 .defaultHeader("Authorization", "Bearer " + (apiKey == null ? "" : apiKey))
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(5 * 1024 * 1024))
+                        .build())
                 .build();
     }
 

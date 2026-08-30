@@ -53,7 +53,7 @@ The frontend listens on `http://localhost:5173`.
 
 ```bash
 cp .env.example .env
-docker compose up -d      # PostgreSQL 16 on port 5432
+docker compose up -d      # PostgreSQL 16 (:5432); also MinIO (:9000) for optional S3 testing
 cd backend && ./gradlew bootRun
 cd frontend && npm run dev
 ```

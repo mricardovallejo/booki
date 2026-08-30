@@ -99,7 +99,7 @@ Java may be edited, but **only where it touches the database or file storage**:
 
 ---
 
-## Phase 1 — Migrate the database MySQL → PostgreSQL
+## Phase 1 — Migrate the database MySQL → PostgreSQL ✅ done
 
 Free managed databases are Postgres, and there is no production data anywhere.
 Because Flyway has never run against a real deployed database, the 9 existing
@@ -139,32 +139,33 @@ change (once Neon holds real data) is a normal incremental `V2`.
 
 ---
 
-## Phase 2 — File storage: S3-compatible adapter
+## Phase 2 — File storage: S3-compatible adapter ✅ done
 
 A container's disk is wiped on every deploy, so files move to object storage.
-Today `DocumentServiceImpl` and `ReportServiceImpl` call `Paths.get(...)` /
-`FileSystemResource` directly ([DocumentServiceImpl.java:61](../backend/src/main/java/com/booki/service/impl/DocumentServiceImpl.java#L61),
-`:109`, `:130`; [ReportServiceImpl.java:203](../backend/src/main/java/com/booki/service/impl/ReportServiceImpl.java#L203), `:280`).
-Contained change: one interface, two implementations, ~5 call sites rewired. No
-behaviour change.
+Done in two commits: `09153e6` (the seam + local impl) and the S3 impl + MinIO.
 
-### The seam
+### The seam (`com.booki.storage`)
 
 ```
 StorageAdapter (interface)
-  void         put(String key, byte[] data, String contentType)
-  InputStream  get(String key)
-  boolean      exists(String key)
-  void         delete(String key)
+  void      put(String key, byte[] content, String contentType)
+  Resource  get(String key)          // throws StorageException if missing
+  void      delete(String key)
 
-LocalStorageAdapter   — active when booki.storage.driver=local
-  writes under booki.storage.pdf-path / report-path, exactly as today.
-  Used by the `local` and `test` profiles → local dev needs nothing.
+LocalStorageAdapter   — booki.storage.driver=local (default, and the `test` profile)
+  one directory (booki.storage.local-path, default ./storage), key = relative
+  path, with a path-traversal guard.
 
-S3StorageAdapter      — active when booki.storage.driver=s3
-  AWS SDK v2 S3Client, endpointOverride + path-style access.
-  key prefixes: uploads/<documentId>.pdf , reports/<fileName>
+S3StorageAdapter      — booki.storage.driver=s3
+  AWS SDK v2 S3Client (sync, url-connection-client; the Netty async client is
+  excluded). endpointOverride + forcePathStyle. Objects fetched into a
+  ByteArrayResource (BooKI files are whole PDFs ≤ 50 MB).
 ```
+
+Keys: `documents/<uuid>_<name>.pdf`, `reports/<uuid>.pdf`. The key is persisted
+in `documents.file_path` / `sent_reports.file_name` — never an absolute path.
+No `@Configuration` needed: each adapter is a `@Component` with
+`@ConditionalOnProperty(name = "booki.storage.driver", …)`.
 
 ### Config (`application.yml`)
 
@@ -172,74 +173,51 @@ S3StorageAdapter      — active when booki.storage.driver=s3
 booki:
   storage:
     driver: ${STORAGE_DRIVER:local}          # local | s3
-    pdf-path: ${PDF_STORAGE_PATH:./uploads}      # local only
-    report-path: ${REPORT_STORAGE_PATH:./reports} # local only
+    local-path: ${STORAGE_LOCAL_PATH:./storage}
     s3:
-      endpoint:   ${S3_ENDPOINT:}             # blank = AWS; set for GCS / R2 / MinIO
-      region:     ${S3_REGION:auto}
+      endpoint:   ${S3_ENDPOINT:}             # blank = real AWS; set for MinIO / R2 / GCS
+      region:     ${S3_REGION:us-east-1}
       bucket:     ${S3_BUCKET:booki}
       access-key: ${S3_ACCESS_KEY:}
       secret-key: ${S3_SECRET_KEY:}
-      path-style: ${S3_PATH_STYLE:true}       # true for GCS / R2 / MinIO
+      path-style: ${S3_PATH_STYLE:true}       # true for MinIO / R2 / GCS
 ```
 
-### Steps
+### Deployed target — Google Cloud Storage
 
-1. Add the `StorageAdapter` interface + both implementations + a small
-   `@Configuration` that picks one on `booki.storage.driver`.
-2. Rewire the ~5 call sites in `DocumentServiceImpl` / `ReportServiceImpl` to use
-   the adapter. Store the **object key** (e.g. `uploads/42.pdf`) in
-   `documents.file_path` / the report row, not an absolute path — folded into
-   the `V1` schema, no separate migration.
-3. Downloads: stream `get(key)` through the controller, or (better on memory)
-   issue a short-lived presigned URL and redirect.
-4. Deployed target: **Google Cloud Storage** via its S3-compatible XML API —
-   create a bucket, create an **HMAC key** for a service account (that is the
-   `access-key` / `secret-key`), `endpoint = https://storage.googleapis.com`.
-   GCS + AWS SDK v2 works but has minor request-signing quirks; if you hit
-   friction, point the same adapter at Cloudflare R2 instead.
+GCS speaks the S3 XML API. Create a bucket, then an **HMAC key** for a service
+account — that key pair is `S3_ACCESS_KEY` / `S3_SECRET_KEY`, with
+`S3_ENDPOINT=https://storage.googleapis.com`. GCS + AWS SDK v2 works but has
+minor request-signing quirks; if you hit friction, point the same adapter at
+**Cloudflare R2** (`https://<accountid>.r2.cloudflarestorage.com`) — no code
+change, just env vars.
 
 ### Running the S3 path locally — MinIO
 
-To exercise `S3StorageAdapter` (not just `LocalStorageAdapter`) on your machine,
-add MinIO — an S3-compatible server — to `docker-compose.yml`:
+`docker compose up -d` now also starts **MinIO** (an S3-compatible server) plus a
+one-shot `minio-setup` that creates the `booki` bucket. MinIO is idle unless you
+opt in — day-to-day dev stays on `driver=local` and doesn't need it.
 
-```yaml
-  minio:
-    image: minio/minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: booki
-      MINIO_ROOT_PASSWORD: bookibooki
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # web console
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  minio_data:
-```
-
-Then run the backend with:
+To run the backend against MinIO, set (already in `.env.example`):
 
 ```
 STORAGE_DRIVER=s3
 S3_ENDPOINT=http://localhost:9000
 S3_ACCESS_KEY=booki
 S3_SECRET_KEY=bookibooki
-S3_BUCKET=booki          # create it once in the console at localhost:9001
+S3_BUCKET=booki
 S3_PATH_STYLE=true
 S3_REGION=us-east-1
 ```
 
-Default (no `STORAGE_DRIVER`) stays `local` → filesystem, no MinIO needed for
-day-to-day work. Flip to `s3` when changing storage code or before a deploy.
+MinIO console: <http://localhost:9001> (booki / bookibooki).
+
+### Known limitation
+
+`put` takes the whole file as `byte[]` and `get` returns a `ByteArrayResource`,
+so a download or upload holds the file (≤ 50 MB, the multipart cap) in heap.
+Fine for a pilot on a 512 MB instance with light traffic; the fix if it bites is
+a presigned-URL redirect on download and streamed multipart on upload.
 
 ---
 
@@ -328,8 +306,8 @@ instance; with 2+ it locks and the others wait.
 
 | Phase | Depends on | Effort |
 |---|---|---|
-| 1 — Postgres (collapsed V1) | — | ~half a day |
-| 2 — S3 storage adapter + MinIO | 1 | ~half a day |
+| 1 — Postgres (collapsed V1) | — | ✅ done |
+| 2 — S3 storage adapter + MinIO | 1 | ✅ done |
 | 3 — Frontend URL + CORS | — | ~1–2 h |
 | 4 — Dockerfile | — | ~2–3 h |
 | 5 — Provision | 1–4 | ~2–3 h |

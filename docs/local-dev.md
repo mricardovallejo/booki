@@ -18,6 +18,7 @@ Practical guide: what runs on which port, the different ways to start each piece
 | `8080` | Real backend (Spring Boot) | The frontend actually working (login, uploading PDFs, AI) |
 | `3001` | Mock backend (Node/Express) | Testing the frontend WITHOUT Java/DB/API keys |
 | `5432` | PostgreSQL (if using Docker) | Only needed if the backend runs with the `dev` profile (not needed with `local`) |
+| `9000` / `9001` | MinIO — S3 API / web console (if using Docker) | Only needed to test `STORAGE_DRIVER=s3` locally (default is `local` = disk) — see §5 |
 | `11434`| Ollama daemon (if installed) | Only needed if a session's `aiProvider` is `ollama` — see §4 below |
 
 **Important:** the frontend always requests `/api/...` on its own port (5173), and Vite forwards (proxies) that to `http://localhost:8080` — that's set in `frontend/vite.config.ts`. This means it can **only talk to ONE backend at a time** (the real one, on 8080). The mock on 3001 is a completely separate server, only useful if you change the proxy or hit `localhost:3001` directly with `curl`/Postman.
@@ -184,6 +185,38 @@ ollama stop <model>          # or, if that hangs too:
 sudo systemctl restart ollama
 free -h                      # confirm memory recovered
 ```
+
+## 5. Object storage — testing the `s3` driver (optional)
+
+By default BooKI stores uploaded PDFs and generated reports on **disk**
+(`STORAGE_DRIVER=local`, under `backend/storage/`). Nothing else is needed for
+normal dev.
+
+To exercise the `s3` code path (the same `S3StorageAdapter` that runs in the
+cloud against Google Cloud Storage / R2), use the **MinIO** service that
+`docker compose up -d` already starts, plus its one-shot `minio-setup` that
+creates the `booki` bucket:
+
+```bash
+docker compose up -d                       # db + minio + minio-setup
+docker compose ps                          # wait for booki-minio (healthy)
+```
+
+Then run the backend with the S3 vars (copy them from `.env.example` into `.env`,
+or export them for one run):
+
+```bash
+STORAGE_DRIVER=s3 \
+S3_ENDPOINT=http://localhost:9000 \
+S3_ACCESS_KEY=booki S3_SECRET_KEY=bookibooki \
+S3_BUCKET=booki S3_PATH_STYLE=true S3_REGION=us-east-1 \
+./gradlew bootRun
+```
+
+Uploads and reports now land in MinIO — browse them at the console
+<http://localhost:9001> (login `booki` / `bookibooki`). Nothing is written to
+`backend/storage/`. Drop the env vars (or set `STORAGE_DRIVER=local`) to go back
+to disk.
 
 ## Checking what's running right now
 

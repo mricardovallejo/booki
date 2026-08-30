@@ -5,7 +5,7 @@ interface Props {
 
 const SIZES = {
   sm: { icon: 'h-5 w-5', text: 'text-lg' },
-  md: { icon: 'h-7 w-7', text: 'text-2xl' },
+  md: { icon: 'h-7 w-7 md:h-9 md:w-9', text: 'text-2xl md:text-4xl' },
   lg: { icon: 'h-10 w-10', text: 'text-4xl' }
 };
 
@@ -34,7 +34,7 @@ export default function Logo({ size = 'md', className = '' }: Props) {
           fill="currentColor"
         />
       </svg>
-      <span className={`${s.text} font-black italic tracking-tight text-white`}>
+      <span className={`${s.text} font-logo text-white`}>
         Boo<span className="text-booki-accent">KI</span>
       </span>
     </span>

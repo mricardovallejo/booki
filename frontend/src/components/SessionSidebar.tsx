@@ -38,7 +38,7 @@ export default function SessionSidebar({ sessionId }: Props) {
     <>
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
         <div>
-          <h3 className="font-bold text-white">BooKI</h3>
+          <h3 className="font-logo text-lg text-white">BooKI</h3>
           <p className="text-xs text-booki-muted">Reading assistant</p>
         </div>
         <div className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export default function SessionSidebar({ sessionId }: Props) {
           <button
             key={t.id}
             onClick={() => onSelectTab(t.id)}
-            className={`relative px-3 py-3 text-sm font-medium transition ${
+            className={`font-menu relative px-3 py-3 text-[11px] tracking-wide transition ${
               tab === t.id ? 'text-white' : 'text-white/50 hover:text-white/80'
             }`}
           >
@@ -102,7 +102,7 @@ export default function SessionSidebar({ sessionId }: Props) {
               d="M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 20l1.3-3.9A7.9 7.9 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
             />
           </svg>
-          BooKI
+          <span className="font-logo text-base">BooKI</span>
         </button>
       )}
 

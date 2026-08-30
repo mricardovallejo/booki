@@ -228,7 +228,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
               key={action.hint}
               onClick={() => runQuickAction(action)}
               disabled={sending}
-              className="shrink-0 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+              className="font-menu shrink-0 rounded-full bg-white/5 px-3 py-1 text-[10px] tracking-wide text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
             >
               {action.label[lang]}
             </button>

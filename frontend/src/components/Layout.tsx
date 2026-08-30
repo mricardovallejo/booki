@@ -31,7 +31,7 @@ export default function Layout() {
           <Link to={ROUTES.home} className="flex items-center gap-2">
             <Logo />
           </Link>
-          <nav className="hidden items-center gap-6 text-sm font-medium text-white/90 md:flex">
+          <nav className="font-menu hidden items-center gap-5 text-[11px] tracking-wide text-white/90 md:flex">
             <Link
               to={ROUTES.home}
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}

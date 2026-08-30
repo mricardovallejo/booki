@@ -16,7 +16,12 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif']
+        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        // The "BooKI" wordmark only — not for running text.
+        logo: ['Fontdiner Swanky', 'cursive'],
+        // Short menu/tab/action labels only — Michroma is a wide, single-weight
+        // display face that stops being legible past a couple of words.
+        menu: ['Michroma', 'sans-serif']
       },
       boxShadow: {
         glow: '0 0 30px rgba(230, 57, 70, 0.15)'

@@ -14,21 +14,17 @@ import com.booki.repository.SessionRepository;
 import com.booki.repository.TagRepository;
 import com.booki.repository.UserRepository;
 import com.booki.service.DocumentService;
+import com.booki.storage.StorageAdapter;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -45,9 +41,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final SentReportRepository sentReportRepository;
     private final TagRepository tagRepository;
     private final UserRepository userRepository;
-
-    @Value("${booki.storage.pdf-path}")
-    private String storagePath;
+    private final StorageAdapter storage;
 
     @Override
     public DocumentResponse uploadDocument(Long userId, MultipartFile file) {
@@ -55,20 +49,20 @@ public class DocumentServiceImpl implements DocumentService {
         String originalName = file.getOriginalFilename();
         String title = (originalName == null || originalName.isBlank()) ? "document.pdf" : originalName;
         String safeName = title.replaceAll("[^a-zA-Z0-9.-]", "_");
-        String uniqueName = UUID.randomUUID() + "_" + safeName;
+        String key = "documents/" + UUID.randomUUID() + "_" + safeName;
 
         try {
-            Path targetDir = Paths.get(storagePath);
-            Files.createDirectories(targetDir);
-            Path target = targetDir.resolve(uniqueName);
-            file.transferTo(target);
+            byte[] bytes = file.getBytes();
 
-            try (PDDocument pdDocument = Loader.loadPDF(target.toFile())) {
+            // Parse before storing, so an unreadable upload never leaves an object behind.
+            try (PDDocument pdDocument = Loader.loadPDF(bytes)) {
                 int pageCount = pdDocument.getNumberOfPages();
+                storage.put(key, bytes, "application/pdf");
+
                 Document document = new Document();
                 document.setUser(user);
                 document.setTitle(title);
-                document.setFilePath(target.toString());
+                document.setFilePath(key);
                 document.setPageCount(pageCount);
                 documentRepository.save(document);
 
@@ -106,7 +100,7 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     public Resource getDocumentFile(Long userId, Long documentId) {
         Document document = findOwned(userId, documentId);
-        return new FileSystemResource(Paths.get(document.getFilePath()));
+        return storage.get(document.getFilePath());
     }
 
     @Override
@@ -127,9 +121,10 @@ public class DocumentServiceImpl implements DocumentService {
         documentRepository.delete(document);
 
         try {
-            Files.deleteIfExists(Paths.get(document.getFilePath()));
-        } catch (IOException ignored) {
-            // File already gone or inaccessible; nothing else to do.
+            storage.delete(document.getFilePath());
+        } catch (RuntimeException ignored) {
+            // Object already gone or storage unavailable; the DB rows are the
+            // source of truth and they are already deleted.
         }
     }
 

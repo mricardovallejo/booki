@@ -22,12 +22,12 @@
 - **Reasons**: dev/prod parity with MySQL; fast, isolated tests with H2.
 - **Superseded by ADR-011**: the engine is now PostgreSQL. The dev/test split (a real database in Docker, H2 for fast tests) is unchanged.
 
-## ADR-004: file storage stays behind the application services (local disk today)
+## ADR-004: file storage stays behind a storage seam
 
 - **Context**: BooKI stores two kinds of files — uploaded PDFs and generated report/summary PDFs. It's intended to run as a cloud application, eventually on more than one instance.
-- **Decision**: keep writing to local disk for now (`booki.storage.pdf-path` / `report-path`, defaulting to `./uploads` and `./reports`), but only ever through `DocumentService` / `ReportService`. Nothing outside those services touches a `Path`; reads are handed out as Spring `Resource`, not `File`. PDF text is still extracted per page into the database (`DocumentPage`), which is where the AI context comes from — no object store needed for that.
-- **Reasons**: local disk is the simplest thing that works and needs no infrastructure; the service seam means swapping in S3/MinIO/GCS later is a new implementation of the same methods, with no change to controllers, the frontend, or the DB.
-- **Consequence (known limitation)**: local disk does not survive a redeploy on ephemeral infrastructure and is not shared between instances, so multi-instance deployment needs the object-storage implementation first. Until then BooKI runs as a single instance. This is a deployment-readiness gap, not an architecture one.
+- **Decision**: all file access goes through a `StorageAdapter` interface (`com.booki.storage`) — `put(key, bytes, contentType)` / `get(key)` / `delete(key)`, addressing everything by an opaque forward-slash key (`documents/…`, `reports/…`). The key is what's persisted (`documents.file_path`, `sent_reports.file_name`), never an absolute path; reads are handed out as a Spring `Resource`, never a `File`. PDF text is still extracted per page into the database (`DocumentPage`), which is where the AI context comes from. The implementation is chosen by `booki.storage.driver`.
+- **Reasons**: the seam means the storage backend is a deployment choice, not a code change — controllers, the frontend and the DB never see it.
+- **Consequence**: `LocalStorageAdapter` (default, `driver=local`) writes under one directory (`booki.storage.local-path`, default `./storage`) and is fine for local dev and single-instance runs; it does not survive an ephemeral redeploy and is not shared between instances. See ADR-012 for the S3-compatible backend that removes that limitation.
 
 ## ADR-005: OpenAI as the initial AI provider
 

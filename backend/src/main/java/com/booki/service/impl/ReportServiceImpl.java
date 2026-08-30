@@ -21,16 +21,11 @@ import com.booki.repository.QuizAttemptRepository;
 import com.booki.repository.SentReportRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.ReportService;
+import com.booki.storage.StorageAdapter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -52,9 +47,7 @@ public class ReportServiceImpl implements ReportService {
     private final PdfReportBuilder pdfReportBuilder;
     private final AiProviderRegistry aiProviderRegistry;
     private final SessionContextBuilder sessionContextBuilder;
-
-    @Value("${booki.storage.report-path}")
-    private String reportStoragePath;
+    private final StorageAdapter storage;
 
     private static final Map<String, String> LANGUAGE_NAMES = Map.of("en", "English", "es", "Spanish", "fr", "French");
     private static final Map<String, String> SUMMARY_HEADING = Map.of("en", "Summary", "es", "Resumen", "fr", "Résumé");
@@ -200,7 +193,7 @@ public class ReportServiceImpl implements ReportService {
     public Resource downloadReportFile(Long userId, Long reportId) {
         SentReport report = sentReportRepository.findByIdAndSessionUserId(reportId, userId)
                 .orElseThrow(() -> new NoSuchElementException("Report not found"));
-        return new FileSystemResource(Paths.get(reportStoragePath).resolve(report.getFileName()));
+        return storage.get("reports/" + report.getFileName());
     }
 
     /**
@@ -276,15 +269,9 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private String writeReportFile(byte[] pdf) {
-        try {
-            Path dir = Paths.get(reportStoragePath);
-            Files.createDirectories(dir);
-            String fileName = UUID.randomUUID() + ".pdf";
-            Files.write(dir.resolve(fileName), pdf);
-            return fileName;
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to store generated report", e);
-        }
+        String fileName = UUID.randomUUID() + ".pdf";
+        storage.put("reports/" + fileName, pdf, "application/pdf");
+        return fileName;
     }
 
     private SentReportResponse toResponse(SentReport report) {

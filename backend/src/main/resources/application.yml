@@ -27,8 +27,17 @@ booki:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   storage:
-    pdf-path: ${PDF_STORAGE_PATH:./uploads}
-    report-path: ${REPORT_STORAGE_PATH:./reports}
+    # local (files under local-path) | s3 (any S3-compatible: MinIO, R2, GCS, AWS)
+    driver: ${STORAGE_DRIVER:local}
+    local-path: ${STORAGE_LOCAL_PATH:./storage}
+    s3:
+      # Blank endpoint => real AWS. Set it for MinIO / R2 / GCS. See docs/deployment.md.
+      endpoint: ${S3_ENDPOINT:}
+      region: ${S3_REGION:us-east-1}
+      bucket: ${S3_BUCKET:booki}
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+      path-style: ${S3_PATH_STYLE:true}
   conversation:
     # How many of the most recent messages are replayed to the model as context.
     history-window: ${CONVERSATION_HISTORY_WINDOW:20}

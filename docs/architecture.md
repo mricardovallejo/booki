@@ -20,7 +20,7 @@ booki/
 |------|------------|
 | Backend | Spring Boot 4.1, Spring Security, JWT Bearer, JPA, Flyway, WebClient |
 | Database | PostgreSQL (dev / deployed), H2 in PostgreSQL mode (tests / no-Docker local) |
-| PDFs | Apache PDFBox for per-page text extraction; file stored via the storage seam (local disk today) |
+| PDFs | Apache PDFBox for per-page text extraction; files stored via the `StorageAdapter` seam (local disk today) |
 | Frontend | React 18, TypeScript, Tailwind CSS, Vite, PWA, react-pdf |
 | AI | `AiProvider` interface with 4 always-registered providers (`claude`, `openai`, `kimi`, `ollama`), chosen per session |
 | Voice | Server-side `SpeechToTextProvider` / `TextToSpeechProvider` (OpenAI-compatible impl); browser `SpeechRecognition` only as a fallback |

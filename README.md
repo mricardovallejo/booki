@@ -24,7 +24,7 @@ booki/
 - Java 21
 - Gradle (wrapper included at `backend/gradlew`)
 - Node.js 20+ and npm (for the frontend)
-- Docker and Docker Compose **optional** (for MySQL; you can also use H2)
+- Docker and Docker Compose **optional** (for PostgreSQL; you can also use H2)
 - An AI provider API key for the assistant (Anthropic by default; OpenAI / Kimi / local Ollama also supported)
 - Optional: an OpenAI key for cloud voice (STT/TTS) — without it, voice falls back to the browser recognizer (Chromium only)
 
@@ -49,14 +49,17 @@ npm run dev
 
 The frontend listens on `http://localhost:5173`.
 
-## Starting with MySQL + Docker
+## Starting with PostgreSQL + Docker
 
 ```bash
 cp .env.example .env
-docker compose up -d
+docker compose up -d      # PostgreSQL 16 on port 5432
 cd backend && ./gradlew bootRun
 cd frontend && npm run dev
 ```
+
+This is the `dev` profile — the same database engine as the deployed
+environment. See [docs/deployment.md](docs/deployment.md).
 
 ## Test flow
 
@@ -94,6 +97,7 @@ key covers chat and voice. Model and voice options: see
 - `docs/decisions.md` — architecture decisions.
 - `docs/agent-memory.md` — compact summary.
 - `docs/local-dev.md` — how to run/stop each server locally.
+- `docs/deployment.md` — deployment plan (DB migration, storage, hosting, CI/CD).
 
 ## Status
 

@@ -31,7 +31,7 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String bio;
 
-    @Column(columnDefinition = "LONGTEXT", name = "system_prompt")
+    @Column(columnDefinition = "TEXT", name = "system_prompt")
     private String systemPrompt;
 
     @CreationTimestamp

@@ -2,9 +2,9 @@
 
 ## Profiles
 
-- `dev` (default): MySQL on localhost:3306.
-- `local`: file-based H2 (`~/booki-local-db`) with `AUTO_SERVER=TRUE`. Ideal for development without Docker.
-- `test`: in-memory H2, Flyway disabled.
+- `dev` (default): PostgreSQL on localhost:5432 (via `docker compose up -d`). Same engine as the deployed environment.
+- `local`: file-based H2 (`~/booki-local-db`) with `AUTO_SERVER=TRUE`, in PostgreSQL compatibility mode. Ideal for development without Docker.
+- `test`: in-memory H2 (PostgreSQL mode), Flyway disabled.
 
 ### Running locally with H2
 
@@ -13,7 +13,7 @@ cd backend
 ./gradlew bootRunLocal
 ```
 
-This starts the backend on `http://localhost:8080` without needing MySQL or Docker.
+This starts the backend on `http://localhost:8080` without needing PostgreSQL or Docker.
 
 ## Main entities
 
@@ -131,7 +131,7 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 - Passwords hashed with BCrypt.
 - CORS origins come from `booki.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`, comma-separated; defaults to `http://localhost:5173`) — see `config/SecurityConfig`. Any origin not on the list, including `http://127.0.0.1:5173` in the default dev setup, is rejected with a 403 "Invalid CORS request". For production, set it to the deployed frontend origin(s); credentials are allowed, so `*` is not an option and authentication is never relaxed to work around CORS.
 - `/api/auth/**` and `/api/health` are public; every other `/api/**` route requires a valid JWT.
-- The JWT is stateless: a valid signature is enough to authenticate, even if the `userId` it carries no longer exists (e.g. after a local DB reset, or after switching between the `local`/`dev` profiles — H2 and MySQL are entirely separate user sets). Any endpoint that then looks up that user throws `NoSuchElementException` → `404 {"error": "Resource not found"}`. `GET /profile-masters` is a quieter variant of the same symptom: it doesn't `orElseThrow` on the user, it just returns an empty list for a `userId` matching nobody — so a stale token there looks like "no Masters" with no error at all, not a `404`. Either way, the fix is the same: log out and back in (or register fresh) to get a token for a user that actually exists in whichever DB the backend is currently pointed at.
+- The JWT is stateless: a valid signature is enough to authenticate, even if the `userId` it carries no longer exists (e.g. after a local DB reset, or after switching between the `local`/`dev` profiles — the H2 file and the PostgreSQL database are entirely separate user sets). Any endpoint that then looks up that user throws `NoSuchElementException` → `404 {"error": "Resource not found"}`. `GET /profile-masters` is a quieter variant of the same symptom: it doesn't `orElseThrow` on the user, it just returns an empty list for a `userId` matching nobody — so a stale token there looks like "no Masters" with no error at all, not a `404`. Either way, the fix is the same: log out and back in (or register fresh) to get a token for a user that actually exists in whichever DB the backend is currently pointed at.
 - Every error response, from every handler in `config/GlobalExceptionHandler`, uses the same `{"error": "..."}` shape — including validation (`400`), auth (`401`), not-found (`404`), and the two multipart-specific cases (missing file part, file too large). The frontend's `lib/errors.ts` (see `docs/frontend.md`) relies on this being consistent everywhere.
 
 ## Conversation engine, capabilities and voice

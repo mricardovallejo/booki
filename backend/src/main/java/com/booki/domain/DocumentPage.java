@@ -23,6 +23,6 @@ public class DocumentPage {
     @Column(nullable = false, name = "page_number")
     private Integer pageNumber;
 
-    @Column(nullable = false, columnDefinition = "LONGTEXT", name = "extracted_text")
+    @Column(nullable = false, columnDefinition = "TEXT", name = "extracted_text")
     private String extractedText;
 }

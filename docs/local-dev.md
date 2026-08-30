@@ -17,7 +17,7 @@ Practical guide: what runs on which port, the different ways to start each piece
 | `5173` | Frontend (Vite dev server) | Viewing the app in the browser |
 | `8080` | Real backend (Spring Boot) | The frontend actually working (login, uploading PDFs, AI) |
 | `3001` | Mock backend (Node/Express) | Testing the frontend WITHOUT Java/DB/API keys |
-| `3306` | MySQL (if using Docker) | Only needed if the backend runs with the `dev` profile (not needed with `local`) |
+| `5432` | PostgreSQL (if using Docker) | Only needed if the backend runs with the `dev` profile (not needed with `local`) |
 | `11434`| Ollama daemon (if installed) | Only needed if a session's `aiProvider` is `ollama` — see §4 below |
 
 **Important:** the frontend always requests `/api/...` on its own port (5173), and Vite forwards (proxies) that to `http://localhost:8080` — that's set in `frontend/vite.config.ts`. This means it can **only talk to ONE backend at a time** (the real one, on 8080). The mock on 3001 is a completely separate server, only useful if you change the proxy or hit `localhost:3001` directly with `curl`/Postman.
@@ -93,12 +93,16 @@ cd backend
 ./gradlew bootRunLocal
 ```
 
-Uses H2 in a file (`~/booki-local-db`), doesn't need MySQL running. A session that doesn't explicitly pick an AI model defaults to **Ollama** here (see §4 below) — free, but needs Ollama actually installed and running, or chat/quiz/summary just get the offline fallback message.
+Uses H2 in a file (`~/booki-local-db`), doesn't need PostgreSQL running. H2 runs
+in **PostgreSQL compatibility mode** so the SQL it parses matches the real
+database. A session that doesn't explicitly pick an AI model defaults to
+**Ollama** here (see §4 below) — free, but needs Ollama actually installed and
+running, or chat/quiz/summary just get the offline fallback message.
 
-**b) `dev` profile (requires MySQL via Docker):**
+**b) `dev` profile (requires PostgreSQL via Docker):**
 
 ```bash
-docker compose up -d      # starts MySQL on port 3306
+docker compose up -d      # starts PostgreSQL 16 on port 5432
 cd backend
 ./gradlew bootRun
 ```
@@ -107,16 +111,16 @@ A session that doesn't explicitly pick an AI model defaults to **Claude** here �
 
 Requires Docker installed and your user in the `docker` group (`sudo usermod -aG docker $USER`, then log out/in or `newgrp docker` for just the current shell) so `docker`/`docker compose` work without `sudo`.
 
-Wait for MySQL to actually be ready before starting the backend — `docker compose ps` should show `booki-mysql` as `(healthy)`, not just `Up`. On a slow disk the very first startup (creating the data volume) can take a few minutes instead of the usual ~20s; if it gets interrupted mid-init you can end up with a half-initialized database (the `booki` user missing, `root` with an empty password instead of the configured one). The data lives in a Docker **volume**, which survives container restarts — so a plain restart won't fix a half-initialized one; you need to wipe the volume and let it redo the whole init:
+Wait for the database to be ready before starting the backend — `docker compose ps` should show `booki-postgres` as `(healthy)`, not just `Up`. The data lives in a Docker **volume** (`postgres_data`) that survives container restarts. To wipe it and start from an empty database (Flyway will recreate the schema on the next `bootRun`):
 ```bash
-docker compose down -v     # -v also removes the volume — nukes all MySQL data
+docker compose down -v     # -v also removes the volume — nukes all Postgres data
 docker compose up -d
 ```
 
 In both cases:
 - Keep the terminal open — that's where the logs show up. Every request logs one line (`http.request method=... path=... status=... userId=... durationMs=...`); raw SQL is off by default in both profiles (too noisy for day-to-day reading) — turn it on for one run with `LOGGING_LEVEL_ORG_HIBERNATE_SQL=debug ./gradlew bootRunLocal`, no file edits needed.
 - Stop it: `Ctrl+C` in that terminal.
-- Stop MySQL when you're done: `docker compose down` (no `-v`, so your data is still there next time).
+- Stop PostgreSQL when you're done: `docker compose down` (no `-v`, so your data is still there next time).
 
 **c) From VS Code (Run/Debug button on `BookiApplication`):**
 
@@ -143,7 +147,7 @@ Only needed if you want a session's `aiProvider` set to `ollama` to actually wor
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-This downloads a shell script and pipes it straight into `sh` to run — it in turn downloads the real Ollama binary for your CPU/GPU and registers it as a **systemd service**. That matters: unlike `bootRunLocal` or `npm run dev`, you don't "launch" Ollama each time — it's installed once and then always running in the background, like MySQL.
+This downloads a shell script and pipes it straight into `sh` to run — it in turn downloads the real Ollama binary for your CPU/GPU and registers it as a **systemd service**. That matters: unlike `bootRunLocal` or `npm run dev`, you don't "launch" Ollama each time — it's installed once and then always running in the background, like a database service.
 
 ### Managing the service
 
@@ -187,7 +191,7 @@ free -h                      # confirm memory recovered
 lsof -i:5173   # frontend
 lsof -i:8080   # real backend
 lsof -i:3001   # mock backend
-docker compose ps   # MySQL container + its health status
+docker compose ps   # PostgreSQL container + its health status
 ```
 
 If the command returns nothing, that port is free (nothing running there).

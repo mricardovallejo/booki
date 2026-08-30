@@ -27,7 +27,7 @@ public class ProfileMaster {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 
-    @Column(nullable = false, columnDefinition = "LONGTEXT", name = "system_prompt")
+    @Column(nullable = false, columnDefinition = "TEXT", name = "system_prompt")
     private String systemPrompt;
 
     @Column(nullable = false, columnDefinition = "TEXT", name = "config_json")

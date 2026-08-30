@@ -31,7 +31,7 @@ public class Message {
     @Column(nullable = false, length = 20, name = "input_type")
     private InputType inputType;
 
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String message;
 
     @CreationTimestamp

@@ -69,10 +69,12 @@ spring:
     activate:
       on-profile: dev
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:booki}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-    username: ${MYSQL_USER:booki}
-    password: ${MYSQL_PASSWORD:booki}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    # sslmode: 'disable' for the local Docker Postgres; set DB_SSLMODE=require
+    # for a managed database (Neon, Cloud SQL, …). See docs/deployment.md.
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:booki}?sslmode=${DB_SSLMODE:disable}
+    username: ${DB_USER:booki}
+    password: ${DB_PASSWORD:booki}
+    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
       ddl-auto: validate
@@ -89,7 +91,7 @@ spring:
     activate:
       on-profile: local
   datasource:
-    url: jdbc:h2:file:~/booki-local-db;MODE=MySQL;AUTO_SERVER=TRUE
+    url: jdbc:h2:file:~/booki-local-db;MODE=PostgreSQL;AUTO_SERVER=TRUE
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -109,7 +111,7 @@ spring:
     activate:
       on-profile: test
   datasource:
-    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
     username: sa
     password:

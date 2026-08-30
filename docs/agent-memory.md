@@ -9,7 +9,7 @@ PWA for Android/Windows/Linux.
 
 ## Fixed stack
 
-- Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, MySQL (dev), H2 (tests/no-Docker), Spring Security + JWT, WebClient.
+- Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, PostgreSQL (dev/deployed), H2 in PostgreSQL mode (tests/no-Docker), Spring Security + JWT, WebClient.
 - Frontend: React + TypeScript + Vite + Tailwind + PWA + react-pdf.
 - AI: `AiProvider` interface, 4 providers (`openai` default, `claude`, `kimi`, `ollama`), per-session choice. `openai` default because the same key also covers cloud voice.
 - Voice: server-side `SpeechToTextProvider` / `TextToSpeechProvider` (OpenAI impl); browser `SpeechRecognition` only as a fallback.
@@ -31,7 +31,7 @@ PWA for Android/Windows/Linux.
 
 ## Usual next steps
 
-1. Start MySQL with Docker Compose.
+1. Start PostgreSQL with Docker Compose.
 2. Run the backend in dev.
 3. Install frontend dependencies with npm and start the dev server.
 4. Test the flow: register → upload PDF → create session → chat.

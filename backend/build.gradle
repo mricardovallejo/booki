@@ -34,13 +34,15 @@ dependencies {
 
 	// Database migration — Spring Boot 4 modularized autoconfiguration: the
 	// starter is what wires Flyway in, flyway-core alone is a silent no-op.
+	// Flyway 10+ ships each database engine as its own module.
 	implementation 'org.springframework.boot:spring-boot-starter-flyway'
-	implementation 'org.flywaydb:flyway-mysql'
+	implementation 'org.flywaydb:flyway-database-postgresql'
 
-	// MySQL driver
-	runtimeOnly 'com.mysql:mysql-connector-j'
+	// PostgreSQL driver (dev + deployed). See docs/deployment.md for why we
+	// moved off MySQL: every genuinely free managed database today is Postgres.
+	runtimeOnly 'org.postgresql:postgresql'
 
-	// H2 for local development and tests
+	// H2 for local development (PostgreSQL compatibility mode) and tests
 	runtimeOnly 'com.h2database:h2'
 
 	// Lombok

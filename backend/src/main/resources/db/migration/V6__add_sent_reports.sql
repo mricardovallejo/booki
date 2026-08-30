@@ -1,9 +1,0 @@
-CREATE TABLE IF NOT EXISTS sent_reports (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    session_id BIGINT NOT NULL,
-    type VARCHAR(20) NOT NULL,
-    email VARCHAR(255),
-    file_name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (session_id) REFERENCES sessions(id)
-);

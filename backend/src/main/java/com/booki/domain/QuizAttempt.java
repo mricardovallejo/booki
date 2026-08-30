@@ -26,10 +26,10 @@ public class QuizAttempt {
     @Column(nullable = false, name = "page_number")
     private Integer pageNumber;
 
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String question;
 
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String answer;
 
     @Column(nullable = false, length = 20)
@@ -45,7 +45,7 @@ public class QuizAttempt {
     @Column(nullable = false)
     private Double score;
 
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String feedback;
 
     @CreationTimestamp

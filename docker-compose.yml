@@ -1,23 +1,20 @@
-version: '3.8'
-
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: booki-mysql
+  db:
+    image: postgres:16
+    container_name: booki-postgres
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: booki
-      MYSQL_USER: booki
-      MYSQL_PASSWORD: booki
+      POSTGRES_DB: booki
+      POSTGRES_USER: booki
+      POSTGRES_PASSWORD: booki
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U booki -d booki"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  mysql_data:
+  postgres_data:

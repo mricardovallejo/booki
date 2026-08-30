@@ -19,7 +19,7 @@ booki/
 | Layer | Technology |
 |------|------------|
 | Backend | Spring Boot 4.1, Spring Security, JWT Bearer, JPA, Flyway, WebClient |
-| Database | MySQL (dev/prod), H2 (tests / no-Docker local) |
+| Database | PostgreSQL (dev / deployed), H2 in PostgreSQL mode (tests / no-Docker local) |
 | PDFs | Apache PDFBox for per-page text extraction; file stored via the storage seam (local disk today) |
 | Frontend | React 18, TypeScript, Tailwind CSS, Vite, PWA, react-pdf |
 | AI | `AiProvider` interface with 4 always-registered providers (`claude`, `openai`, `kimi`, `ollama`), chosen per session |

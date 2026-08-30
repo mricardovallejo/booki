@@ -20,7 +20,7 @@
 - **Context**: a relational database with structured data was needed.
 - **Decision**: MySQL via Docker Compose for development; in-memory H2 for tests.
 - **Reasons**: dev/prod parity with MySQL; fast, isolated tests with H2.
-- **Consequence (learned when first actually run)**: on a slow disk, MySQL's first-time volume initialization can take minutes instead of seconds and, if interrupted, leaves a half-initialized DB (missing app user, empty root password) — the container reports `healthy` even in that broken state, since the healthcheck only confirms the server accepts connections, not that init finished. Fix is `docker compose down -v` (wipes the volume) and a clean `up -d`, waited out fully this time. See `docs/local-dev.md` for the step-by-step.
+- **Superseded by ADR-011**: the engine is now PostgreSQL. The dev/test split (a real database in Docker, H2 for fast tests) is unchanged.
 
 ## ADR-004: file storage stays behind the application services (local disk today)
 
@@ -104,3 +104,10 @@ will use SSE, which every browser supports.
   - **TTS/STT streaming interfaces are shape-only** — no implementation. Streaming TTS needs the transport to forward chunks (today a voice reply is base64 in one JSON body); streaming STT additionally needs a streaming *request* (WS/WebRTC). Both land with that transport.
 - **Reasons**: when a concrete low-latency requirement appears, the work is "add an SSE endpoint + a streaming provider method", not "re-architect the engine / providers / DTOs". Everything shipped stays synchronous and REST. The gating logic means streaming doesn't force a choice between token-by-token replies and conversational capabilities.
 - **Consequence**: `converseStreaming` has no HTTP caller yet — it's exercised only by unit tests (a fake streaming provider). That's the intended state for "preparation"; the risk is the path bit-rotting before it's wired, mitigated by the tests. When SSE arrives it should also carry the persisted message ids to the client (the callback already returns `ConversationResult`).
+
+## ADR-011: PostgreSQL instead of MySQL (supersedes ADR-003)
+
+- **Context**: BooKI is moving to a deployed environment (see `docs/deployment.md`). The database must be a **managed** service — backups, patching and HA handled by the provider, not by us — and, for a dev/pilot with few users, it should fit a real free tier. Every genuinely free managed database today (Neon, Supabase, …) is PostgreSQL; there is no free managed MySQL, and Google Cloud has no free managed PostgreSQL either (Cloud SQL starts ~10 $/mo).
+- **Decision**: switch the engine from MySQL 8 to **PostgreSQL 16**. Deployed database on **Neon** (free tier, serverless Postgres); local `dev` on `postgres:16` via Docker Compose; `local` and `test` keep H2 but in **PostgreSQL compatibility mode** so the SQL H2 parses matches the real engine. The migration was cheap: no production data existed anywhere, so the 9 MySQL migrations were **collapsed into a single Postgres-native `V1__init.sql`** (the header comment in that file explains why) rather than rewritten one by one.
+- **Reasons**: free managed hosting; standard Postgres wire protocol keeps the door open to Cloud SQL / RDS / Supabase / a VPS later with just `pg_dump`/restore; Postgres' type system (`TEXT`, `TIMESTAMPTZ`, `GENERATED … AS IDENTITY`) is a clean fit for the entities. Portability, not a bet on any one host.
+- **Consequence**: the entity `columnDefinition = "LONGTEXT"` hints became `"TEXT"`; timestamp columns are `TIMESTAMP WITH TIME ZONE` to match Hibernate's mapping of `Instant` under `ddl-auto: validate`. `docker compose` now exposes port 5432, not 3306. No Java service/logic changes — the switch is confined to build config, `application.yml`, the migration, `docker-compose.yml`, and the column-type hints.

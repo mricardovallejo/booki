@@ -355,7 +355,8 @@ pooler). Split into `DB_HOST`, `DB_PORT` (`5432`), `DB_NAME`, `DB_USER`,
 1. IAM & Admin → *Service Accounts* → *Create* → name `github-deployer`.
 2. Grant roles: **Cloud Run Admin**, **Cloud Build Editor**, **Service Account
    User**, **Storage Admin**, **Firebase Hosting Admin**, **Artifact Registry
-   Writer**.
+   Administrator** (Admin, not just Writer — `run deploy --source` auto-creates
+   the `cloud-run-source-deploy` repo on the first run).
 3. Open it → *Keys* → *Add key* → *JSON* → download. The whole file's contents →
    `GCP_SA_KEY`.
 

@@ -58,6 +58,18 @@ public class LocalStorageAdapter implements StorageAdapter {
         }
     }
 
+    @Override
+    public void ping() {
+        try {
+            Files.createDirectories(root);
+        } catch (IOException e) {
+            throw new StorageException("Storage directory unavailable: " + root, e);
+        }
+        if (!Files.isWritable(root)) {
+            throw new StorageException("Storage directory not writable: " + root);
+        }
+    }
+
     /** Resolve a key under {@link #root}, refusing anything that escapes it. */
     private Path resolve(String key) {
         Path resolved = root.resolve(key).normalize();

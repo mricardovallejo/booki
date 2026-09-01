@@ -20,6 +20,26 @@ logging:
     org.hibernate.orm.jdbc.bind: warn
     com.booki: info
 
+# Actuator: a health page per dependency (db, diskSpace, ssl, storage) plus the
+# liveness/readiness probes Cloud Run uses. Only health + info are exposed, but
+# they ARE public (SecurityConfig ends with anyRequest().permitAll()) — gate
+# /actuator behind auth or a network rule before opening this to the world.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true          # /actuator/health/liveness , /actuator/health/readiness
+  info:
+    java:
+      enabled: true
+    os:
+      enabled: true
+
 booki:
   jwt:
     secret: ${JWT_SECRET:change-me-in-production-this-is-a-dev-secret-32bytes}

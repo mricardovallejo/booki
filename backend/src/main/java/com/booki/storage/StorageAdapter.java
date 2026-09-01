@@ -25,4 +25,11 @@ public interface StorageAdapter {
 
     /** Delete {@code key}. A no-op if it does not exist. */
     void delete(String key);
+
+    /**
+     * Cheap reachability check for the backing store — throws
+     * {@link StorageException} if it is unavailable. Writes nothing. Used by the
+     * {@code storage} entry under {@code /actuator/health}.
+     */
+    void ping();
 }

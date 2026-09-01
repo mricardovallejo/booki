@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
@@ -91,6 +92,15 @@ public class S3StorageAdapter implements StorageAdapter {
             s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
         } catch (S3Exception e) {
             throw new StorageException("Failed to delete " + key, e);
+        }
+    }
+
+    @Override
+    public void ping() {
+        try {
+            s3.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
+        } catch (S3Exception e) {
+            throw new StorageException("Bucket unreachable: " + bucket, e);
         }
     }
 }

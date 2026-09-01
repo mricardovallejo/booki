@@ -296,8 +296,8 @@ Cloud Run startup probe.
 ### Setup runbook — one-time, done in the browser
 
 No local `gcloud` needed — the workflow runs it in CI. Everything below is the
-console. Record each value in **`.env.deploy`** (repo root, gitignored) as you
-go; at the end you copy them into GitHub.
+console. Copy `.env.deploy.example` → `.env.deploy` (gitignored) and fill each
+value in as you go; Step 5 pushes them all to GitHub in one command.
 
 Nothing here bills anything by existing — enabling an API and creating a bucket
 or service account is free. Cost comes only from *usage*, and Step 0 caps it.
@@ -359,20 +359,29 @@ pooler). Split into `DB_HOST`, `DB_PORT` (`5432`), `DB_NAME`, `DB_USER`,
 3. Open it → *Keys* → *Add key* → *JSON* → download. The whole file's contents →
    `GCP_SA_KEY`.
 
-#### Step 5 — GitHub secrets & variables
+#### Step 5 — Push secrets to GitHub
 
-Repo → *Settings* → *Secrets and variables* → *Actions*.
+With `.env.deploy` filled in:
 
-| Type | Name | Value |
-|---|---|---|
-| Variable | `GCP_REGION` | `us-east1` |
-| Secret | `GCP_PROJECT_ID` | `booki-xxxxxx` |
-| Secret | `GCP_SA_KEY` | the service-account JSON, whole |
-| Secret | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | from Step 1 |
-| Secret | `S3_BUCKET` `S3_ACCESS_KEY` `S3_SECRET_KEY` | from Step 3 |
-| Secret | `JWT_SECRET` | `openssl rand -base64 32` |
-| Secret | `OPENAI_API_KEY` | your OpenAI key |
-| Secret | `CORS_ALLOWED_ORIGINS` | `https://<project-id>.web.app` |
+```bash
+gh auth login          # once, needs 'repo' scope
+scripts/push-deploy-secrets.sh
+```
+
+This creates 13 repository **secrets** and one **variable** (`GCP_REGION`).
+Re-run it any time a value changes (e.g. after rotating the DB password).
+
+To add them by hand instead: repo → *Settings* → *Secrets and variables* →
+*Actions* — one *New repository secret* per key in `.env.deploy`, and
+`GCP_REGION` under the *Variables* tab.
+
+| From | Keys |
+|---|---|
+| Neon (Step 1) | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` |
+| GCP project (Step 2) | `GCP_PROJECT_ID`, `GCP_REGION` (variable) |
+| GCS (Step 3) | `S3_BUCKET` `S3_ACCESS_KEY` `S3_SECRET_KEY` |
+| Service account (Step 4) | `GCP_SA_KEY` (JSON, one line) |
+| You | `JWT_SECRET` (`openssl rand -base64 32`), `OPENAI_API_KEY`, `CORS_ALLOWED_ORIGINS` = `https://<project-id>.web.app` |
 
 #### Step 6 — First deploy
 

@@ -53,6 +53,7 @@ mock-backend/reports/
 .env
 .env.*
 !.env.example
+!.env.deploy.example
 
 # OS
 .DS_Store

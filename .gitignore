@@ -51,6 +51,7 @@ mock-backend/reports/
 
 # Env
 .env
+.env.*
 !.env.example
 
 # OS

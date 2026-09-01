@@ -295,11 +295,18 @@ Cloud Run startup probe.
 
 ### Provision — one-time, you run these
 
-1. **Database — Neon** (or Supabase; both are free managed PostgreSQL, you just
-   need a connection string). Create a project, region near you, copy the
-   connection details into these GitHub **secrets**: `DB_HOST`, `DB_PORT`
-   (`5432`), `DB_NAME`, `DB_USER`, `DB_PASSWORD`. The workflow sets
+Fill values into **`.env.deploy`** (repo root, gitignored) as you go, then copy
+each into GitHub → Settings → Secrets and variables → Actions.
+
+1. **Database — Neon** (project `patient-field-87633175`, region `us-east-2`,
+   branch `production`). From the Neon dashboard's *Connect* panel take the
+   **direct** connection string (the host **without** `-pooler` — Flyway needs a
+   real session, not the transaction pooler). Split it into `DB_HOST`, `DB_PORT`
+   (`5432`), `DB_NAME`, `DB_USER`, `DB_PASSWORD`. The workflow adds
    `DB_SSLMODE=require` itself.
+   - **Reminder:** the password was pasted into a setup chat. After the first
+     successful deploy, rotate it — Neon dashboard → *Roles* → `neondb_owner` →
+     *Reset password* — and update the `DB_PASSWORD` secret.
 
 2. **One GCP project.** Enable Cloud Run, Cloud Build, Cloud Storage, Firebase
    Hosting. Pick a region near you (e.g. `northamerica-northeast1` Montréal,

@@ -52,6 +52,7 @@ jobs:
             --source backend \
             --allow-unauthenticated \
             --min-instances 0 \
+            --max-instances 2 \
             --memory 512Mi \
             --port 8080 \
             --env-vars-file env.yaml \

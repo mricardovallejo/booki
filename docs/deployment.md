@@ -293,51 +293,106 @@ HTTP probe, so none is set in the Dockerfile.
 `probes.enabled: true` adds `/actuator/health/{liveness,readiness}` for the
 Cloud Run startup probe.
 
-### Provision — one-time, you run these
+### Setup runbook — one-time, done in the browser
 
-Fill values into **`.env.deploy`** (repo root, gitignored) as you go, then copy
-each into GitHub → Settings → Secrets and variables → Actions.
+No local `gcloud` needed — the workflow runs it in CI. Everything below is the
+console. Record each value in **`.env.deploy`** (repo root, gitignored) as you
+go; at the end you copy them into GitHub.
 
-1. **Database — Neon** (project `patient-field-87633175`, region `us-east-2`,
-   branch `production`). From the Neon dashboard's *Connect* panel take the
-   **direct** connection string (the host **without** `-pooler` — Flyway needs a
-   real session, not the transaction pooler). Split it into `DB_HOST`, `DB_PORT`
-   (`5432`), `DB_NAME`, `DB_USER`, `DB_PASSWORD`. The workflow adds
-   `DB_SSLMODE=require` itself.
-   - **Reminder:** the password was pasted into a setup chat. After the first
-     successful deploy, rotate it — Neon dashboard → *Roles* → `neondb_owner` →
-     *Reset password* — and update the `DB_PASSWORD` secret.
+Nothing here bills anything by existing — enabling an API and creating a bucket
+or service account is free. Cost comes only from *usage*, and Step 0 caps it.
 
-2. **One GCP project.** Enable Cloud Run, Cloud Build, Cloud Storage, Firebase
-   Hosting. Pick a region near you (e.g. `northamerica-northeast1` Montréal,
-   `europe-west1`) → GitHub **variable** `GCP_REGION`, **secret**
-   `GCP_PROJECT_ID`.
-   - **GCS bucket**: `gcloud storage buckets create gs://<name> --location <region>`.
-     Then Cloud Console → Cloud Storage → Settings → Interoperability → create an
-     **HMAC key** for the project service account → `S3_BUCKET`, `S3_ACCESS_KEY`,
-     `S3_SECRET_KEY` secrets. (The bucket stays private; only the backend reads/writes it.)
-   - **Service account for GitHub**: create one with roles
-     *Cloud Run Admin*, *Cloud Build Editor*, *Service Account User*,
-     *Firebase Hosting Admin*, *Storage Admin* (for the source upload bucket).
-     Download its JSON key → secret `GCP_SA_KEY`. (Workload Identity Federation
-     is the "when it grows" upgrade — a JSON key is enough at this scale.)
+#### Step 0 — Spend caps (do this first)
 
-3. **App secrets** (GitHub): `JWT_SECRET` (`openssl rand -base64 32`),
-   `OPENAI_API_KEY`, `CORS_ALLOWED_ORIGINS` = `https://<project-id>.web.app`
-   (the Firebase Hosting URL — stable, known before the first deploy).
+- **GCP budget alert.** Billing → *Budgets & alerts* → *Create budget* →
+  amount **$5/month**, alert thresholds 50 / 90 / 100 %. This *emails* you; it
+  does not hard-stop (that needs a billing-disable Cloud Function — out of scope
+  at this size). Catching it at $5 is enough.
+- **OpenAI hard limit.** platform.openai.com → *Settings → Limits* →
+  *Monthly budget* **$10**. This one *does* stop — past the limit the API
+  returns errors instead of charging. This is the real runaway-cost guard;
+  BooKI's Google side is ~$0–2/month.
 
-4. **First deploy**: push to `main` (or run the workflow manually). The backend
-   deploys, its stable URL is passed to the frontend build as
-   `VITE_API_BASE_URL`, the frontend deploys to `https://<project-id>.web.app`.
-   Flyway creates the schema on the backend's first boot.
+#### Step 1 — Database (Neon) — done
 
-5. Open `https://<project-id>.web.app` on a phone (mobile data, not home WiFi),
-   register, upload a PDF, chat. Check `https://<cloud-run-url>/actuator/health`.
+Neon project `patient-field-87633175`, region `us-east-2`, branch `production`.
+From the dashboard's *Connect* panel, use the **direct** connection string (host
+**without** `-pooler` — Flyway needs a real session, not the transaction
+pooler). Split into `DB_HOST`, `DB_PORT` (`5432`), `DB_NAME`, `DB_USER`,
+`DB_PASSWORD`. The workflow adds `DB_SSLMODE=require`.
 
-**Secrets/vars checklist:** secrets `GCP_PROJECT_ID`, `GCP_SA_KEY`, `DB_HOST`,
-`DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`, `OPENAI_API_KEY`,
-`CORS_ALLOWED_ORIGINS`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`; variable
-`GCP_REGION`.
+#### Step 2 — GCP project + APIs
+
+1. console.cloud.google.com → project picker → **New Project**, name `booki`.
+   Note the generated **Project ID** (`booki-xxxxxx`, not the name) → `GCP_PROJECT_ID`.
+2. Billing → link a card to the project (required for Cloud Run even on free tier).
+3. Enable these APIs (each link has an **ENABLE** button; the project must be
+   selected in the top bar):
+   - Cloud Run Admin — `console.cloud.google.com/apis/library/run.googleapis.com`
+   - Cloud Build — `.../cloudbuild.googleapis.com`
+   - Artifact Registry — `.../artifactregistry.googleapis.com`
+   - Firebase Hosting — `.../firebasehosting.googleapis.com`
+   - (Cloud Storage is on by default.)
+4. **Add Firebase to the project:** console.firebase.google.com → *Add project* →
+   pick the **existing** `booki-xxxxxx` from the dropdown (do not create a new
+   one) → finish the wizard.
+5. Region: **`us-east1`** (South Carolina — close to Neon's AWS `us-east-2`) →
+   `GCP_REGION`.
+
+#### Step 3 — Storage bucket + HMAC key
+
+1. Cloud Storage → *Buckets* → *Create* → name (globally unique, e.g.
+   `booki-<project-id>`), location **`us-east1`**, uniform access, keep it
+   **private**. → `S3_BUCKET`.
+2. Cloud Storage → *Settings* → *Interoperability* tab → *Access keys for service
+   accounts* → *Create key for a service account* → pick (or create) a service
+   account → this yields an **Access key** and **Secret**. → `S3_ACCESS_KEY`,
+   `S3_SECRET_KEY`. (These are the S3-protocol credentials for GCS; the workflow
+   sets `S3_ENDPOINT=https://storage.googleapis.com`.)
+
+#### Step 4 — Service account for GitHub
+
+1. IAM & Admin → *Service Accounts* → *Create* → name `github-deployer`.
+2. Grant roles: **Cloud Run Admin**, **Cloud Build Editor**, **Service Account
+   User**, **Storage Admin**, **Firebase Hosting Admin**, **Artifact Registry
+   Writer**.
+3. Open it → *Keys* → *Add key* → *JSON* → download. The whole file's contents →
+   `GCP_SA_KEY`.
+
+#### Step 5 — GitHub secrets & variables
+
+Repo → *Settings* → *Secrets and variables* → *Actions*.
+
+| Type | Name | Value |
+|---|---|---|
+| Variable | `GCP_REGION` | `us-east1` |
+| Secret | `GCP_PROJECT_ID` | `booki-xxxxxx` |
+| Secret | `GCP_SA_KEY` | the service-account JSON, whole |
+| Secret | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | from Step 1 |
+| Secret | `S3_BUCKET` `S3_ACCESS_KEY` `S3_SECRET_KEY` | from Step 3 |
+| Secret | `JWT_SECRET` | `openssl rand -base64 32` |
+| Secret | `OPENAI_API_KEY` | your OpenAI key |
+| Secret | `CORS_ALLOWED_ORIGINS` | `https://<project-id>.web.app` |
+
+#### Step 6 — First deploy
+
+Merge `deploy/postgres` into `main` (or run the *Deploy (dev)* workflow via
+*Actions → Run workflow*). Order is automatic: backend deploys → its stable URL
+is passed to the frontend build as `VITE_API_BASE_URL` → frontend deploys to
+`https://<project-id>.web.app`. Flyway creates the schema on the backend's first
+boot.
+
+#### Step 7 — Verify
+
+- `https://<project-id>.web.app` on a phone (mobile data, not home WiFi):
+  register, upload a PDF, chat.
+- `https://<cloud-run-url>/actuator/health` → every component `UP`.
+
+#### After it works — rotate the DB password
+
+The Neon password was pasted into a setup chat. Neon dashboard → *Roles* →
+`neondb_owner` → *Reset password* → update the `DB_PASSWORD` secret → re-run the
+deploy workflow.
 
 ---
 
@@ -348,8 +403,10 @@ each into GitHub → Settings → Secrets and variables → Actions.
   config; wire that up if/when it matters.)
 - **`.github/workflows/deploy.yml`** — on push to `main` (or manual):
   - `backend`: `gcloud run deploy booki-backend --source backend` — Cloud Build
-    builds `backend/Dockerfile`, deploys with `--min-instances 0 --memory 512Mi`,
-    env from a generated `env.yaml`. Outputs the service URL.
+    builds `backend/Dockerfile`, deploys with
+    `--min-instances 0 --max-instances 2 --memory 512Mi`, env from a generated
+    `env.yaml`. Outputs the service URL. `max-instances 2` is the guard against
+    a runaway scale-out bill.
   - `frontend`: `needs: backend`, builds with
     `VITE_API_BASE_URL=<backend-url>/api`, then `firebase deploy --only hosting`
     (config in `frontend/firebase.json`, SPA rewrite to `index.html`).

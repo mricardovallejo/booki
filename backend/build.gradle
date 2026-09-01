@@ -85,6 +85,12 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
+// Only build the executable boot jar — no plain library jar. Keeps
+// build/libs/ unambiguous for the Docker COPY (see backend/Dockerfile).
+tasks.named('jar') {
+	enabled = false
+}
+
 // Loads the monorepo's .env (one level up from backend/, alongside .env.example)
 // so ANTHROPIC_API_KEY etc. don't have to be exported by hand in every terminal.
 // A variable already set in the real shell environment always wins — .env only

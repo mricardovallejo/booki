@@ -248,18 +248,34 @@ Hosting HTTPS origin (voice mic needs HTTPS — no self-signed certs anymore).
 
 ---
 
-## Phase 4 — Backend Dockerfile
+## Phase 4 — Backend Dockerfile ✅ done
 
-1. Multi-stage `backend/Dockerfile`:
-   - Stage `build`: `eclipse-temurin:21-jdk` → `./gradlew bootJar -x test`.
-   - Stage `run`: `eclipse-temurin:21-jre` → copy jar, non-root user,
-     `ENTRYPOINT ["java","-XX:MaxRAMPercentage=75","-jar","/app/app.jar"]`,
-     `EXPOSE 8080`.
-2. `.dockerignore`: `build/`, `.gradle/`, `uploads/`, `reports/`, `.env`, `*.md`.
-3. Cloud Run service config: region `europe-west1`, port 8080,
-   `--min-instances=0` (free, cold starts), `--memory=512Mi`,
-   `SPRING_PROFILES_ACTIVE=dev` (the profile that points at Postgres),
-   health check on `/actuator/health`.
+`backend/Dockerfile` (build context `backend/`), multi-stage:
+- **build**: `eclipse-temurin:21-jdk` — deps on their own layer, then
+  `./gradlew --no-daemon clean bootJar -x test`. `build.gradle` now does
+  `jar { enabled = false }` so `build/libs/` holds only the boot jar.
+- **run**: `eclipse-temurin:21-jre`, non-root `booki` user, `EXPOSE 8080`,
+  `ENTRYPOINT ["sh","-c","exec java $JAVA_OPTS -jar app.jar"]` with
+  `JAVA_OPTS=-XX:MaxRAMPercentage=75.0` (heap tracks the container limit;
+  overridable at deploy).
+
+`backend/.dockerignore` keeps the context to sources + the Gradle wrapper.
+
+Build and run locally:
+
+```bash
+docker build -t booki-backend backend/
+docker run --rm -p 8080:8080 --env-file .env \
+  -e DB_HOST=host.docker.internal booki-backend
+```
+
+Verified: image builds; the container starts against the Docker Postgres,
+Flyway runs, `/actuator/health` is 200, register/login/PDF-upload work.
+
+**Cloud Run** (Phase 5 wires it up): port 8080, `--min-instances=0` (free, cold
+starts), `--memory=512Mi`, `SPRING_PROFILES_ACTIVE=dev`, startup probe on
+`/actuator/health`. Cloud Run ignores any Docker `HEALTHCHECK`; it uses its own
+HTTP probe, so none is set in the Dockerfile.
 
 ---
 
@@ -321,7 +337,7 @@ instance; with 2+ it locks and the others wait.
 | 1 — Postgres (collapsed V1) | — | ✅ done |
 | 2 — S3 storage adapter + MinIO | 1 | ✅ done |
 | 3 — Frontend URL + CORS | — | ✅ done |
-| 4 — Dockerfile | — | ~2–3 h |
+| 4 — Dockerfile | — | ✅ done |
 | 5 — Provision | 1–4 | ~2–3 h |
 | 6 — CI/CD | 4, 5 | ~2–3 h |
 | 7 — Hardening | 5 | ongoing |

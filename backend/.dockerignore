@@ -1,0 +1,14 @@
+# Build context is backend/. Keep it to sources + the Gradle wrapper.
+build
+.gradle
+out
+bin
+storage
+uploads
+reports
+*.log
+*.h2.db
+*.h2.mv.db
+.git
+.idea
+*.iml

@@ -221,18 +221,30 @@ a presigned-URL redirect on download and streamed multipart on upload.
 
 ---
 
-## Phase 3 — Frontend API base URL + CORS
+## Phase 3 — Frontend API base URL + CORS ✅ done
 
-Frontend and backend are separate origins now.
+In production the frontend (Firebase Hosting) and backend (Cloud Run) are
+separate origins, so the frontend needs the backend's absolute URL and the
+backend needs to allow the frontend's origin.
 
-1. `frontend/src/api/client.ts`: `baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api'`.
-   Same for `getDocumentFileUrl` in `frontend/src/api/documents.ts`.
-   Two lines; unset locally ⇒ keeps using the Vite dev proxy.
-2. Firebase Hosting env / build var: `VITE_API_BASE_URL = https://<cloud-run-url>/api`.
-3. Backend `booki.cors.allowed-origins` (deployed env) → the Firebase Hosting
-   URL(s), including any custom domain.
-4. Confirm the `vite-plugin-pwa` service worker registers on the HTTPS origin
-   (voice mic access needs HTTPS — no self-signed certs anymore).
+**Frontend (commit on branch):** `frontend/src/config/endpoints.ts` exports
+`API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'`, used by
+`api/client.ts` (axios `baseURL`) and `api/documents.ts` (`getDocumentFileUrl`,
+a plain URL react-pdf fetches directly). Unset → `/api` → the Vite dev proxy,
+unchanged for local dev. `frontend/.env.example` documents it; `src/vite-env.d.ts`
+types it. Verified: `npm run build` with `VITE_API_BASE_URL` set bakes the
+absolute URL into the bundle.
+
+**At deploy time, set:**
+- Firebase Hosting build var `VITE_API_BASE_URL = https://<cloud-run-url>/api`
+  (no trailing slash).
+- Backend env `CORS_ALLOWED_ORIGINS = https://<project>.web.app,https://<project>.firebaseapp.com`
+  (+ any custom domain). No backend code change — `booki.cors.allowed-origins`
+  is already comma-split into `CorsConfiguration.setAllowedOrigins`
+  ([SecurityConfig.java:66](../backend/src/main/java/com/booki/config/SecurityConfig.java#L66)).
+
+**Check on first deploy:** `vite-plugin-pwa`'s service worker registers on the
+Hosting HTTPS origin (voice mic needs HTTPS — no self-signed certs anymore).
 
 ---
 
@@ -308,7 +320,7 @@ instance; with 2+ it locks and the others wait.
 |---|---|---|
 | 1 — Postgres (collapsed V1) | — | ✅ done |
 | 2 — S3 storage adapter + MinIO | 1 | ✅ done |
-| 3 — Frontend URL + CORS | — | ~1–2 h |
+| 3 — Frontend URL + CORS | — | ✅ done |
 | 4 — Dockerfile | — | ~2–3 h |
 | 5 — Provision | 1–4 | ~2–3 h |
 | 6 — CI/CD | 4, 5 | ~2–3 h |

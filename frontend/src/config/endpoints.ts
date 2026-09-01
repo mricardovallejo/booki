@@ -1,3 +1,13 @@
+/**
+ * Base URL the API client prepends to every path below.
+ *
+ * Unset (local dev) → `/api`, a same-origin path the Vite dev server proxies to
+ * the backend (see `vite.config.ts`). Set `VITE_API_BASE_URL` (deployed build,
+ * where the frontend and backend are separate origins) to the backend's API
+ * root, e.g. `https://booki-backend.example.run.app/api` — no trailing slash.
+ */
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+
 export const ENDPOINTS = {
   auth: {
     login: '/auth/login',

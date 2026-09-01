@@ -1,7 +1,8 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
+import { API_BASE } from '../config/endpoints';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
   headers: {
     'Content-Type': 'application/json'
   }

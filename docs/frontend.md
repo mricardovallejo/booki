@@ -37,7 +37,7 @@ All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `
 
 ## Data layer
 
-- `src/api/*.ts`: one file per backend resource (`auth`, `documents`, `profileMasters`, `reports`, `sessions`, `tags`, `users`, `voice`), all going through the shared Axios instance in `api/client.ts` (adds the JWT header, base URL `/api`, redirects to `/login` on a 401).
+- `src/api/*.ts`: one file per backend resource (`auth`, `documents`, `profileMasters`, `reports`, `sessions`, `tags`, `users`, `voice`), all going through the shared Axios instance in `api/client.ts` (adds the JWT header, redirects to `/login` on a 401). Base URL is `API_BASE` from `config/endpoints.ts` — `VITE_API_BASE_URL` if set (deployed build, separate origin), otherwise `/api` (local dev, via the Vite proxy).
 - `src/hooks/*.ts`: data-fetching hooks built on top of `src/api` (`useDocuments`, `useSession`, `useChat`, `useQuiz`, `useProgress`, `useNotifications`, `useSessionReports`, `useSummary`, `useTags`, `useProfileMasters`, `useUserProfile`, plus UI hooks `useVoiceRecorder` (cloud audio capture), `useVoice` (browser fallback), and `useScrollToHash`). `useChat` exposes both `send` (text / quick-action, with an optional `capabilityHint`) and `sendVoice` (uploads a clip, returns the persisted messages + optional spoken reply). `useQuiz` owns the quiz report too (`report`/`loadReport`, refetched after every graded answer).
 - `src/config/endpoints.ts`: the single source of truth for backend route paths used by the frontend.
 - `src/lib/errors.ts`: `getErrorMessage(err, fallback?)` — the one place that knows how to pull `{error: string}` out of a failed Axios call (see `docs/backend.md`'s note on the backend's unified error shape). Every data-fetching hook and every `onSubmit`/action handler goes through this helper and exposes an `error` string, instead of swallowing a rejected promise silently or leaving a panel stuck on its loading spinner forever. This is applied consistently across the whole app now: every `use*` hook in `src/hooks/` that calls the API returns `error` alongside its data (`useDocuments`, `useTags`, `useProfileMasters`, `useSession`, `useChat`, `useQuiz`, `useProgress`, `useNotifications`, `useSessionReports`, `useSummary`, `useUserProfile`), and the page/component consuming it renders a red `<p>` near the relevant button/field (see `LoginPage`, `HomePage`, `ProfilePage`, `MastersPage`, `CreateSessionModal`, `TagsBar`, `TagPickerModal`, `ChatPanel`, `QuizPanel`, `PdfViewer`, `ProgressPanel`, `NotificationsBell` for examples of each shape).
@@ -66,6 +66,13 @@ is gone.
 Streaming voice (incremental STT / TTS) is not built — see `docs/ai-voice.md`
 "Streaming".
 
-## Dev proxy
+## Dev proxy vs. deployed origin
 
-Vite forwards `/api` to `http://localhost:8080` (see `vite.config.ts`) and only accepts the app at `http://localhost:5173` — the backend's CORS config rejects any other origin, including `127.0.0.1:5173`.
+Local dev: `API_BASE` is `/api` and Vite forwards `/api` to `http://localhost:8080`
+(see `vite.config.ts`); the app is only accepted at `http://localhost:5173` —
+the backend's CORS config rejects any other origin, including `127.0.0.1:5173`.
+
+Deployed: the frontend is a static build on its own origin, so it's built with
+`VITE_API_BASE_URL` pointing at the backend's absolute API root, and the
+backend's `CORS_ALLOWED_ORIGINS` must list the frontend's origin. See
+`docs/deployment.md` Phase 3.

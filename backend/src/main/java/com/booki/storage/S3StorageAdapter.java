@@ -7,6 +7,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
@@ -53,7 +55,11 @@ public class S3StorageAdapter implements StorageAdapter {
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
                 .httpClientBuilder(UrlConnectionHttpClient.builder())
-                .forcePathStyle(pathStyle);
+                .forcePathStyle(pathStyle)
+                // AWS SDK v2 sends CRC32 request checksums by default; GCS's
+                // S3-compatible API (and some other non-AWS stores) reject them.
+                .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
+                .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED);
 
         if (!endpoint.isBlank()) {
             builder.endpointOverride(URI.create(endpoint));

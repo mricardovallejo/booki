@@ -1,8 +1,10 @@
 # BooKI Deployment Plan
 
-Status: **planning**. One deployed environment ("dev, done well"), plus local
-development. No staging/prod split yet — the architecture below makes adding one
-later a config change, not a redesign.
+Status: **Phases 1–6 in place.** One deployed environment, plus local
+development. Scope is a **minimal first deployment** — stand the app up for a
+small trusted group. Sentry, backups, rate-limiting and the rest are deferred
+(Phase 7) until there's real traffic; the architecture makes adding them a
+config change, not a redesign.
 
 Guiding priorities: **industry-standard, flexible, vendor-neutral, free right
 now**. Frontend, backend, database and file storage are **four separate,
@@ -279,54 +281,91 @@ HTTP probe, so none is set in the Dockerfile.
 
 ---
 
-## Phase 5 — Provision (one-time)
+## Phase 5 — Actuator ✅ + provision runbook
 
-1. **Neon**: create project, copy the pooled connection string → `DB_*`.
-2. **GCP project**: enable Cloud Run, Artifact Registry, Cloud Storage, Firebase
-   Hosting.
-   - GCS: create bucket `booki`, create an HMAC key → `S3_ACCESS_KEY` /
-     `S3_SECRET_KEY`.
-   - Cloud Run: deploy the image (pushed to Artifact Registry), set env vars /
-     secrets (`DB_*`, `JWT_SECRET`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-     `STORAGE_DRIVER=s3`, `S3_*`). Flyway creates the schema on first boot.
-   - Firebase Hosting: `firebase init hosting`, `public = frontend/dist`,
-     set `VITE_API_BASE_URL` for the build.
-3. **Rotate `JWT_SECRET`** — fresh 32+ byte random value, only in the platform
-   secret stores, never git. Update `.env.example` for the Postgres + S3 vars.
-4. Smoke-test the whole chain from a phone on mobile data.
+### Actuator (done — commit on branch)
+
+`application.yml` exposes `health` + `info` (public — `SecurityConfig` ends with
+`anyRequest().permitAll()`; gate `/actuator` before going wide).
+`/actuator/health` shows one entry per dependency — `db`, `diskSpace`,
+`ssl`, and a custom **`storage`** (a `HealthIndicator` calling
+`StorageAdapter.ping()` — `Files.isWritable` for local, `HeadBucket` for S3).
+`probes.enabled: true` adds `/actuator/health/{liveness,readiness}` for the
+Cloud Run startup probe.
+
+### Provision — one-time, you run these
+
+1. **Database — Neon** (or Supabase; both are free managed PostgreSQL, you just
+   need a connection string). Create a project, region near you, copy the
+   connection details into these GitHub **secrets**: `DB_HOST`, `DB_PORT`
+   (`5432`), `DB_NAME`, `DB_USER`, `DB_PASSWORD`. The workflow sets
+   `DB_SSLMODE=require` itself.
+
+2. **One GCP project.** Enable Cloud Run, Cloud Build, Cloud Storage, Firebase
+   Hosting. Pick a region near you (e.g. `northamerica-northeast1` Montréal,
+   `europe-west1`) → GitHub **variable** `GCP_REGION`, **secret**
+   `GCP_PROJECT_ID`.
+   - **GCS bucket**: `gcloud storage buckets create gs://<name> --location <region>`.
+     Then Cloud Console → Cloud Storage → Settings → Interoperability → create an
+     **HMAC key** for the project service account → `S3_BUCKET`, `S3_ACCESS_KEY`,
+     `S3_SECRET_KEY` secrets. (The bucket stays private; only the backend reads/writes it.)
+   - **Service account for GitHub**: create one with roles
+     *Cloud Run Admin*, *Cloud Build Editor*, *Service Account User*,
+     *Firebase Hosting Admin*, *Storage Admin* (for the source upload bucket).
+     Download its JSON key → secret `GCP_SA_KEY`. (Workload Identity Federation
+     is the "when it grows" upgrade — a JSON key is enough at this scale.)
+
+3. **App secrets** (GitHub): `JWT_SECRET` (`openssl rand -base64 32`),
+   `OPENAI_API_KEY`, `CORS_ALLOWED_ORIGINS` = `https://<project-id>.web.app`
+   (the Firebase Hosting URL — stable, known before the first deploy).
+
+4. **First deploy**: push to `main` (or run the workflow manually). The backend
+   deploys, its stable URL is passed to the frontend build as
+   `VITE_API_BASE_URL`, the frontend deploys to `https://<project-id>.web.app`.
+   Flyway creates the schema on the backend's first boot.
+
+5. Open `https://<project-id>.web.app` on a phone (mobile data, not home WiFi),
+   register, upload a PDF, chat. Check `https://<cloud-run-url>/actuator/health`.
+
+**Secrets/vars checklist:** secrets `GCP_PROJECT_ID`, `GCP_SA_KEY`, `DB_HOST`,
+`DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`, `OPENAI_API_KEY`,
+`CORS_ALLOWED_ORIGINS`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`; variable
+`GCP_REGION`.
 
 ---
 
-## Phase 6 — CI/CD (GitHub Actions)
+## Phase 6 — GitHub Actions ✅
 
-`.github/workflows/ci.yml` — on every pull request:
-- `backend`: `./gradlew test` (H2, no external services).
-- `frontend`: `npm ci && npm run lint && npm run build`.
+- **`.github/workflows/ci.yml`** — on PRs / non-`main` pushes: `./gradlew test`
+  and `npm ci && npm run build`. (No `npm run lint` — the repo has no ESLint
+  config; wire that up if/when it matters.)
+- **`.github/workflows/deploy.yml`** — on push to `main` (or manual):
+  - `backend`: `gcloud run deploy booki-backend --source backend` — Cloud Build
+    builds `backend/Dockerfile`, deploys with `--min-instances 0 --memory 512Mi`,
+    env from a generated `env.yaml`. Outputs the service URL.
+  - `frontend`: `needs: backend`, builds with
+    `VITE_API_BASE_URL=<backend-url>/api`, then `firebase deploy --only hosting`
+    (config in `frontend/firebase.json`, SPA rewrite to `index.html`).
+  - Auth: the one `GCP_SA_KEY` JSON key for both `gcloud` and `firebase-tools`.
 
-`.github/workflows/deploy.yml` — on push to `main`:
-- Build the backend image → push to Artifact Registry → `gcloud run deploy`
-  (`google-github-actions/deploy-cloudrun`).
-- Build the frontend → `FirebaseExtended/action-hosting-deploy`.
-
-Secrets: GCP auth via Workload Identity Federation (preferred over a JSON key)
-in GitHub repo secrets. Flyway migrations run at startup — fine with one
-instance; with 2+ it locks and the others wait.
+Flyway runs at startup — fine with one instance (`min-instances 0`, and Cloud
+Run won't run two at this traffic); with 2+ it locks and the others wait.
 
 ---
 
-## Phase 7 — Hardening (before inviting anyone)
+## Phase 7 — Deferred until it grows
 
-1. **AI cost guard** — the real financial risk. Per-user rate limit on the
-   conversation + voice endpoints (Bucket4j in-memory, or a messages-per-hour
-   count). Hard monthly spend alert on the OpenAI account.
-2. **DB backups** — Neon keeps 7 days of history on the free tier; add a weekly
-   `pg_dump` to GCS via a GitHub Actions cron for longer retention.
-3. **Sentry** — Spring + React SDKs, DSN via env var.
-4. **Security headers** — confirm Spring Security sets `X-Content-Type-Options` /
-   `X-Frame-Options`; add a basic CSP on the frontend.
-5. **Auth review** — decide whether the pilot needs email verification /
-   password reset, or if a 24 h JWT with no refresh is acceptable.
-6. Run `/security-review` on the deployment branch.
+Not now — the first deployment doesn't need it. Revisit when BooKI has real traffic:
+
+1. **AI cost guard** — per-user rate limit on the conversation + voice endpoints;
+   a hard monthly spend alert on the OpenAI account. *(The one item worth a
+   glance even now: set a billing alert on the OpenAI key.)*
+2. **DB backups** beyond Neon's free 7-day history (weekly `pg_dump` to GCS).
+3. **Sentry** (or GlitchTip) for error monitoring.
+4. **Security headers** / CSP; gate `/actuator` behind auth.
+5. **Auth**: email verification / password reset / refresh tokens.
+6. `/security-review` on the branch; Workload Identity Federation instead of the
+   SA key.
 
 ---
 
@@ -338,6 +377,6 @@ instance; with 2+ it locks and the others wait.
 | 2 — S3 storage adapter + MinIO | 1 | ✅ done |
 | 3 — Frontend URL + CORS | — | ✅ done |
 | 4 — Dockerfile | — | ✅ done |
-| 5 — Provision | 1–4 | ~2–3 h |
-| 6 — CI/CD | 4, 5 | ~2–3 h |
-| 7 — Hardening | 5 | ongoing |
+| 5 — Actuator + provision runbook | 1–4 | ✅ code; runbook = you, ~1 h in GCP |
+| 6 — GitHub Actions (ci + deploy) | 4, 5 | ✅ |
+| 7 — Hardening | 5 | deferred until it grows |

@@ -125,3 +125,10 @@ will use SSE, which every browser supports.
 - **Decision**: the frontend reads a single build-time `API_BASE` (`config/endpoints.ts`) = `import.meta.env.VITE_API_BASE_URL || '/api'`. Unset → `/api` (local, proxied); set → the backend's absolute API root (deployed). The backend's CORS allow-list is already env-driven (`booki.cors.allowed-origins` → `CORS_ALLOWED_ORIGINS`), so the deployed origin is configuration, not code. No same-origin bundling (backend serving the SPA) — keeping them independently deployable is worth one env var and one CORS line.
 - **Reasons**: a static frontend on a CDN and a scale-to-zero API container have different lifecycles, scaling and cost models; coupling them into one deployable to avoid CORS would trade that away for very little.
 - **Consequence**: a deployed frontend build is pinned to one backend URL (rebuild to repoint). `getDocumentFileUrl` also uses `API_BASE` because react-pdf fetches that URL directly, outside axios.
+
+## ADR-014: minimal first deployment, hardening deferred
+
+- **Context**: the first deployment is for a small trusted group, not a public launch.
+- **Decision**: deploy the minimum that stands up and is usable — PostgreSQL (Neon free), object storage (GCS), backend on Cloud Run (`min-instances=0`), frontend on Firebase Hosting, one `deploy.yml` GitHub Action, and Actuator health with a per-dependency breakdown (`db`, `storage`, `diskSpace`, `ssl`) plus liveness/readiness probes. **Deferred** (Phase 7): Sentry, DB backups beyond Neon's 7 days, per-user AI rate limiting, CSP/security headers, auth hardening, Workload Identity Federation. A GCP service-account JSON key (one GitHub secret) is accepted over WIF for now.
+- **Reasons**: most of the hardening only pays off with real traffic. Env-driven config, the storage seam and the CI split mean each deferred item is an additive change later, not a rewrite.
+- **Consequence**: `/actuator` is public (`SecurityConfig`'s `anyRequest().permitAll()`), the OpenAI key has no in-app spend guard (set a billing alert on it), and a lost SA key means full project access. Acceptable at this scale; all on the Phase 7 list before opening up.

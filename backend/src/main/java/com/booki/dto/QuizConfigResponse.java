@@ -6,8 +6,8 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class QuizConfigResponse {
-    private Long profileMasterId;
-    private String masterName;
+    private Long aiProfileId;
+    private String profileName;
     private String difficulty;
     private Integer questionCount;
 }

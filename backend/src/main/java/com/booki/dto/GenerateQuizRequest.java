@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class GenerateQuizRequest {
-    private Long profileMasterId;
+    private Long aiProfileId;
     private String difficulty;
     private Integer questionCount;
 }

@@ -37,8 +37,8 @@ public class Session {
     private Integer currentPage;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "profile_master_id")
-    private ProfileMaster profileMaster;
+    @JoinColumn(name = "ai_profile_id")
+    private AiProfile aiProfile;
 
     @Column(nullable = false, length = 20)
     private String difficulty;

@@ -28,12 +28,6 @@ public class User {
     @Column(nullable = false)
     private String name;
 
-    @Column(columnDefinition = "TEXT")
-    private String bio;
-
-    @Column(columnDefinition = "TEXT", name = "system_prompt")
-    private String systemPrompt;
-
     @CreationTimestamp
     @Column(nullable = false, updatable = false, name = "created_at")
     private Instant createdAt;

@@ -87,6 +87,9 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
   const { messages, sending, error, send, sendVoice, refresh } = useChat(sessionId, onActivity);
   const { session } = useSession(sessionId);
   const lang: SessionLanguage = session?.language ?? 'en';
+  const enabledCapabilities = session?.enabledCapabilities ?? ['quiz', 'summary', 'explain', 'mnemonic'];
+  const quickActions = QUICK_ACTIONS.filter((a) => enabledCapabilities.includes(a.hint));
+  const summaryEnabled = enabledCapabilities.includes('summary');
   const [text, setText] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -158,15 +161,17 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-end border-b border-white/10 px-5 py-2">
-        <button
-          onClick={() => setSummaryOpen(true)}
-          className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h4m1 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Summary…
-        </button>
+        {summaryEnabled && (
+          <button
+            onClick={() => setSummaryOpen(true)}
+            className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h4m1 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Summary…
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -222,18 +227,20 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
 
       <div className="border-t border-white/10 p-4">
         {error && <p className="mb-2 text-xs text-rose-400">{error}</p>}
-        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
-          {QUICK_ACTIONS.map((action) => (
-            <button
-              key={action.hint}
-              onClick={() => runQuickAction(action)}
-              disabled={sending}
-              className="font-menu shrink-0 rounded-full bg-white/5 px-3 py-1 text-[10px] tracking-wide text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
-            >
-              {action.label[lang]}
-            </button>
-          ))}
-        </div>
+        {quickActions.length > 0 && (
+          <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+            {quickActions.map((action) => (
+              <button
+                key={action.hint}
+                onClick={() => runQuickAction(action)}
+                disabled={sending}
+                className="font-menu shrink-0 rounded-full bg-white/5 px-3 py-1 text-[10px] tracking-wide text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+              >
+                {action.label[lang]}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-3 rounded-2xl bg-booki-card px-3 py-2">
           <VoiceButton
             supported={voiceSupported}

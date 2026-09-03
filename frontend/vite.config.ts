@@ -41,8 +41,10 @@ export default defineConfig({
     port: 5173,
     host: true,
     https,
+    // Defaults to the real Spring backend. Set VITE_PROXY_TARGET=http://localhost:3001
+    // to run the frontend against the Node mock backend instead.
     proxy: {
-      '/api': 'http://localhost:8080'
+      '/api': process.env.VITE_PROXY_TARGET || 'http://localhost:8080'
     }
   }
 });

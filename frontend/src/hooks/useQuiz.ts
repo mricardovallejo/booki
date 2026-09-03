@@ -4,14 +4,12 @@ import { getErrorMessage } from '../lib/errors';
 import type { Difficulty, QuizAnswerResult, QuizConfig, QuizQuestion, QuizReport, Session } from '../types';
 
 export interface QuizConfigInput {
-  profileMasterId: number | null;
   difficulty: Difficulty;
   questionCount: number;
 }
 
 export function useQuiz(sessionId: number, session: Session | null, onActivity?: () => void) {
   const [config, setConfig] = useState<QuizConfigInput>({
-    profileMasterId: null,
     difficulty: 'medium',
     questionCount: 3
   });
@@ -25,11 +23,7 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
 
   useEffect(() => {
     if (session) {
-      setConfig((prev) => ({
-        ...prev,
-        profileMasterId: session.profileMasterId ?? null,
-        difficulty: session.difficulty
-      }));
+      setConfig((prev) => ({ ...prev, difficulty: session.difficulty }));
     }
   }, [session]);
 
@@ -72,8 +66,7 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
           pageNumber: question.pageNumber,
           question: question.question,
           answer,
-          difficulty: activeConfig?.difficulty || config.difficulty,
-          profileMasterId: activeConfig?.profileMasterId ?? config.profileMasterId
+          difficulty: activeConfig?.difficulty || config.difficulty
         });
         setResults((prev) => ({ ...prev, [question.id]: result }));
         onActivity?.();

@@ -2,6 +2,7 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const { buildFactoryAiProfiles, seedUserAiProfiles } = require('./aiProfiles');
 
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -14,18 +15,31 @@ let users = [
     email: 'demo@booki.app',
     passwordHash: 'password', // plain text for demo only
     name: 'Demo User',
-    bio: 'Learning English as a second language.',
-    systemPrompt:
-      'Keep vocabulary simple, give one concrete example per explanation, and avoid long sentences.',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString()
   }
 ];
 
-let profileMasters = [
-  { id: 1, name: 'Patient Teacher', description: 'Explains step by step, never rushes you.', systemPrompt: 'You are a patient teacher. Explain things simply.' },
-  { id: 2, name: 'Study Buddy', description: 'Talks like a peer, asks questions and debates ideas.', systemPrompt: 'You are a curious study buddy.' },
-  { id: 3, name: 'Technical Expert', description: 'Uses precise vocabulary and concrete examples.', systemPrompt: 'You are a technical expert. Be precise.' }
-];
+// Hidden originals (ids 1-4, userId null) + one editable set of copies per user.
+const factoryTemplates = buildFactoryAiProfiles();
+let aiProfiles = [...factoryTemplates];
+
+/** Give a user their own copy of every factory template. Returns the new copies. */
+function seedAiProfilesForUser(userId) {
+  const nextId = aiProfiles.length ? Math.max(...aiProfiles.map((p) => p.id)) + 1 : 1;
+  const copies = seedUserAiProfiles(factoryTemplates, userId, nextId);
+  aiProfiles.push(...copies);
+  return copies;
+}
+
+// Demo user starts with the 4 copies; their "Patient Tutor" one carries a
+// filled-in reader context so the UI has something to show.
+(() => {
+  const copies = seedAiProfilesForUser(1);
+  const tutor = copies.find((p) => p.name === 'Patient Tutor');
+  tutor.readerLevel = 'intermediate';
+  tutor.slots.find((s) => s.key === 'reader_context').content =
+    'Studying for a certification exam, fairly new to the topic. Prefers short answers with one concrete example and little jargon.';
+})();
 
 let documents = [];
 let documentPages = [];
@@ -156,8 +170,8 @@ async function seedData() {
   );
 
   sessions.push(
-    { id: 1, userId, documentId: 1, title: 'Introducción a la Física.pdf (págs. 1-2)', startPage: 1, endPage: 2, currentPage: 1, difficulty: 'easy', profileMasterId: 1, language: 'es', configJson: '{}', createdAt: nowIso() },
-    { id: 2, userId, documentId: 2, title: 'Historia de Roma.pdf (págs. 1-4)', startPage: 1, endPage: 4, currentPage: 1, difficulty: 'medium', profileMasterId: 2, language: 'es', configJson: '{}', createdAt: nowIso() }
+    { id: 1, userId, documentId: 1, title: 'Introducción a la Física.pdf (págs. 1-2)', startPage: 1, endPage: 2, currentPage: 1, difficulty: 'easy', aiProfileId: 5, language: 'es', createdAt: nowIso() },
+    { id: 2, userId, documentId: 2, title: 'Historia de Roma.pdf (págs. 1-4)', startPage: 1, endPage: 4, currentPage: 1, difficulty: 'medium', aiProfileId: 6, language: 'es', createdAt: nowIso() }
   );
 
   messages.push(
@@ -171,7 +185,9 @@ async function seedData() {
 module.exports = {
   UPLOADS_DIR,
   users,
-  profileMasters,
+  aiProfiles,
+  factoryTemplates,
+  seedAiProfilesForUser,
   documents,
   documentPages,
   sessions,

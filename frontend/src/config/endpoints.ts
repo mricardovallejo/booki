@@ -31,11 +31,13 @@ export const ENDPOINTS = {
     addDocument: (tagId: number, documentId: number) => `/collections/${tagId}/documents/${documentId}`,
     removeDocument: (tagId: number, documentId: number) => `/collections/${tagId}/documents/${documentId}`
   },
-  profileMasters: {
-    list: '/profile-masters',
-    create: '/profile-masters',
-    update: (id: number) => `/profile-masters/${id}`,
-    delete: (id: number) => `/profile-masters/${id}`
+  aiProfiles: {
+    list: '/ai-profiles',
+    byId: (id: number) => `/ai-profiles/${id}`,
+    duplicate: (id: number) => `/ai-profiles/${id}/duplicate`,
+    revert: (id: number) => `/ai-profiles/${id}/revert`,
+    restore: (id: number) => `/ai-profiles/${id}/restore`,
+    delete: (id: number) => `/ai-profiles/${id}`
   },
   sessions: {
     create: '/sessions',

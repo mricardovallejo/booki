@@ -4,39 +4,125 @@ const {
   messages,
   documents,
   documentPages,
-  profileMasters,
+  aiProfiles,
   quizAttempts,
   sentReports,
-  users,
   nowIso
 } = require('../data');
 const { authMiddleware } = require('../middleware');
 const { buildPdf, coverColorFor, initialsFor } = require('../reports');
+const { CORE_PROMPT, CAPABILITIES, assembledSlotText } = require('../aiProfiles');
 
 const router = express.Router();
 
 const SUPPORTED_LANGUAGES = ['en', 'es', 'fr'];
 const LANGUAGE_NAMES = { en: 'English', es: 'Spanish', fr: 'French' };
+const RUBRIC_SLOT = { easy: 'rubric_easy', medium: 'rubric_medium', hard: 'rubric_hard' };
+const RUBRIC_LEVEL_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Advanced' };
 
-const APP_PROMPT_TEMPLATE = {
-  en: (lang) =>
-    `BooKI is a reading companion, not an authority figure. Respond in ${lang}. Keep the tone encouraging, never scold the reader for a wrong answer, and always ground answers in the session's page range.`,
-  es: (lang) =>
-    `BooKI es un acompañante de lectura, no una autoridad. Responde en ${lang}. Mantén un tono alentador, nunca regañes por una respuesta incorrecta, y basa siempre las respuestas en el rango de páginas de la sesión.`,
-  fr: (lang) =>
-    `BooKI est un compagnon de lecture, pas une autorité. Réponds en ${lang}. Garde un ton encourageant, ne gronde jamais pour une mauvaise réponse, et base toujours les réponses sur les pages de la session.`
+// Friendlier labels for the per-function layers in the context view.
+const FUNCTION_LAYER_LABEL = {
+  fn_quiz_question: 'When you ask for a quiz question',
+  fn_answer_grading: 'When BooKI grades a quiz answer',
+  fn_summary: 'When you ask for a summary',
+  fn_explain: 'When you ask BooKI to explain a passage',
+  fn_mnemonic: 'When you ask for a memory aid'
 };
 
+function profileFor(session) {
+  return aiProfiles.find((p) => p.id === session.aiProfileId) || null;
+}
+
+function slot(profile, key) {
+  return profile ? profile.slots.find((s) => s.key === key) || null : null;
+}
+
+function slotContent(profile, key) {
+  const s = slot(profile, key);
+  return s && s.content ? s.content : null;
+}
+
+function enabledCapabilitiesFor(session) {
+  const profile = profileFor(session);
+  return profile && Array.isArray(profile.enabledCapabilities)
+    ? profile.enabledCapabilities
+    : [...CAPABILITIES];
+}
+
+// Every part of the instructions BooKI reads before answering — not just the
+// editable ones. `group` lets the client fold the heavy parts away.
 function buildContext(session) {
   const lang = SUPPORTED_LANGUAGES.includes(session.language) ? session.language : 'en';
-  const user = users.find((u) => u.id === session.userId);
-  const master = profileMasters.find((m) => m.id === session.profileMasterId);
-  const appPromptFn = APP_PROMPT_TEMPLATE[lang] || APP_PROMPT_TEMPLATE.en;
+  const difficulty = ['easy', 'medium', 'hard'].includes(session.difficulty) ? session.difficulty : 'medium';
+  const profile = profileFor(session);
+  const doc = documents.find((d) => d.id === session.documentId);
+  const source = profile ? `AI profile "${profile.name}"` : 'AI profile';
+  const enabled = enabledCapabilitiesFor(session);
+
+  const layers = [
+    { key: 'core', group: 'core', label: 'BooKI core', editable: false, source: 'App', content: CORE_PROMPT },
+    {
+      key: 'rubric',
+      group: 'difficulty',
+      label: `Difficulty — ${RUBRIC_LEVEL_LABEL[difficulty]}`,
+      editable: true,
+      source,
+      content: slotContent(profile, RUBRIC_SLOT[difficulty])
+    },
+    { key: 'persona', group: 'persona', label: 'Persona', editable: true, source, content: slotContent(profile, 'persona') },
+    {
+      key: 'reader_context',
+      group: 'reader',
+      label: 'Reader context',
+      editable: true,
+      source,
+      content: slotContent(profile, 'reader_context')
+    }
+  ];
+
+  for (const key of Object.keys(FUNCTION_LAYER_LABEL)) {
+    const s = slot(profile, key);
+    layers.push({
+      key,
+      group: 'functions',
+      label: FUNCTION_LAYER_LABEL[key],
+      editable: true,
+      source,
+      content: s ? assembledSlotText(s) : null
+    });
+  }
+
+  const routingSlot = slot(profile, 'capability_routing');
+  layers.push({
+    key: 'capability_routing',
+    group: 'routing',
+    label: 'When BooKI acts on its own in chat',
+    editable: true,
+    source,
+    content:
+      (routingSlot ? assembledSlotText(routingSlot) + '\n\n' : '') +
+      `Enabled here: ${enabled.length ? enabled.join(', ') : 'none'}.`
+  });
+
+  layers.push({
+    key: 'session',
+    group: 'session',
+    label: 'This session',
+    editable: false,
+    source: 'Session',
+    content:
+      `Document: ${doc ? doc.title : 'Unknown'}\n` +
+      `Pages ${session.startPage}–${session.endPage} · you are on page ${session.currentPage}\n` +
+      `The text of pages ${session.startPage}–${session.endPage} is included in every answer.`
+  });
 
   return {
-    appPrompt: appPromptFn(LANGUAGE_NAMES[lang]),
-    masterPrompt: master ? master.systemPrompt : null,
-    userPrompt: user && user.systemPrompt ? user.systemPrompt : null
+    aiProfileId: profile ? profile.id : null,
+    aiProfileName: profile ? profile.name : null,
+    language: lang,
+    difficulty,
+    enabledCapabilities: enabled,
+    layers
   };
 }
 
@@ -49,8 +135,11 @@ function toSessionResponse(session) {
     endPage: session.endPage,
     currentPage: session.currentPage,
     difficulty: session.difficulty,
-    profileMasterId: session.profileMasterId,
+    aiProfileId: session.aiProfileId ?? null,
+    enabledCapabilities: enabledCapabilitiesFor(session),
     language: session.language || 'en',
+    // The provider is a backend/deployment concern, not a per-session user choice.
+    aiProvider: 'claude',
     createdAt: session.createdAt
   };
 }
@@ -149,8 +238,8 @@ function mockReply(session, userMessage, isFirstExchange) {
     (p) => p.documentId === session.documentId && p.pageNumber >= session.startPage && p.pageNumber <= session.endPage
   );
   const contextText = pages.map((p) => p.extractedText).join(' ').toLowerCase();
-  const master = profileMasters.find((m) => m.id === session.profileMasterId);
-  const tone = master ? master.name : 'assistant';
+  const profile = profileFor(session);
+  const tone = profile ? profile.name : 'assistant';
 
   let reply;
   if (includesAny(lower, kw.greeting)) {
@@ -173,9 +262,9 @@ function mockReply(session, userMessage, isFirstExchange) {
   }
 
   if (isFirstExchange) {
-    const user = users.find((u) => u.id === session.userId);
-    if (user && user.systemPrompt) {
-      reply += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(user.systemPrompt);
+    const readerContext = slotContent(profile, 'reader_context');
+    if (readerContext) {
+      reply += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(readerContext);
     }
   }
 
@@ -243,9 +332,9 @@ function buildSummaryContent(session, lengthPages, customPrompt) {
   const lang = SUPPORTED_LANGUAGES.includes(session.language) ? session.language : 'en';
   const settings = summaryLengthSettings(lengthPages);
   const labels = SUMMARY_LABELS[lang];
-  const master = profileMasters.find((m) => m.id === session.profileMasterId);
-  const user = users.find((u) => u.id === session.userId);
-  const tone = master ? master.name : 'assistant';
+  const profile = profileFor(session);
+  const readerContext = slotContent(profile, 'reader_context');
+  const tone = profile ? profile.name : 'assistant';
 
   const pages = pagesInRange(session);
   const bookPart = pages
@@ -267,8 +356,8 @@ function buildSummaryContent(session, lengthPages, customPrompt) {
   if (customPrompt && customPrompt.trim()) {
     intro += (CUSTOM_PROMPT_NOTE[lang] || CUSTOM_PROMPT_NOTE.en)(customPrompt.trim());
   }
-  if (user && user.systemPrompt) {
-    intro += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(user.systemPrompt);
+  if (readerContext) {
+    intro += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(readerContext);
   }
 
   return { intro, bookPart, discussionPart: discussionPart || labels.noDiscussion, labels, pages: settings.pages };
@@ -285,14 +374,14 @@ function generateQuiz(session, config) {
   const lang = SUPPORTED_LANGUAGES.includes(session.language) ? session.language : 'en';
   const template = QUIZ_TEMPLATES[lang] || QUIZ_TEMPLATES.en;
   const questionCount = Math.min(10, Math.max(1, Number(config.questionCount) || 3));
-  const user = users.find((u) => u.id === session.userId);
+  const readerContext = slotContent(profileFor(session), 'reader_context');
 
   return pagesInRange(session)
     .slice(0, questionCount)
     .map((p, idx) => {
       let question = template(p.pageNumber);
-      if (idx === 0 && user && user.systemPrompt) {
-        question += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(user.systemPrompt);
+      if (idx === 0 && readerContext) {
+        question += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(readerContext);
       }
       return { id: p.pageNumber, pageNumber: p.pageNumber, question };
     });
@@ -340,9 +429,9 @@ function gradeAnswer(session, pageNumber, answer, difficulty, isFirstAttempt) {
 
   let feedback = correct ? FEEDBACK[lang].correct : FEEDBACK[lang].incorrect;
   if (isFirstAttempt) {
-    const user = users.find((u) => u.id === session.userId);
-    if (user && user.systemPrompt) {
-      feedback += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(user.systemPrompt);
+    const readerContext = slotContent(profileFor(session), 'reader_context');
+    if (readerContext) {
+      feedback += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(readerContext);
     }
   }
 
@@ -415,9 +504,17 @@ function computeNotifications(session) {
 }
 
 router.post('/', authMiddleware, (req, res) => {
-  const { documentId, title, startPage, endPage, difficulty, profileMasterId, language } = req.body;
+  const { documentId, title, startPage, endPage, difficulty, aiProfileId, language } = req.body;
   const doc = documents.find((d) => d.id === documentId && d.userId === req.userId);
   if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+  const mine = aiProfiles.filter((p) => p.userId === req.userId);
+  const resolvedProfile =
+    (aiProfileId ? mine.find((p) => p.id === Number(aiProfileId)) : null) ||
+    // No profile chosen → the user's pre-designated default profile.
+    mine.find((p) => p.isDefault) ||
+    mine[0] ||
+    null;
 
   const session = {
     id: sessions.length ? Math.max(...sessions.map((s) => s.id)) + 1 : 1,
@@ -428,9 +525,8 @@ router.post('/', authMiddleware, (req, res) => {
     endPage: Math.max(1, Math.min(endPage, doc.pageCount)),
     currentPage: startPage,
     difficulty: difficulty || 'medium',
-    profileMasterId: profileMasterId || null,
+    aiProfileId: resolvedProfile ? resolvedProfile.id : null,
     language: SUPPORTED_LANGUAGES.includes(language) ? language : 'en',
-    configJson: '{}',
     createdAt: nowIso()
   };
   sessions.push(session);
@@ -470,7 +566,10 @@ router.post('/:id/messages', authMiddleware, (req, res) => {
   const session = sessions.find((s) => s.id === Number(req.params.id) && s.userId === req.userId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  const { message, inputType } = req.body;
+  const { message, inputType, capabilityHint } = req.body;
+  if (capabilityHint && !enabledCapabilitiesFor(session).includes(capabilityHint)) {
+    return res.status(400).json({ error: `The "${capabilityHint}" capability is turned off for this session's AI Profile.` });
+  }
   const isFirstExchange = messages.filter((m) => m.sessionId === session.id).length === 0;
   const userMessage = {
     id: messages.length ? Math.max(...messages.map((m) => m.id)) + 1 : 1,
@@ -500,17 +599,17 @@ router.post('/:id/quiz', authMiddleware, (req, res) => {
   const session = sessions.find((s) => s.id === Number(req.params.id) && s.userId === req.userId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  const { profileMasterId, difficulty, questionCount } = req.body || {};
+  const { aiProfileId, difficulty, questionCount } = req.body || {};
   const resolvedDifficulty = QUIZ_DIFFICULTIES.includes(difficulty) ? difficulty : session.difficulty || 'medium';
-  const resolvedMasterId = profileMasterId || session.profileMasterId || null;
-  const master = profileMasters.find((m) => m.id === resolvedMasterId);
+  const resolvedProfileId = aiProfileId || session.aiProfileId || null;
+  const profile = aiProfiles.find((p) => p.id === resolvedProfileId);
 
   const questions = generateQuiz(session, { questionCount });
   res.json({
     questions,
     config: {
-      profileMasterId: resolvedMasterId,
-      masterName: master ? master.name : null,
+      aiProfileId: resolvedProfileId,
+      profileName: profile ? profile.name : null,
       difficulty: resolvedDifficulty,
       questionCount: questions.length
     }
@@ -521,7 +620,7 @@ router.post('/:id/quiz/answer', authMiddleware, (req, res) => {
   const session = sessions.find((s) => s.id === Number(req.params.id) && s.userId === req.userId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  const { pageNumber, question, answer, difficulty, profileMasterId } = req.body;
+  const { pageNumber, question, answer, difficulty, aiProfileId } = req.body;
   const resolvedDifficulty = QUIZ_DIFFICULTIES.includes(difficulty) ? difficulty : session.difficulty || 'medium';
   const isFirstAttempt = quizAttempts.filter((a) => a.sessionId === session.id).length === 0;
   const result = gradeAnswer(session, pageNumber, answer, resolvedDifficulty, isFirstAttempt);
@@ -533,7 +632,7 @@ router.post('/:id/quiz/answer', authMiddleware, (req, res) => {
     question: question || '',
     answer,
     difficulty: resolvedDifficulty,
-    profileMasterId: profileMasterId || session.profileMasterId || null,
+    aiProfileId: aiProfileId || session.aiProfileId || null,
     correct: result.correct,
     score: result.score,
     feedback: result.feedback,
@@ -551,7 +650,7 @@ router.get('/:id/quiz/attempts', authMiddleware, (req, res) => {
     .filter((a) => a.sessionId === session.id)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     .map((a) => {
-      const master = profileMasters.find((m) => m.id === a.profileMasterId);
+      const profile = aiProfiles.find((p) => p.id === a.aiProfileId);
       return {
         id: a.id,
         pageNumber: a.pageNumber,
@@ -561,7 +660,7 @@ router.get('/:id/quiz/attempts', authMiddleware, (req, res) => {
         score: a.score,
         feedback: a.feedback,
         difficulty: a.difficulty,
-        masterName: master ? master.name : null,
+        profileName: profile ? profile.name : null,
         createdAt: a.createdAt
       };
     });
@@ -645,7 +744,7 @@ router.post('/:id/reports/progress', authMiddleware, async (req, res) => {
   }
 
   const doc = documents.find((d) => d.id === session.documentId);
-  const master = profileMasters.find((m) => m.id === session.profileMasterId);
+  const profile = profileFor(session);
   const progress = computeProgress(session);
 
   const sections = [
@@ -654,7 +753,7 @@ router.post('/:id/reports/progress', authMiddleware, async (req, res) => {
       lines: [
         `Document: ${doc ? doc.title : 'Unknown'}`,
         `Pages: ${session.startPage}-${session.endPage} · Difficulty: ${session.difficulty} · Language: ${LANGUAGE_NAMES[session.language] || session.language}`,
-        `Profile Master: ${master ? master.name : 'None selected'}`
+        `AI profile: ${profile ? profile.name : 'None selected'}`
       ]
     },
     {
@@ -722,6 +821,9 @@ router.post('/:id/reports/quiz', authMiddleware, async (req, res) => {
 router.post('/:id/summary', authMiddleware, async (req, res) => {
   const session = sessions.find((s) => s.id === Number(req.params.id) && s.userId === req.userId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (!enabledCapabilitiesFor(session).includes('summary')) {
+    return res.status(400).json({ error: "The summary capability is turned off for this session's AI Profile." });
+  }
 
   const { lengthPages, prompt, includeCover, deliverAs, email } = req.body || {};
   const resolvedDeliverAs = deliverAs === 'pdf' ? 'pdf' : 'chat';

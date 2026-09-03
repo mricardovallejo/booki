@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ROUTES } from '../config/routes';
 import ChatPanel from './ChatPanel';
 import QuizPanel from './QuizPanel';
 import ProgressPanel from './ProgressPanel';
 import NotificationsBell from './NotificationsBell';
 import ContextInfoButton from './ContextInfoButton';
+import { useSessionContext } from '../hooks/useSessionContext';
 
 interface Props {
   sessionId: number;
@@ -18,6 +21,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function SessionSidebar({ sessionId }: Props) {
+  const context = useSessionContext(sessionId);
   const [tab, setTab] = useState<Tab>('chat');
   const [refreshKey, setRefreshKey] = useState(0);
   // On mobile the panel is a drawer that floats OVER the PDF instead of
@@ -37,9 +41,22 @@ export default function SessionSidebar({ sessionId }: Props) {
   const panelBody = (
     <>
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-        <div>
-          <h3 className="font-logo text-lg text-white">BooKI</h3>
-          <p className="text-xs text-booki-muted">Reading assistant</p>
+        <div className="min-w-0">
+          <h3 className="font-logo text-lg leading-tight text-white">BooKI</h3>
+          {context?.aiProfileName && context.aiProfileId ? (
+            <Link
+              to={ROUTES.aiProfile(context.aiProfileId)}
+              title="This session's AI Profile — click to edit"
+              className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full bg-booki-accent/10 py-0.5 pl-1.5 pr-2 text-[11px] font-semibold text-booki-accent ring-1 ring-inset ring-booki-accent/25 transition hover:bg-booki-accent/20 hover:ring-booki-accent/40"
+            >
+              <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2.5l2.35 5.68 6.15.53-4.68 4.03 1.42 6.01L12 15.9 6.76 18.76l1.42-6.01L3.5 8.71l6.15-.53L12 2.5z" />
+              </svg>
+              <span className="truncate">{context.aiProfileName}</span>
+            </Link>
+          ) : (
+            <p className="mt-0.5 truncate text-xs text-booki-muted">Reading assistant</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <ContextInfoButton sessionId={sessionId} />

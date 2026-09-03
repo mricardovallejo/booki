@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuiz } from '../hooks/useQuiz';
 import { useSession } from '../hooks/useSession';
-import { useProfileMasters } from '../hooks/useProfileMasters';
+import { useAiProfileSlots } from '../hooks/useAiProfileSlots';
 import { useSessionReports } from '../hooks/useSessionReports';
+import { ROUTES } from '../config/routes';
 import Button from './ui/Button';
 import Card from './ui/Card';
-import { Field, Select, TextArea, Input } from './ui/FormField';
+import { Field, TextArea, Input } from './ui/FormField';
 import type { Difficulty } from '../types';
 
 interface Props {
@@ -21,7 +23,7 @@ const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
 
 export default function QuizPanel({ sessionId, onActivity }: Props) {
   const { session } = useSession(sessionId);
-  const { masters, error: mastersError } = useProfileMasters();
+  const profileSlots = useAiProfileSlots(session?.aiProfileId ?? undefined);
   const {
     config,
     setConfig,
@@ -67,29 +69,9 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
           <div>
             <h4 className="text-sm font-bold text-white">Quiz setup</h4>
             <p className="mt-1 text-xs text-booki-muted">
-              Choose who quizzes you, how hard it is, and how many questions.
+              Pick how hard it is and how many questions. BooKI uses this session's AI Profile.
             </p>
           </div>
-
-          <Field label="Profile Master">
-            <Select
-              value={config.profileMasterId ?? ''}
-              onChange={(e) =>
-                setConfig((prev) => ({
-                  ...prev,
-                  profileMasterId: e.target.value ? Number(e.target.value) : null
-                }))
-              }
-            >
-              <option value="">Default</option>
-              {masters.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </Select>
-            {mastersError && <p className="mt-1 text-xs text-rose-400">{mastersError}</p>}
-          </Field>
 
           <Field label="Difficulty">
             <div className="grid grid-cols-3 gap-2">
@@ -108,6 +90,23 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                 </button>
               ))}
             </div>
+            {(() => {
+              const rubric = profileSlots.find((s) => s.key === `rubric_${config.difficulty}`)?.content;
+              if (!rubric) return null;
+              return (
+                <div className="mt-2 rounded-lg bg-booki-bg/60 p-2.5 text-[11px] leading-relaxed text-white/60">
+                  <p>{rubric}</p>
+                  {session?.aiProfileId && (
+                    <Link
+                      to={`${ROUTES.aiProfile(session.aiProfileId)}?slot=rubric_${config.difficulty}`}
+                      className="mt-1 inline-block font-medium text-booki-accent hover:underline"
+                    >
+                      Fine-tune this level in the AI Profile →
+                    </Link>
+                  )}
+                </div>
+              );
+            })()}
           </Field>
 
           <Field label={`Number of questions: ${config.questionCount}`}>
@@ -154,9 +153,9 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
               <p className="text-xs text-booki-muted">
                 {answeredCount}/{questions.length} answered · {correctCount} correct
               </p>
-              {activeConfig?.masterName && (
+              {activeConfig?.profileName && (
                 <p className="text-[11px] text-white/40">
-                  {activeConfig.masterName} · {activeConfig.difficulty}
+                  {activeConfig.profileName} · {activeConfig.difficulty}
                 </p>
               )}
             </div>

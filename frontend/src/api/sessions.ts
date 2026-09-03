@@ -1,7 +1,6 @@
 import api from './client';
 import { ENDPOINTS } from '../config/endpoints';
 import type {
-  AiProvider,
   CapabilityHint,
   Difficulty,
   GenerateSummaryRequest,
@@ -22,10 +21,9 @@ export interface CreateSessionRequest {
   title: string;
   startPage: number;
   endPage: number;
-  profileMasterId?: number;
+  aiProfileId?: number;
   difficulty: Difficulty;
   language: SessionLanguage;
-  aiProvider?: AiProvider;
 }
 
 export const createSession = (payload: CreateSessionRequest) =>
@@ -50,7 +48,7 @@ export const sendMessage = (
     .then((r) => r.data);
 
 export interface GenerateQuizRequest {
-  profileMasterId?: number | null;
+  aiProfileId?: number | null;
   difficulty: Difficulty;
   questionCount: number;
 }
@@ -63,7 +61,7 @@ export interface SubmitQuizAnswerRequest {
   question: string;
   answer: string;
   difficulty: Difficulty;
-  profileMasterId?: number | null;
+  aiProfileId?: number | null;
 }
 
 export const submitQuizAnswer = (id: number, payload: SubmitQuizAnswerRequest) =>

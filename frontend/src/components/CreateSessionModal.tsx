@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createSession } from '../api/sessions';
-import { useProfileMasters } from '../hooks/useProfileMasters';
+import { useAiProfiles } from '../hooks/useAiProfiles';
 import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage } from '../lib/preferences';
-import { AI_PROVIDER_LABELS } from '../lib/aiProviders';
 import { ROUTES } from '../config/routes';
 import { getErrorMessage } from '../lib/errors';
 import Button from './ui/Button';
 import { Field, Select } from './ui/FormField';
-import type { AiProvider, Difficulty, Document, SessionLanguage } from '../types';
+import type { Difficulty, Document, ReaderLevel, SessionLanguage } from '../types';
 
 interface Props {
   document: Document | null;
@@ -21,14 +20,20 @@ const DIFFICULTIES: { value: Difficulty; label: string }[] = [
   { value: 'hard', label: 'Advanced' }
 ];
 
+const LEVEL_TO_DIFFICULTY: Record<ReaderLevel, Difficulty> = {
+  beginner: 'easy',
+  intermediate: 'medium',
+  advanced: 'hard'
+};
+
 export default function CreateSessionModal({ document, onClose }: Props) {
   const navigate = useNavigate();
-  const { masters, error: mastersError } = useProfileMasters();
+  const { profiles, error: profilesError } = useAiProfiles();
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState(1);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
-  const [profileMasterId, setProfileMasterId] = useState<number | undefined>(undefined);
-  const [aiProvider, setAiProvider] = useState<AiProvider | undefined>(undefined);
+  const [difficultyTouched, setDifficultyTouched] = useState(false);
+  const [aiProfileId, setAiProfileId] = useState<number | undefined>(undefined);
   const [language, setLanguage] = useState<SessionLanguage>(getDefaultLanguage());
   const [rememberLanguage, setRememberLanguage] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -40,8 +45,25 @@ export default function CreateSessionModal({ document, onClose }: Props) {
       setEndPage(document.pageCount);
       setLanguage(getDefaultLanguage());
       setRememberLanguage(false);
+      setDifficultyTouched(false);
     }
   }, [document]);
+
+  // Preselect the pre-designated factory profile once the list loads.
+  useEffect(() => {
+    if (aiProfileId === undefined && profiles.length > 0) {
+      setAiProfileId((profiles.find((p) => p.isDefault) ?? profiles[0]).id);
+    }
+  }, [profiles, aiProfileId]);
+
+  // Suggest a difficulty from the chosen profile's reader level, unless the
+  // reader has already picked one by hand.
+  const selectedProfile = profiles.find((p) => p.id === aiProfileId);
+  useEffect(() => {
+    if (!difficultyTouched && selectedProfile?.readerLevel) {
+      setDifficulty(LEVEL_TO_DIFFICULTY[selectedProfile.readerLevel]);
+    }
+  }, [selectedProfile, difficultyTouched]);
 
   if (!document) return null;
 
@@ -59,9 +81,8 @@ export default function CreateSessionModal({ document, onClose }: Props) {
         startPage,
         endPage,
         difficulty,
-        profileMasterId,
-        language,
-        aiProvider
+        aiProfileId,
+        language
       });
       navigate(ROUTES.session(session.id));
     } catch (err) {
@@ -107,7 +128,10 @@ export default function CreateSessionModal({ document, onClose }: Props) {
                 <button
                   key={d.value}
                   type="button"
-                  onClick={() => setDifficulty(d.value)}
+                  onClick={() => {
+                    setDifficulty(d.value);
+                    setDifficultyTouched(true);
+                  }}
                   className={`rounded-lg py-2 text-xs font-bold transition ${
                     difficulty === d.value
                       ? 'bg-booki-accent text-white'
@@ -120,19 +144,19 @@ export default function CreateSessionModal({ document, onClose }: Props) {
             </div>
           </Field>
 
-          <Field label="Profile Master">
+          <Field label="AI Profile">
             <Select
-              value={profileMasterId ?? ''}
-              onChange={(e) => setProfileMasterId(e.target.value ? Number(e.target.value) : undefined)}
+              value={aiProfileId ?? ''}
+              onChange={(e) => setAiProfileId(e.target.value ? Number(e.target.value) : undefined)}
             >
-              <option value="">Default</option>
-              {masters.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.isDefault ? ' — default' : ''}
                 </option>
               ))}
             </Select>
-            {mastersError && <p className="mt-1 text-xs text-rose-400">{mastersError}</p>}
+            {profilesError && <p className="mt-1 text-xs text-rose-400">{profilesError}</p>}
           </Field>
 
           <Field label="BooKI's interaction language">
@@ -152,20 +176,6 @@ export default function CreateSessionModal({ document, onClose }: Props) {
               />
               Set as my default language for new sessions
             </label>
-          </Field>
-
-          <Field label="AI model">
-            <Select
-              value={aiProvider ?? ''}
-              onChange={(e) => setAiProvider(e.target.value ? (e.target.value as AiProvider) : undefined)}
-            >
-              <option value="">Default</option>
-              {(Object.keys(AI_PROVIDER_LABELS) as AiProvider[]).map((p) => (
-                <option key={p} value={p}>
-                  {AI_PROVIDER_LABELS[p]}
-                </option>
-              ))}
-            </Select>
           </Field>
 
           {error && <p className="text-sm text-rose-400">{error}</p>}

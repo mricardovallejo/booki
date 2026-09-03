@@ -7,7 +7,7 @@ const { errorHandler } = require('./middleware');
 const { register, login } = require('./auth');
 const documentsRoutes = require('./routes/documents');
 const sessionsRoutes = require('./routes/sessions');
-const profileMastersRoutes = require('./routes/profileMasters');
+const aiProfilesRoutes = require('./routes/aiProfiles');
 const collectionsRoutes = require('./routes/collections');
 const usersRoutes = require('./routes/users');
 const reportsRoutes = require('./routes/reports');
@@ -46,7 +46,7 @@ app.post('/api/auth/login', (req, res, next) => {
 
 app.use('/api/documents', documentsRoutes);
 app.use('/api/sessions', sessionsRoutes);
-app.use('/api/profile-masters', profileMastersRoutes);
+app.use('/api/ai-profiles', aiProfilesRoutes);
 app.use('/api/collections', collectionsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/reports', reportsRoutes);

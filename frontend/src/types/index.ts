@@ -8,15 +8,76 @@ export interface User {
   id: number;
   email: string;
   name: string;
-  bio?: string;
-  systemPrompt?: string;
   createdAt: string;
 }
 
+/** Which family a prompt slot belongs to, used to group them in the editor. */
+export type AiProfileSlotGroup = 'persona' | 'reader' | 'difficulty' | 'functions' | 'routing';
+
+/**
+ * One prompt inside an AI Profile. `content` is the editable body; the locked
+ * frame (`lockedPreamble` / `lockedPostamble`) is shown for context but cannot
+ * be changed because the app depends on its shape. `factoryContent` is the
+ * shipped baseline used for the "modified" badge and "revert to factory".
+ */
+export interface AiProfileSlot {
+  key: string;
+  label: string;
+  group: AiProfileSlotGroup;
+  lockedPreamble: string | null;
+  lockedPostamble: string | null;
+  content: string;
+  factoryContent: string;
+  modified: boolean;
+}
+
+/** Structured self-assessed level, used to suggest a session difficulty. */
+export type ReaderLevel = 'beginner' | 'intermediate' | 'advanced';
+
+export interface AiProfileSummary {
+  id: number;
+  name: string;
+  /** The shipped template this profile is a copy of — the target of "restore to original". */
+  basedOnId: number | null;
+  isDefault: boolean;
+  readerLevel: ReaderLevel | null;
+  /** Which conversational capabilities this profile allows (subset of CapabilityHint). */
+  enabledCapabilities: CapabilityHint[];
+  updatedAt: string;
+  slotCount: number;
+  modifiedCount: number;
+}
+
+export interface AiProfile extends AiProfileSummary {
+  slots: AiProfileSlot[];
+}
+
+export type SessionContextGroup =
+  | 'core'
+  | 'difficulty'
+  | 'persona'
+  | 'reader'
+  | 'functions'
+  | 'routing'
+  | 'session';
+
+/** One part of the instructions BooKI reads before answering, as shown in the context panel. */
+export interface SessionContextLayer {
+  key: string;
+  group: SessionContextGroup;
+  label: string;
+  editable: boolean;
+  source: string;
+  content: string | null;
+}
+
 export interface SessionContext {
-  appPrompt: string;
-  masterPrompt: string | null;
-  userPrompt: string | null;
+  aiProfileId: number | null;
+  aiProfileName: string | null;
+  language: SessionLanguage;
+  difficulty: Difficulty;
+  enabledCapabilities: CapabilityHint[];
+  layers: SessionContextLayer[];
 }
 
 export interface Document {
@@ -34,7 +95,8 @@ export interface Session {
   endPage: number;
   currentPage: number;
   difficulty: Difficulty;
-  profileMasterId?: number | null;
+  aiProfileId?: number | null;
+  enabledCapabilities: CapabilityHint[];
   language: SessionLanguage;
   aiProvider: AiProvider;
   createdAt: string;
@@ -46,13 +108,6 @@ export interface Message {
   inputType: 'TEXT' | 'VOICE';
   message: string;
   createdAt: string;
-}
-
-export interface ProfileMaster {
-  id: number;
-  name: string;
-  description: string;
-  systemPrompt?: string;
 }
 
 export interface Tag {
@@ -68,8 +123,8 @@ export interface QuizQuestion {
 }
 
 export interface QuizConfig {
-  profileMasterId: number | null;
-  masterName: string | null;
+  aiProfileId: number | null;
+  profileName: string | null;
   difficulty: Difficulty;
   questionCount: number;
 }
@@ -94,7 +149,7 @@ export interface QuizAttempt {
   score: number;
   feedback: string;
   difficulty: Difficulty;
-  masterName: string | null;
+  profileName: string | null;
   createdAt: string;
 }
 

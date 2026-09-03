@@ -3,7 +3,7 @@ import Layout from './components/Layout';
 import HomePage from './pages/HomePage';
 import SessionPage from './pages/SessionPage';
 import LoginPage from './pages/LoginPage';
-import MastersPage from './pages/MastersPage';
+import AiProfilesPage from './pages/AiProfilesPage';
 import ProfilePage from './pages/ProfilePage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROUTES } from './config/routes';
@@ -22,7 +22,8 @@ function App() {
       >
         <Route index element={<HomePage />} />
         <Route path="sessions/:sessionId" element={<SessionPage />} />
-        <Route path="masters" element={<MastersPage />} />
+        <Route path="ai-profiles" element={<AiProfilesPage />} />
+        <Route path="ai-profiles/:id" element={<AiProfilesPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>
     </Routes>

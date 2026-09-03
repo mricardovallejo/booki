@@ -1,10 +1,12 @@
 package com.booki.conversation.capability;
 
+import com.booki.domain.Capability;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +19,8 @@ import java.util.Set;
  *
  * <p>Rather than native tool/function calling — which would mean four different
  * provider wire formats — the session's normal {@code converse()} call gets
- * {@link #routerInstructions()} appended to its system prompt. When a capability
+ * {@link #routerInstructions(java.util.Set)} appended to its system prompt (only
+ * the session's enabled capabilities are listed). When a capability
  * fits, the model replies with <em>only</em> {@code {"capability":"<name>"}};
  * {@link #parseDirective(String)} recognises that (strict: the whole trimmed
  * reply must be that JSON) and nothing else. No keyword matching.
@@ -56,9 +59,20 @@ public class CapabilityRegistry {
         return MAX_DIRECTIVE_LENGTH;
     }
 
-    /** System-prompt section that lets the model opt into a capability. Empty when none are registered. */
+    /** Router section listing every registered capability. */
     public String routerInstructions() {
-        if (byName.isEmpty()) {
+        return routerInstructions(EnumSet.allOf(Capability.class));
+    }
+
+    /**
+     * System-prompt section that lets the model opt into a capability, limited to
+     * the session's {@code enabled} set. Empty when none are enabled or registered.
+     */
+    public String routerInstructions(Set<Capability> enabled) {
+        List<ConversationCapability> active = byName.values().stream()
+                .filter(c -> containsWire(enabled, c.name()))
+                .toList();
+        if (active.isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder("\n\n---\n")
@@ -66,9 +80,17 @@ public class CapabilityRegistry {
                 .append("better served by one of them, reply with ONLY this JSON and nothing else: ")
                 .append("{\"capability\":\"<name>\"}\n")
                 .append("Available capabilities:\n");
-        byName.values().forEach(c -> sb.append("- ").append(c.modelDescription()).append('\n'));
+        active.forEach(c -> sb.append("- ").append(c.modelDescription()).append('\n'));
         sb.append("If none clearly applies, just answer the reader normally in prose.");
         return sb.toString();
+    }
+
+    private static boolean containsWire(Set<Capability> caps, String wire) {
+        try {
+            return caps.contains(Capability.ofWire(wire));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /**

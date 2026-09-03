@@ -7,6 +7,8 @@ import com.booki.domain.DocumentPage;
 import com.booki.domain.AiProfile;
 import com.booki.domain.Message;
 import com.booki.domain.QuizAttempt;
+import com.booki.domain.SlotKey;
+import com.booki.prompt.PromptAssembler;
 import com.booki.domain.SentReport;
 import com.booki.domain.Session;
 import com.booki.dto.GenerateSummaryRequest;
@@ -46,7 +48,7 @@ public class ReportServiceImpl implements ReportService {
     private final SessionProgressCalculator progressCalculator;
     private final PdfReportBuilder pdfReportBuilder;
     private final AiProviderRegistry aiProviderRegistry;
-    private final SessionContextBuilder sessionContextBuilder;
+    private final PromptAssembler promptAssembler;
     private final StorageAdapter storage;
 
     private static final Map<String, String> LANGUAGE_NAMES = Map.of("en", "English", "es", "Spanish", "fr", "French");
@@ -180,7 +182,7 @@ public class ReportServiceImpl implements ReportService {
         }
 
         String heading = SUMMARY_HEADING.getOrDefault(
-                sessionContextBuilder.resolveLanguage(session.getLanguage()), SUMMARY_HEADING.get("en"));
+                promptAssembler.resolveLanguage(session.getLanguage()), SUMMARY_HEADING.get("en"));
         List<PdfReportBuilder.Section> sections = List.of(new PdfReportBuilder.Section(heading, List.of(summaryText)));
 
         byte[] pdf = pdfReportBuilder.build("Summary — " + sessionTitle(session), null, sections, cover);
@@ -198,14 +200,14 @@ public class ReportServiceImpl implements ReportService {
 
     /**
      * Real AI call grounded in the book pages (scaled by lengthPages) and the
-     * discussion so far, on top of the same three-layer prompt chat/quiz use.
+     * discussion so far, on top of the session's layered prompt with the
+     * {@code fn_summary} SlotPrompt.
      */
     @Override
     public String generateSummaryText(Session session, Integer lengthPages, String customPrompt) {
         int pages = Math.min(10, Math.max(1, lengthPages != null ? lengthPages : 2));
         int charsPerPage = Math.round(80 + pages * 90);
         int messageCount = Math.min(40, Math.max(2, pages * 4));
-        String languageName = sessionContextBuilder.languageName(session.getLanguage());
 
         List<DocumentPage> bookPages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
                 session.getDocument().getId(), session.getStartPage(), session.getEndPage());
@@ -230,11 +232,11 @@ public class ReportServiceImpl implements ReportService {
                         .orElse("");
 
         String contextText = "BOOK EXCERPT:\n" + bookExcerpt + "\n\nDISCUSSION SO FAR:\n" + discussion;
-        String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, contextText);
+        String systemPrompt = promptAssembler.forFunction(
+                session, SlotKey.FN_SUMMARY, session.getDifficulty(), contextText);
 
-        StringBuilder instruction = new StringBuilder(
-                "Write a reading summary in " + languageName + ", about " + pages + " page(s) long (roughly "
-                        + (pages * 250) + " words), weaving together the book excerpt and our discussion above.");
+        StringBuilder instruction = new StringBuilder("Write the summary now — about " + pages
+                + " page(s) long (roughly " + (pages * 250) + " words), from the excerpt and discussion above.");
         if (customPrompt != null && !customPrompt.isBlank()) {
             instruction.append(" Follow this specific request: \"").append(customPrompt.trim()).append("\".");
         }

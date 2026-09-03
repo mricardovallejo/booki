@@ -12,7 +12,8 @@ import com.booki.domain.Session;
 import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
-import com.booki.service.impl.SessionContextBuilder;
+import com.booki.domain.Capability;
+import com.booki.prompt.PromptAssembler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.EnumSet;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,7 +47,7 @@ class ConversationEngineStreamingTest {
     @Mock private MessageRepository messageRepository;
     @Mock private DocumentPageRepository documentPageRepository;
     @Mock private AiProviderRegistry aiProviderRegistry;
-    @Mock private SessionContextBuilder sessionContextBuilder;
+    @Mock private PromptAssembler promptAssembler;
     @Mock private CapabilityRegistry capabilityRegistry;
     @Mock private Session session;
     @Mock private Document document;
@@ -55,7 +57,7 @@ class ConversationEngineStreamingTest {
     @BeforeEach
     void setUp() {
         engine = new ConversationEngine(sessionRepository, messageRepository, documentPageRepository,
-                aiProviderRegistry, sessionContextBuilder, capabilityRegistry, 20, 24000);
+                aiProviderRegistry, promptAssembler, capabilityRegistry, 20, 24000);
 
         when(sessionRepository.findByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(Optional.of(session));
         lenient().when(session.getId()).thenReturn(SESSION_ID);
@@ -69,8 +71,9 @@ class ConversationEngineStreamingTest {
         lenient().when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
         lenient().when(documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(any(), any(), any()))
                 .thenReturn(List.of());
-        lenient().when(sessionContextBuilder.buildSystemPrompt(any(), anyString())).thenReturn("system-prompt");
-        lenient().when(capabilityRegistry.routerInstructions()).thenReturn("");
+        lenient().when(promptAssembler.forChat(any(), anyString())).thenReturn("system-prompt");
+        lenient().when(promptAssembler.enabledCapabilities(any())).thenReturn(EnumSet.allOf(Capability.class));
+        lenient().when(capabilityRegistry.routerInstructions(any())).thenReturn("");
         lenient().when(capabilityRegistry.maxDirectiveLength()).thenReturn(160);
     }
 

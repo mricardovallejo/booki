@@ -13,7 +13,8 @@ import com.booki.domain.Session;
 import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
-import com.booki.service.impl.SessionContextBuilder;
+import com.booki.domain.Capability;
+import com.booki.prompt.PromptAssembler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
@@ -24,6 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The single orchestrator for every conversational turn in BooKI, whatever its
@@ -34,15 +36,15 @@ import java.util.Optional;
  *   <li>resolve and ownership-check the {@link Session};</li>
  *   <li>build the recent conversation window (most recent N, chronological);</li>
  *   <li>persist the user turn;</li>
- *   <li>assemble the system prompt via {@link SessionContextBuilder} plus the
- *       session's page-range text (size-capped);</li>
+ *   <li>assemble the system prompt via {@link PromptAssembler} plus the
+ *       session's page-range text (size-capped), and the capability router
+ *       filtered to the profile's enabled set;</li>
  *   <li>call the session's {@link AiProvider};</li>
  *   <li>persist BooKI's reply, or raise a controlled failure.</li>
  * </ol>
  *
  * <p>It knows nothing about REST/SSE/WebSocket: callers pass a
  * {@link ConversationRequest} and receive a {@link ConversationResult}.
- * Conversational capabilities (quiz, summary, explain) plug in here in Phase 2.
  */
 @Slf4j
 @Service
@@ -55,7 +57,7 @@ public class ConversationEngine {
     private final MessageRepository messageRepository;
     private final DocumentPageRepository documentPageRepository;
     private final AiProviderRegistry aiProviderRegistry;
-    private final SessionContextBuilder sessionContextBuilder;
+    private final PromptAssembler promptAssembler;
     private final CapabilityRegistry capabilityRegistry;
     private final int historyWindow;
     private final int maxContextChars;
@@ -64,7 +66,7 @@ public class ConversationEngine {
                               MessageRepository messageRepository,
                               DocumentPageRepository documentPageRepository,
                               AiProviderRegistry aiProviderRegistry,
-                              SessionContextBuilder sessionContextBuilder,
+                              PromptAssembler promptAssembler,
                               CapabilityRegistry capabilityRegistry,
                               @Value("${booki.conversation.history-window:20}") int historyWindow,
                               @Value("${booki.conversation.max-context-chars:24000}") int maxContextChars) {
@@ -72,7 +74,7 @@ public class ConversationEngine {
         this.messageRepository = messageRepository;
         this.documentPageRepository = documentPageRepository;
         this.aiProviderRegistry = aiProviderRegistry;
-        this.sessionContextBuilder = sessionContextBuilder;
+        this.promptAssembler = promptAssembler;
         this.capabilityRegistry = capabilityRegistry;
         this.historyWindow = Math.max(1, historyWindow);
         this.maxContextChars = Math.max(1000, maxContextChars);
@@ -127,7 +129,7 @@ public class ConversationEngine {
         String pageContext = buildContextText(session);
         CapabilityInvocation invocation = new CapabilityInvocation(session, request.text(), history, pageContext);
 
-        Optional<ConversationCapability> hinted = hintedCapability(request);
+        Optional<ConversationCapability> hinted = hintedCapability(request, session);
         if (hinted.isPresent()) {
             String answer;
             try {
@@ -142,8 +144,8 @@ public class ConversationEngine {
             return;
         }
 
-        String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, pageContext)
-                + capabilityRegistry.routerInstructions();
+        String systemPrompt = promptAssembler.forChat(session, pageContext)
+                + capabilityRegistry.routerInstructions(promptAssembler.enabledCapabilities(session));
 
         aiProviderRegistry.converseStreaming(session.getAiProvider(), systemPrompt, history, request.text(),
                 new DirectiveGatingStream(out, invocation, userMessage, session));
@@ -189,12 +191,14 @@ public class ConversationEngine {
 
         @Override
         public void onComplete(String fullText) {
-            Optional<String> routed = gating ? capabilityRegistry.parseDirective(fullText) : Optional.empty();
+            Optional<ConversationCapability> routed = gating
+                    ? routedCapability(fullText, promptAssembler.enabledCapabilities(session))
+                    : Optional.empty();
             if (routed.isPresent()) {
                 // A directive is short and starts with '{', so it was never flushed — nothing bogus was streamed.
                 String answer;
                 try {
-                    answer = capabilityRegistry.find(routed.get()).orElseThrow().execute(invocation);
+                    answer = routed.get().execute(invocation);
                 } catch (AiProviderException e) {
                     out.onError(new ConversationFailedException(UNAVAILABLE, e));
                     return;
@@ -217,13 +221,37 @@ public class ConversationEngine {
         }
     }
 
-    private Optional<ConversationCapability> hintedCapability(ConversationRequest request) {
-        if (request.capabilityHint() == null || request.capabilityHint().isBlank()) {
+    private Optional<ConversationCapability> hintedCapability(ConversationRequest request, Session session) {
+        String hint = request.capabilityHint();
+        if (hint == null || hint.isBlank()) {
             return Optional.empty();
         }
-        return Optional.of(capabilityRegistry.find(request.capabilityHint())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown capability: " + request.capabilityHint())));
+        ConversationCapability capability = capabilityRegistry.find(hint)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown capability: " + hint));
+        if (!isEnabled(session, hint)) {
+            throw new IllegalArgumentException(
+                    "The \"" + hint + "\" capability is turned off for this session's AI Profile.");
+        }
+        return Optional.of(capability);
+    }
+
+    /** The capability a model reply routes to, iff it's a bare directive for an enabled, known capability. */
+    private Optional<ConversationCapability> routedCapability(String reply, Set<Capability> enabled) {
+        return capabilityRegistry.parseDirective(reply)
+                .filter(name -> containsWire(enabled, name))
+                .flatMap(capabilityRegistry::find);
+    }
+
+    private boolean isEnabled(Session session, String wire) {
+        return containsWire(promptAssembler.enabledCapabilities(session), wire);
+    }
+
+    private static boolean containsWire(Set<Capability> enabled, String wire) {
+        try {
+            return enabled.contains(Capability.ofWire(wire));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /**
@@ -243,13 +271,14 @@ public class ConversationEngine {
         CapabilityInvocation invocation =
                 new CapabilityInvocation(session, request.text(), history, pageContext);
 
-        Optional<ConversationCapability> hinted = hintedCapability(request);
+        Optional<ConversationCapability> hinted = hintedCapability(request, session);
         if (hinted.isPresent()) {
             return hinted.get().execute(invocation);
         }
 
-        String systemPrompt = sessionContextBuilder.buildSystemPrompt(session, pageContext)
-                + capabilityRegistry.routerInstructions();
+        Set<Capability> enabled = promptAssembler.enabledCapabilities(session);
+        String systemPrompt = promptAssembler.forChat(session, pageContext)
+                + capabilityRegistry.routerInstructions(enabled);
         String providerName = aiProviderRegistry.resolveName(session.getAiProvider());
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
         long startedAt = System.currentTimeMillis();
@@ -264,8 +293,7 @@ public class ConversationEngine {
         log.info("AI call completed provider={} model={} durationMs={}",
                 providerName, provider.model(), System.currentTimeMillis() - startedAt);
 
-        return capabilityRegistry.parseDirective(reply)
-                .flatMap(capabilityRegistry::find)
+        return routedCapability(reply, enabled)
                 .map(capability -> capability.execute(invocation))
                 .orElse(reply);
     }

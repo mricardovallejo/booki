@@ -6,6 +6,8 @@ import com.booki.domain.AiProfile;
 import com.booki.domain.DocumentPage;
 import com.booki.domain.QuizAttempt;
 import com.booki.domain.Session;
+import com.booki.domain.SlotKey;
+import com.booki.prompt.PromptAssembler;
 import com.booki.dto.GenerateQuizRequest;
 import com.booki.dto.QuizAnswerResponse;
 import com.booki.dto.QuizAttemptResponse;
@@ -31,9 +33,10 @@ import java.util.regex.Pattern;
 /**
  * Question generation and grading both call the session's chosen AI
  * provider ({@link AiProviderRegistry}), grounded in that page's reading
- * text plus the same prompt {@link SessionContextBuilder} builds for chat.
- * Reports (PDF progress/quiz correction) stay template-based; only this
- * in-session flow is AI-driven.
+ * text plus the layered prompt {@link PromptAssembler} builds, with the
+ * quiz-question / answer-grading SlotPrompts layered in. Reports (PDF
+ * progress/quiz correction) stay template-based; only this in-session flow
+ * is AI-driven.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,7 +47,7 @@ public class QuizServiceImpl implements QuizService {
     private final AiProfileRepository aiProfileRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final AiProviderRegistry aiProviderRegistry;
-    private final SessionContextBuilder sessionContextBuilder;
+    private final PromptAssembler promptAssembler;
 
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
 
@@ -55,7 +58,6 @@ public class QuizServiceImpl implements QuizService {
     @Override
     public QuizGenerateResponse generateQuiz(Long userId, Long sessionId, GenerateQuizRequest request) {
         Session session = findOwned(userId, sessionId);
-        String languageName = sessionContextBuilder.languageName(session.getLanguage());
 
         Long resolvedProfileId = request.getAiProfileId() != null
                 ? request.getAiProfileId()
@@ -74,7 +76,7 @@ public class QuizServiceImpl implements QuizService {
         List<QuizQuestionResponse> questions = pages.stream()
                 .limit(questionCount)
                 .map(p -> new QuizQuestionResponse(p.getPageNumber(), p.getPageNumber(),
-                        questionForPage(session, p, resolvedDifficulty, languageName, provider)))
+                        questionForPage(session, p, resolvedDifficulty, provider)))
                 .toList();
 
         QuizConfigResponse config = new QuizConfigResponse(
@@ -84,7 +86,6 @@ public class QuizServiceImpl implements QuizService {
 
     @Override
     public String generateComprehensionQuestion(Session session) {
-        String languageName = sessionContextBuilder.languageName(session.getLanguage());
         String difficulty = resolveDifficulty(session.getDifficulty());
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
 
@@ -94,7 +95,7 @@ public class QuizServiceImpl implements QuizService {
                 .orElseThrow(() -> new IllegalStateException(
                         "This session has no extracted pages to build a question from."));
 
-        return questionForPage(session, page, difficulty, languageName, provider);
+        return questionForPage(session, page, difficulty, provider);
     }
 
     private java.util.Optional<DocumentPage> firstPageInRange(Session session, int start, int end) {
@@ -102,20 +103,15 @@ public class QuizServiceImpl implements QuizService {
                 session.getDocument().getId(), start, end).stream().findFirst();
     }
 
-    private String questionForPage(Session session, DocumentPage page, String difficulty,
-                                   String languageName, AiProvider provider) {
-        String systemPrompt = sessionContextBuilder.buildSystemPrompt(
-                session, "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
-        String instruction = "Write exactly one reading-comprehension question about the page above, "
-                + "in " + languageName + ", calibrated to \"" + difficulty + "\" difficulty. "
-                + "Reply with only the question itself — no preamble, no quotes, no numbering.";
-        return provider.converse(systemPrompt, List.of(), instruction).strip();
+    private String questionForPage(Session session, DocumentPage page, String difficulty, AiProvider provider) {
+        String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_QUIZ_QUESTION, difficulty,
+                "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
+        return provider.converse(systemPrompt, List.of(), "Write the question about the page above now.").strip();
     }
 
     @Override
     public QuizAnswerResponse submitAnswer(Long userId, Long sessionId, SubmitQuizAnswerRequest request) {
         Session session = findOwned(userId, sessionId);
-        String languageName = sessionContextBuilder.languageName(session.getLanguage());
         String difficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
         String answer = request.getAnswer() == null ? "" : request.getAnswer();
@@ -136,14 +132,10 @@ public class QuizServiceImpl implements QuizService {
             feedback = "Page not found in this session.";
         } else {
             AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
-            String systemPrompt = sessionContextBuilder.buildSystemPrompt(
-                    session, "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
+            String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_ANSWER_GRADING, difficulty,
+                    "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
             String instruction = "Question: " + (request.getQuestion() == null ? "" : request.getQuestion()) + "\n"
-                    + "Reader's answer: " + (answer.isBlank() ? "(no answer given)" : answer) + "\n\n"
-                    + "Judge this answer against the reading above, calibrated to \"" + difficulty + "\" difficulty "
-                    + "(lenient on easy, strict on hard). Reply in " + languageName + " for the feedback sentence. "
-                    + "Reply in EXACTLY this three-line format and nothing else:\n"
-                    + "CORRECT: yes or no\nSCORE: a number from 0.0 to 1.0\nFEEDBACK: one short encouraging sentence";
+                    + "Reader's answer: " + (answer.isBlank() ? "(no answer given)" : answer) + "\n\nGrade it now.";
 
             String response = provider.converse(systemPrompt, List.of(), instruction);
             GradeResult grade = parseGrade(response);

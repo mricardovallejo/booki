@@ -5,6 +5,7 @@ import com.booki.conversation.ConversationEngine;
 import com.booki.conversation.ConversationRequest;
 import com.booki.conversation.ConversationResult;
 import com.booki.domain.AiProfile;
+import com.booki.domain.Capability;
 import com.booki.domain.Document;
 import com.booki.domain.Message;
 import com.booki.domain.Session;
@@ -15,6 +16,7 @@ import com.booki.dto.SessionNotificationResponse;
 import com.booki.dto.SessionProgressResponse;
 import com.booki.dto.SessionRequest;
 import com.booki.dto.SessionResponse;
+import com.booki.prompt.PromptAssembler;
 import com.booki.repository.AiProfileRepository;
 import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
@@ -37,7 +39,7 @@ public class SessionServiceImpl implements SessionService {
     private final DocumentRepository documentRepository;
     private final AiProfileRepository aiProfileRepository;
     private final AiProviderRegistry aiProviderRegistry;
-    private final SessionContextBuilder sessionContextBuilder;
+    private final PromptAssembler promptAssembler;
     private final SessionProgressCalculator progressCalculator;
     private final ConversationEngine conversationEngine;
 
@@ -88,7 +90,7 @@ public class SessionServiceImpl implements SessionService {
         session.setEndPage(request.getEndPage());
         session.setCurrentPage(request.getStartPage());
         session.setDifficulty(resolveDifficulty(request.getDifficulty()));
-        session.setLanguage(sessionContextBuilder.resolveLanguage(request.getLanguage()));
+        session.setLanguage(promptAssembler.resolveLanguage(request.getLanguage()));
         session.setAiProvider(request.getAiProvider());
         session.setAiProfile(resolveAiProfile(userId, request.getAiProfileId()));
         session.setConfigJson("{}");
@@ -117,7 +119,7 @@ public class SessionServiceImpl implements SessionService {
     @Override
     public SessionContextResponse getContext(Long userId, Long sessionId) {
         Session session = findOwned(userId, sessionId);
-        return sessionContextBuilder.buildContext(session);
+        return promptAssembler.describe(session);
     }
 
     @Override
@@ -158,7 +160,7 @@ public class SessionServiceImpl implements SessionService {
     @Override
     public List<SessionNotificationResponse> getNotifications(Long userId, Long sessionId) {
         Session session = findOwned(userId, sessionId);
-        Map<String, String> t = NOTIF_TEXT.get(sessionContextBuilder.resolveLanguage(session.getLanguage()));
+        Map<String, String> t = NOTIF_TEXT.get(promptAssembler.resolveLanguage(session.getLanguage()));
         SessionProgressResponse progress = progressCalculator.compute(session);
 
         List<SessionNotificationResponse> notifications = new java.util.ArrayList<>();
@@ -203,6 +205,8 @@ public class SessionServiceImpl implements SessionService {
         response.setCurrentPage(session.getCurrentPage());
         response.setDifficulty(session.getDifficulty());
         response.setAiProfileId(session.getAiProfile() != null ? session.getAiProfile().getId() : null);
+        response.setEnabledCapabilities(promptAssembler.enabledCapabilities(session).stream()
+                .sorted().map(Capability::wire).toList());
         response.setLanguage(session.getLanguage());
         response.setAiProvider(aiProviderRegistry.resolveName(session.getAiProvider()));
         response.setCreatedAt(session.getCreatedAt());

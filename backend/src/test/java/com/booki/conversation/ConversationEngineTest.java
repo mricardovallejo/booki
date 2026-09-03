@@ -11,7 +11,8 @@ import com.booki.domain.Session;
 import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
-import com.booki.service.impl.SessionContextBuilder;
+import com.booki.domain.Capability;
+import com.booki.prompt.PromptAssembler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.EnumSet;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,7 +48,7 @@ class ConversationEngineTest {
     @Mock private MessageRepository messageRepository;
     @Mock private DocumentPageRepository documentPageRepository;
     @Mock private AiProviderRegistry aiProviderRegistry;
-    @Mock private SessionContextBuilder sessionContextBuilder;
+    @Mock private PromptAssembler promptAssembler;
     @Mock private CapabilityRegistry capabilityRegistry;
     @Mock private AiProvider aiProvider;
     @Mock private Session session;
@@ -60,16 +62,17 @@ class ConversationEngineTest {
     @BeforeEach
     void setUp() {
         engine = new ConversationEngine(sessionRepository, messageRepository, documentPageRepository,
-                aiProviderRegistry, sessionContextBuilder, capabilityRegistry, 20, 24000);
+                aiProviderRegistry, promptAssembler, capabilityRegistry, 20, 24000);
 
         when(sessionRepository.findByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(Optional.of(session));
         lenientSession();
         when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(any(), any(), any()))
                 .thenReturn(List.of());
-        lenient().when(sessionContextBuilder.buildSystemPrompt(any(), anyString())).thenReturn("system-prompt");
+        lenient().when(promptAssembler.forChat(any(), anyString())).thenReturn("system-prompt");
+        lenient().when(promptAssembler.enabledCapabilities(any())).thenReturn(EnumSet.allOf(Capability.class));
         lenient().when(aiProviderRegistry.get(any())).thenReturn(aiProvider);
-        lenient().when(capabilityRegistry.routerInstructions()).thenReturn("");
+        lenient().when(capabilityRegistry.routerInstructions(any())).thenReturn("");
         lenient().when(capabilityRegistry.parseDirective(anyString())).thenReturn(Optional.empty());
     }
 
@@ -158,7 +161,7 @@ class ConversationEngineTest {
 
         assertThat(result.botMessage().getMessage()).isEqualTo("Here is your recap.");
         verify(aiProvider, never()).converse(anyString(), anyList(), anyString());
-        verify(capabilityRegistry, never()).routerInstructions();
+        verify(capabilityRegistry, never()).routerInstructions(any());
     }
 
     @Test

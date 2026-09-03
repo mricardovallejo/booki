@@ -3,6 +3,7 @@ package com.booki.dto;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.List;
 
 @Data
 public class SessionResponse {
@@ -14,6 +15,10 @@ public class SessionResponse {
     private Integer currentPage;
     private String difficulty;
     private Long aiProfileId;
+
+    /** Resolved from the session's AI Profile — drives which quick-action buttons show. */
+    private List<String> enabledCapabilities;
+
     private String language;
 
     /** The resolved provider actually in effect for this session (never null, even if the session didn't pick one explicitly). */

@@ -2,8 +2,8 @@ package com.booki.service.impl;
 
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.domain.AiProfile;
 import com.booki.domain.DocumentPage;
-import com.booki.domain.ProfileMaster;
 import com.booki.domain.QuizAttempt;
 import com.booki.domain.Session;
 import com.booki.dto.GenerateQuizRequest;
@@ -14,8 +14,8 @@ import com.booki.dto.QuizGenerateResponse;
 import com.booki.dto.QuizQuestionResponse;
 import com.booki.dto.QuizReportResponse;
 import com.booki.dto.SubmitQuizAnswerRequest;
+import com.booki.repository.AiProfileRepository;
 import com.booki.repository.DocumentPageRepository;
-import com.booki.repository.ProfileMasterRepository;
 import com.booki.repository.QuizAttemptRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.QuizService;
@@ -31,9 +31,9 @@ import java.util.regex.Pattern;
 /**
  * Question generation and grading both call the session's chosen AI
  * provider ({@link AiProviderRegistry}), grounded in that page's reading
- * text plus the same three-layer prompt (app/master/user) chat uses — see
- * {@link SessionContextBuilder}. Reports (PDF progress/quiz correction)
- * stay template-based; only this in-session flow is AI-driven.
+ * text plus the same prompt {@link SessionContextBuilder} builds for chat.
+ * Reports (PDF progress/quiz correction) stay template-based; only this
+ * in-session flow is AI-driven.
  */
 @Service
 @RequiredArgsConstructor
@@ -41,7 +41,7 @@ public class QuizServiceImpl implements QuizService {
 
     private final SessionRepository sessionRepository;
     private final DocumentPageRepository documentPageRepository;
-    private final ProfileMasterRepository profileMasterRepository;
+    private final AiProfileRepository aiProfileRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final AiProviderRegistry aiProviderRegistry;
     private final SessionContextBuilder sessionContextBuilder;
@@ -57,15 +57,15 @@ public class QuizServiceImpl implements QuizService {
         Session session = findOwned(userId, sessionId);
         String languageName = sessionContextBuilder.languageName(session.getLanguage());
 
-        Long resolvedMasterId = request.getProfileMasterId() != null
-                ? request.getProfileMasterId()
-                : session.getProfileMaster() != null ? session.getProfileMaster().getId() : null;
+        Long resolvedProfileId = request.getAiProfileId() != null
+                ? request.getAiProfileId()
+                : session.getAiProfile() != null ? session.getAiProfile().getId() : null;
         String resolvedDifficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
         int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 10);
 
-        ProfileMaster master = resolvedMasterId != null
-                ? profileMasterRepository.findByIdAndUserId(resolvedMasterId, userId).orElse(null) : null;
+        AiProfile profile = resolvedProfileId != null
+                ? aiProfileRepository.findByIdAndUserId(resolvedProfileId, userId).orElse(null) : null;
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
 
         List<DocumentPage> pages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
@@ -78,7 +78,7 @@ public class QuizServiceImpl implements QuizService {
                 .toList();
 
         QuizConfigResponse config = new QuizConfigResponse(
-                resolvedMasterId, master != null ? master.getName() : null, resolvedDifficulty, questions.size());
+                resolvedProfileId, profile != null ? profile.getName() : null, resolvedDifficulty, questions.size());
         return new QuizGenerateResponse(questions, config);
     }
 
@@ -152,9 +152,9 @@ public class QuizServiceImpl implements QuizService {
             feedback = grade.feedback();
         }
 
-        Long masterId = request.getProfileMasterId() != null
-                ? request.getProfileMasterId()
-                : session.getProfileMaster() != null ? session.getProfileMaster().getId() : null;
+        Long profileId = request.getAiProfileId() != null
+                ? request.getAiProfileId()
+                : session.getAiProfile() != null ? session.getAiProfile().getId() : null;
 
         QuizAttempt attempt = new QuizAttempt();
         attempt.setSession(session);
@@ -162,8 +162,8 @@ public class QuizServiceImpl implements QuizService {
         attempt.setQuestion(request.getQuestion() == null ? "" : request.getQuestion());
         attempt.setAnswer(answer);
         attempt.setDifficulty(difficulty);
-        attempt.setProfileMaster(masterId != null
-                ? profileMasterRepository.findByIdAndUserId(masterId, userId).orElse(null) : null);
+        attempt.setAiProfile(profileId != null
+                ? aiProfileRepository.findByIdAndUserId(profileId, userId).orElse(null) : null);
         attempt.setCorrect(correct);
         attempt.setScore(score);
         attempt.setFeedback(feedback);
@@ -179,7 +179,7 @@ public class QuizServiceImpl implements QuizService {
 
         List<QuizAttemptResponse> responses = attempts.stream().map(a -> new QuizAttemptResponse(
                 a.getId(), a.getPageNumber(), a.getQuestion(), a.getAnswer(), a.getCorrect(), round2(a.getScore()),
-                a.getFeedback(), a.getDifficulty(), a.getProfileMaster() != null ? a.getProfileMaster().getName() : null,
+                a.getFeedback(), a.getDifficulty(), a.getAiProfile() != null ? a.getAiProfile().getName() : null,
                 a.getCreatedAt()
         )).toList();
 

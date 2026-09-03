@@ -13,7 +13,8 @@ export const duplicateAiProfile = (id: number, name?: string) =>
 
 export interface UpdateAiProfileRequest {
   name?: string;
-  readerLevel?: ReaderLevel | null;
+  /** A ReaderLevel, or "" to clear it. Omit to leave unchanged. */
+  readerLevel?: ReaderLevel | '';
   enabledCapabilities?: CapabilityHint[];
   slots?: { key: string; text: string }[];
 }

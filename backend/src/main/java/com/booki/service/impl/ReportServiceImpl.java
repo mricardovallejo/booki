@@ -4,8 +4,8 @@ import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
 import com.booki.domain.Document;
 import com.booki.domain.DocumentPage;
+import com.booki.domain.AiProfile;
 import com.booki.domain.Message;
-import com.booki.domain.ProfileMaster;
 import com.booki.domain.QuizAttempt;
 import com.booki.domain.SentReport;
 import com.booki.domain.Session;
@@ -67,7 +67,7 @@ public class ReportServiceImpl implements ReportService {
         String email = requireValidEmail(request.getEmail());
 
         Document document = documentRepository.findById(session.getDocument().getId()).orElse(null);
-        ProfileMaster master = session.getProfileMaster();
+        AiProfile profile = session.getAiProfile();
         SessionProgressResponse progress = progressCalculator.compute(session);
 
         List<PdfReportBuilder.Section> sections = List.of(
@@ -76,7 +76,7 @@ public class ReportServiceImpl implements ReportService {
                         "Pages: " + session.getStartPage() + "-" + session.getEndPage()
                                 + " · Difficulty: " + session.getDifficulty()
                                 + " · Language: " + LANGUAGE_NAMES.getOrDefault(session.getLanguage(), session.getLanguage()),
-                        "Profile Master: " + (master != null ? master.getName() : "None selected")
+                        "AI profile: " + (profile != null ? profile.getName() : "None selected")
                 )),
                 new PdfReportBuilder.Section("Progress", List.of(
                         "Pages read: " + progress.getPagesRead() + "/" + progress.getTotalPages() + " (" + progress.getPctRead() + "%)",

@@ -179,14 +179,10 @@ function profileResponse(profile, { withSlots } = {}) {
   const base = {
     id: profile.id,
     name: profile.name,
-    source: profile.source,
-    basedOnId: profile.basedOnId,
     isDefault: !!profile.isDefault,
     readerLevel: profile.readerLevel ?? null,
     enabledCapabilities: profile.enabledCapabilities ?? [...CAPABILITIES],
-    updatedAt: profile.updatedAt,
-    slotCount: slots.length,
-    modifiedCount: slots.filter((s) => s.modified).length
+    updatedAt: profile.updatedAt
   };
   return withSlots ? { ...base, slots } : base;
 }

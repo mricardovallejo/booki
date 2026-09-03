@@ -4,9 +4,9 @@ import com.booki.ai.AiProviderRegistry;
 import com.booki.conversation.ConversationEngine;
 import com.booki.conversation.ConversationRequest;
 import com.booki.conversation.ConversationResult;
+import com.booki.domain.AiProfile;
 import com.booki.domain.Document;
 import com.booki.domain.Message;
-import com.booki.domain.ProfileMaster;
 import com.booki.domain.Session;
 import com.booki.dto.MessageRequest;
 import com.booki.dto.MessageResponse;
@@ -15,9 +15,9 @@ import com.booki.dto.SessionNotificationResponse;
 import com.booki.dto.SessionProgressResponse;
 import com.booki.dto.SessionRequest;
 import com.booki.dto.SessionResponse;
+import com.booki.repository.AiProfileRepository;
 import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
-import com.booki.repository.ProfileMasterRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.SessionService;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +35,7 @@ public class SessionServiceImpl implements SessionService {
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
     private final DocumentRepository documentRepository;
-    private final ProfileMasterRepository profileMasterRepository;
+    private final AiProfileRepository aiProfileRepository;
     private final AiProviderRegistry aiProviderRegistry;
     private final SessionContextBuilder sessionContextBuilder;
     private final SessionProgressCalculator progressCalculator;
@@ -90,15 +90,23 @@ public class SessionServiceImpl implements SessionService {
         session.setDifficulty(resolveDifficulty(request.getDifficulty()));
         session.setLanguage(sessionContextBuilder.resolveLanguage(request.getLanguage()));
         session.setAiProvider(request.getAiProvider());
-
-        if (request.getProfileMasterId() != null) {
-            ProfileMaster master = profileMasterRepository.findByIdAndUserId(request.getProfileMasterId(), userId).orElse(null);
-            session.setProfileMaster(master);
-        }
+        session.setAiProfile(resolveAiProfile(userId, request.getAiProfileId()));
         session.setConfigJson("{}");
 
         sessionRepository.save(session);
         return toResponse(session);
+    }
+
+    /** The requested profile if it's the user's, otherwise their default, otherwise their first. */
+    private AiProfile resolveAiProfile(Long userId, Long requestedId) {
+        if (requestedId != null) {
+            AiProfile requested = aiProfileRepository.findByIdAndUserId(requestedId, userId).orElse(null);
+            if (requested != null) {
+                return requested;
+            }
+        }
+        return aiProfileRepository.findFirstByUserIdAndDefaultProfileTrueOrderByIdAsc(userId)
+                .orElseGet(() -> aiProfileRepository.findByUserIdOrderByIdAsc(userId).stream().findFirst().orElse(null));
     }
 
     @Override
@@ -194,7 +202,7 @@ public class SessionServiceImpl implements SessionService {
         response.setEndPage(session.getEndPage());
         response.setCurrentPage(session.getCurrentPage());
         response.setDifficulty(session.getDifficulty());
-        response.setProfileMasterId(session.getProfileMaster() != null ? session.getProfileMaster().getId() : null);
+        response.setAiProfileId(session.getAiProfile() != null ? session.getAiProfile().getId() : null);
         response.setLanguage(session.getLanguage());
         response.setAiProvider(aiProviderRegistry.resolveName(session.getAiProvider()));
         response.setCreatedAt(session.getCreatedAt());

@@ -3,11 +3,11 @@ package com.booki.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
-/** The three layers combined to shape BooKI's answers for a session (see docs/openapi.yaml). */
+/** What shapes BooKI's answers for a session — replaced by the layered form in Stage 3. */
 @Data
 @AllArgsConstructor
 public class SessionContextResponse {
     private String appPrompt;
-    private String masterPrompt;
-    private String userPrompt;
+    private String personaPrompt;
+    private String readerContext;
 }

@@ -411,8 +411,8 @@ paths:
                 name: { type: string }
                 readerLevel:
                   type: string
-                  nullable: true
-                  enum: [beginner, intermediate, advanced]
+                  enum: [beginner, intermediate, advanced, ""]
+                  description: A level, or "" to clear it. Omit the field to leave it unchanged.
                 enabledCapabilities:
                   type: array
                   items: { $ref: "#/components/schemas/CapabilityHint" }
@@ -460,8 +460,8 @@ paths:
       operationId: duplicateAiProfile
       description: >
         Creates a copy owned by the current user, with every SlotPrompt's `text`
-        and `originalText` seeded from the source. `basedOnId` carries over so the
-        copy can still be restored to the same original template.
+        and `originalText` seeded from the source. The copy tracks the same
+        shipped template, so it can still be restored to the original.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
       requestBody:
@@ -514,9 +514,9 @@ paths:
       summary: Restore the whole profile to its original template
       operationId: restoreAiProfile
       description: >
-        Resets every slot's `content`, plus `readerLevel` and
-        `enabledCapabilities`, to the template identified by `basedOnId`. The
-        profile name is kept. `400` if the profile has no `basedOnId`.
+        Resets every SlotPrompt's `text`, plus `readerLevel` and
+        `enabledCapabilities`, to the shipped template this profile is a copy of.
+        The profile name is kept.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
       responses:
@@ -1157,14 +1157,10 @@ components:
 
     AiProfileSummary:
       type: object
-      description: An AI Profile without its prompt slots (list view).
+      description: An AI Profile without its SlotPrompts (list view).
       properties:
         id: { type: integer }
         name: { type: string }
-        basedOnId:
-          type: integer
-          nullable: true
-          description: The shipped template this profile is a copy of — the target of "restore to original".
         isDefault:
           type: boolean
           description: True for the one profile pre-selected when creating a session.
@@ -1176,11 +1172,7 @@ components:
           items: { $ref: "#/components/schemas/CapabilityHint" }
           description: The capabilities this profile allows (subset of the four).
         updatedAt: { type: string, format: date-time }
-        slotCount: { type: integer }
-        modifiedCount:
-          type: integer
-          description: How many slots differ from their original text.
-      required: [id, name, basedOnId, isDefault, readerLevel, enabledCapabilities, updatedAt, slotCount, modifiedCount]
+      required: [id, name, isDefault, readerLevel, enabledCapabilities, updatedAt]
 
     AiProfile:
       allOf:

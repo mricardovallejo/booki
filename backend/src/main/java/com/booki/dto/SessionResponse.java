@@ -13,7 +13,7 @@ public class SessionResponse {
     private Integer endPage;
     private Integer currentPage;
     private String difficulty;
-    private Long profileMasterId;
+    private Long aiProfileId;
     private String language;
 
     /** The resolved provider actually in effect for this session (never null, even if the session didn't pick one explicitly). */

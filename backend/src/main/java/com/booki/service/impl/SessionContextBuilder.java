@@ -1,27 +1,25 @@
 package com.booki.service.impl;
 
+import com.booki.domain.AiProfile;
 import com.booki.domain.Session;
-import com.booki.domain.User;
+import com.booki.domain.SlotKey;
 import com.booki.dto.SessionContextResponse;
-import com.booki.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.Set;
 
 /**
- * The three layers that shape every AI call for a session: the app's own
- * baseline behavior (language-aware), the Profile Master's persona, and the
- * user's own stated preferences. Shared by chat, quiz generation/grading,
- * and summary generation — and served directly via GET /sessions/{id}/context
- * for transparency.
+ * Assembles the system prompt for a session from the app baseline (language-aware)
+ * and the session's AI Profile (persona + reader context). Shared by chat, quiz
+ * and summary generation, and served via {@code GET /sessions/{id}/context}.
+ *
+ * <p>Stage 3 will replace this with a {@code PromptAssembler} that layers in the
+ * difficulty rubric, per-function prompts and capability routing with an explicit
+ * precedence. For now it keeps the previous behavior, reading from the profile.
  */
 @Component
-@RequiredArgsConstructor
 public class SessionContextBuilder {
-
-    private final UserRepository userRepository;
 
     private static final Set<String> SUPPORTED_LANGUAGES = Set.of("en", "es", "fr");
     private static final Map<String, String> LANGUAGE_NAMES = Map.of("en", "English", "es", "Spanish", "fr", "French");
@@ -41,30 +39,28 @@ public class SessionContextBuilder {
 
     public SessionContextResponse buildContext(Session session) {
         String appPrompt = APP_PROMPT_TEMPLATE.formatted(languageName(session.getLanguage()));
-
-        String masterPrompt = session.getProfileMaster() != null
-                ? session.getProfileMaster().getSystemPrompt()
-                : null;
-
-        User user = userRepository.findById(session.getUser().getId()).orElse(null);
-        String userPrompt = (user != null && user.getSystemPrompt() != null && !user.getSystemPrompt().isBlank())
-                ? user.getSystemPrompt()
-                : null;
-
-        return new SessionContextResponse(appPrompt, masterPrompt, userPrompt);
+        AiProfile profile = session.getAiProfile();
+        return new SessionContextResponse(
+                appPrompt,
+                profile != null ? blankToNull(profile.text(SlotKey.PERSONA)) : null,
+                profile != null ? blankToNull(profile.text(SlotKey.READER_CONTEXT)) : null);
     }
 
     /** Full system prompt for a session, including whatever reading material the caller passes as {@code contextText}. */
     public String buildSystemPrompt(Session session, String contextText) {
-        SessionContextResponse context = buildContext(session);
+        AiProfile profile = session.getAiProfile();
 
         StringBuilder sb = new StringBuilder();
-        sb.append(context.getAppPrompt());
-        if (context.getMasterPrompt() != null) {
-            sb.append("\n\nYour persona for this session: ").append(context.getMasterPrompt());
-        }
-        if (context.getUserPrompt() != null) {
-            sb.append("\n\nWhat this reader has told you about themselves: ").append(context.getUserPrompt());
+        sb.append(APP_PROMPT_TEMPLATE.formatted(languageName(session.getLanguage())));
+        if (profile != null) {
+            String persona = profile.text(SlotKey.PERSONA);
+            if (!persona.isBlank()) {
+                sb.append("\n\nYour persona for this session: ").append(persona);
+            }
+            String reader = profile.text(SlotKey.READER_CONTEXT);
+            if (!reader.isBlank()) {
+                sb.append("\n\nWhat this reader has told you about themselves: ").append(reader);
+            }
         }
         sb.append("\n\nSession difficulty: ").append(session.getDifficulty());
         sb.append("\nDocument title: ").append(session.getDocument().getTitle());
@@ -73,5 +69,9 @@ public class SessionContextBuilder {
         sb.append("\nReader's current page: ").append(session.getCurrentPage());
         sb.append("\n\nDOCUMENT CONTEXT:\n").append(contextText);
         return sb.toString();
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 }

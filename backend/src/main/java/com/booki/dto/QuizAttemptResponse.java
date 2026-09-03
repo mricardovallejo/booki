@@ -16,6 +16,6 @@ public class QuizAttemptResponse {
     private double score;
     private String feedback;
     private String difficulty;
-    private String masterName;
+    private String profileName;
     private Instant createdAt;
 }

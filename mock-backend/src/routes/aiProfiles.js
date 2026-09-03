@@ -56,8 +56,9 @@ router.patch('/:id', authMiddleware, (req, res) => {
 
   const { name, readerLevel, enabledCapabilities, slots } = req.body || {};
   if (typeof name === 'string' && name.trim()) profile.name = name.trim();
-  if (readerLevel === null || READER_LEVELS.includes(readerLevel)) {
-    if (readerLevel !== undefined) profile.readerLevel = readerLevel;
+  if (typeof readerLevel === 'string') {
+    // "" clears; a valid level sets; anything else is ignored.
+    profile.readerLevel = READER_LEVELS.includes(readerLevel) ? readerLevel : null;
   }
   if (Array.isArray(enabledCapabilities)) {
     profile.enabledCapabilities = CAPABILITIES.filter((c) => enabledCapabilities.includes(c));

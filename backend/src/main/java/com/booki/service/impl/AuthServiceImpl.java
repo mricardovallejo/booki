@@ -4,10 +4,11 @@ import com.booki.domain.User;
 import com.booki.dto.AuthRequest;
 import com.booki.dto.AuthResponse;
 import com.booki.dto.UserResponse;
+import com.booki.prompt.SlotPromptCatalog;
+import com.booki.repository.AiProfileRepository;
 import com.booki.repository.UserRepository;
 import com.booki.security.JwtUtil;
 import com.booki.service.AuthService;
-import com.booki.service.ProfileMasterService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,7 +21,8 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final ProfileMasterService profileMasterService;
+    private final AiProfileRepository aiProfileRepository;
+    private final SlotPromptCatalog slotPromptCatalog;
 
     @Override
     public AuthResponse register(AuthRequest request) {
@@ -32,10 +34,8 @@ public class AuthServiceImpl implements AuthService {
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setName(resolveName(request, email));
-        user.setBio("");
-        user.setSystemPrompt("");
         userRepository.save(user);
-        profileMasterService.seedDefaultsForNewUser(user.getId());
+        aiProfileRepository.saveAll(slotPromptCatalog.seedFor(user));
         return toAuthResponse(user);
     }
 
@@ -64,13 +64,7 @@ public class AuthServiceImpl implements AuthService {
     private AuthResponse toAuthResponse(User user) {
         String token = jwtUtil.generateToken(user.getEmail(), user.getId());
         UserResponse userResponse = new UserResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getName(),
-                user.getBio(),
-                user.getSystemPrompt(),
-                user.getCreatedAt()
-        );
+                user.getId(), user.getEmail(), user.getName(), user.getCreatedAt());
         return new AuthResponse(token, userResponse);
     }
 }

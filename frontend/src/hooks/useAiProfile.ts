@@ -77,7 +77,7 @@ export function useAiProfile(id: number, onMutated?: () => void) {
     try {
       const updated = await updateAiProfile(id, {
         name: nameChanged ? name.trim() : undefined,
-        readerLevel: levelChanged ? readerLevel : undefined,
+        readerLevel: levelChanged ? (readerLevel ?? '') : undefined,
         enabledCapabilities: capsChanged ? enabledCapabilities : undefined,
         slots: dirtySlots.map((s) => ({ key: s.key, text: draft[s.key] ?? s.text }))
       });

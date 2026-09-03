@@ -37,15 +37,11 @@ export type ReaderLevel = 'beginner' | 'intermediate' | 'advanced';
 export interface AiProfileSummary {
   id: number;
   name: string;
-  /** The shipped template this profile is a copy of — the target of "restore to original". */
-  basedOnId: number | null;
   isDefault: boolean;
   readerLevel: ReaderLevel | null;
   /** Which conversational capabilities this profile allows (subset of CapabilityHint). */
   enabledCapabilities: CapabilityHint[];
   updatedAt: string;
-  slotCount: number;
-  modifiedCount: number;
 }
 
 export interface AiProfile extends AiProfileSummary {

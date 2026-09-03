@@ -21,7 +21,7 @@ public class SessionRequest {
     @Min(1)
     private Integer endPage;
 
-    private Long profileMasterId;
+    private Long aiProfileId;
 
     @NotNull
     private String difficulty;

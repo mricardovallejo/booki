@@ -16,5 +16,5 @@ public class SubmitQuizAnswerRequest {
 
     private String difficulty;
 
-    private Long profileMasterId;
+    private Long aiProfileId;
 }

@@ -128,8 +128,8 @@ function buildFactoryAiProfiles() {
     enabledCapabilities: [...CAPABILITIES],
     updatedAt: new Date().toISOString(),
     slots: SLOT_DEFS.map((def) => {
-      const content = defaultContentFor(def.key, tpl.persona);
-      return { key: def.key, content, factoryContent: content };
+      const text = defaultContentFor(def.key, tpl.persona);
+      return { key: def.key, text, originalText: text };
     })
   }));
 }
@@ -156,7 +156,7 @@ function seedUserAiProfiles(templates, userId, startId) {
 function restoreFromTemplate(profile, template) {
   profile.readerLevel = template.readerLevel ?? null;
   profile.enabledCapabilities = [...(template.enabledCapabilities ?? CAPABILITIES)];
-  profile.slots = template.slots.map((s) => ({ key: s.key, content: s.content, factoryContent: s.factoryContent }));
+  profile.slots = template.slots.map((s) => ({ key: s.key, text: s.text, originalText: s.originalText }));
   profile.updatedAt = new Date().toISOString();
 }
 
@@ -168,9 +168,9 @@ function slotResponse(storedSlot) {
     group: def ? def.group : 'functions',
     lockedPreamble: def ? def.lockedPreamble : null,
     lockedPostamble: def ? def.lockedPostamble : null,
-    content: storedSlot.content,
-    factoryContent: storedSlot.factoryContent,
-    modified: storedSlot.content !== storedSlot.factoryContent
+    text: storedSlot.text,
+    originalText: storedSlot.originalText,
+    modified: storedSlot.text !== storedSlot.originalText
   };
 }
 
@@ -195,7 +195,7 @@ function profileResponse(profile, { withSlots } = {}) {
 // model would actually receive it. Used by the session context endpoint.
 function assembledSlotText(storedSlot) {
   const def = SLOT_DEFS.find((d) => d.key === storedSlot.key);
-  return [def && def.lockedPreamble, storedSlot.content, def && def.lockedPostamble]
+  return [def && def.lockedPreamble, storedSlot.text, def && def.lockedPostamble]
     .filter(Boolean)
     .join('\n\n');
 }

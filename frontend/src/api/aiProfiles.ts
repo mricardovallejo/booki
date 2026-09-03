@@ -15,7 +15,7 @@ export interface UpdateAiProfileRequest {
   name?: string;
   readerLevel?: ReaderLevel | null;
   enabledCapabilities?: CapabilityHint[];
-  slots?: { key: string; content: string }[];
+  slots?: { key: string; text: string }[];
 }
 
 export const updateAiProfile = (id: number, payload: UpdateAiProfileRequest) =>

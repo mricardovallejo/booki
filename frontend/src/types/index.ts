@@ -15,10 +15,10 @@ export interface User {
 export type AiProfileSlotGroup = 'persona' | 'reader' | 'difficulty' | 'functions' | 'routing';
 
 /**
- * One prompt inside an AI Profile. `content` is the editable body; the locked
+ * One SlotPrompt inside an AI Profile. `text` is the editable body; the locked
  * frame (`lockedPreamble` / `lockedPostamble`) is shown for context but cannot
- * be changed because the app depends on its shape. `factoryContent` is the
- * shipped baseline used for the "modified" badge and "revert to factory".
+ * be changed because the app depends on its shape. `originalText` is the shipped
+ * baseline used for the Edited/Original badge and "restore original text".
  */
 export interface AiProfileSlot {
   key: string;
@@ -26,8 +26,8 @@ export interface AiProfileSlot {
   group: AiProfileSlotGroup;
   lockedPreamble: string | null;
   lockedPostamble: string | null;
-  content: string;
-  factoryContent: string;
+  text: string;
+  originalText: string;
   modified: boolean;
 }
 

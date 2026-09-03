@@ -91,7 +91,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
               ))}
             </div>
             {(() => {
-              const rubric = profileSlots.find((s) => s.key === `rubric_${config.difficulty}`)?.content;
+              const rubric = profileSlots.find((s) => s.key === `rubric_${config.difficulty}`)?.text;
               if (!rubric) return null;
               return (
                 <div className="mt-2 rounded-lg bg-booki-bg/60 p-2.5 text-[11px] leading-relaxed text-white/60">

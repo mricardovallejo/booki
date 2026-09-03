@@ -39,7 +39,7 @@ function slot(profile, key) {
 
 function slotContent(profile, key) {
   const s = slot(profile, key);
-  return s && s.content ? s.content : null;
+  return s && s.text ? s.text : null;
 }
 
 function enabledCapabilitiesFor(session) {

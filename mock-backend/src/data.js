@@ -37,7 +37,7 @@ function seedAiProfilesForUser(userId) {
   const copies = seedAiProfilesForUser(1);
   const tutor = copies.find((p) => p.name === 'Patient Tutor');
   tutor.readerLevel = 'intermediate';
-  tutor.slots.find((s) => s.key === 'reader_context').content =
+  tutor.slots.find((s) => s.key === 'reader_context').text =
     'Studying for a certification exam, fairly new to the topic. Prefers short answers with one concrete example and little jargon.';
 })();
 

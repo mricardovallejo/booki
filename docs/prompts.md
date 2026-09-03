@@ -44,12 +44,12 @@ renders it, folding the function/routing groups away by default.
 
 ## The AI Profile
 
-### Slots
+### SlotPrompts
 
-Each slot is one prompt. `content` is the editable body. Function and routing
-slots also carry a **locked frame** (`lockedPreamble` / `lockedPostamble`) — the
-part the *code* depends on (an output format it parses) that the user can't
-touch. A `null` frame means the whole slot is free text.
+A **SlotPrompt** is one named prompt. `text` is the editable body. Function and
+routing SlotPrompts also carry a **locked frame** (`lockedPreamble` /
+`lockedPostamble`) — the part the *code* depends on (an output format it parses)
+that the user can't touch. A `null` frame means the whole SlotPrompt is free text.
 
 | key | shown as | group | locked frame |
 |---|---|---|---|
@@ -63,7 +63,7 @@ touch. A `null` frame means the whole slot is free text.
 | `fn_mnemonic` | Function — Mnemonic | functions | — |
 | `capability_routing` | Capability routing | routing | the `{"capability":"<name>"}` contract |
 
-### Structured fields (not slots)
+### Structured fields (not SlotPrompts)
 
 - **`readerLevel`** — `beginner` / `intermediate` / `advanced` / null. Sits on
   the reader-context slot in the editor. Only use: the create-session screen
@@ -80,14 +80,15 @@ touch. A `null` frame means the whole slot is free text.
   session). At **registration** every account gets one editable copy of each
   (one flagged `isDefault`). Sessions always run on one of the user's own,
   editable profiles — there is no read-only-profile state in normal use.
-- A profile holds the *whole set* of prompts and is **autonomous**: it doesn't
-  read from its template, it only remembers (`basedOnId`) which one it came from.
-- Each slot stores a `factoryContent` snapshot (the text it was born with). It
-  powers the computed **Edited / Original** badge (`content != factoryContent`,
-  never a stored flag), the per-slot **Restore original text**, and the
+- A profile holds the *whole set* of SlotPrompts and is **autonomous**: it
+  doesn't read from its template, it only remembers (`basedOnId`) which one it
+  came from.
+- Each SlotPrompt stores an `originalText` snapshot (the text it was born with).
+  It powers the computed **Edited / Original** badge (`text != originalText`,
+  never a stored flag), the per-SlotPrompt **Restore original text**, and the
   whole-profile **Restore to original** (`POST /ai-profiles/{id}/restore` —
-  re-seeds all slots + `readerLevel` + `enabledCapabilities` from `basedOnId`,
-  keeps the name).
+  re-seeds all SlotPrompts + `readerLevel` + `enabledCapabilities` from
+  `basedOnId`, keeps the name).
 - **Duplicate** makes another autonomous copy.
 - **When a shipped template's text is later improved: only the hidden template
   changes. Existing user profiles are never touched** — edited or not. A user who
@@ -135,7 +136,7 @@ Three separate things:
 | GET | `/ai-profiles/{id}` | one profile with slots |
 | PATCH | `/ai-profiles/{id}` | name / `readerLevel` / `enabledCapabilities` / slot bodies |
 | POST | `/ai-profiles/{id}/duplicate` | autonomous copy |
-| POST | `/ai-profiles/{id}/revert` | one slot back to `factoryContent` |
+| POST | `/ai-profiles/{id}/revert` | one SlotPrompt back to its `originalText` |
 | POST | `/ai-profiles/{id}/restore` | whole profile back to its template |
 | DELETE | `/ai-profiles/{id}` | delete (400 if it's the only one) |
 | GET | `/sessions/{id}/context` | the assembled layers + `enabledCapabilities` |
@@ -161,17 +162,33 @@ Full schemas: `docs/openapi.yaml` (`AiProfile`, `AiProfileSlot`, `SessionContext
 
 ## Backend (Stage 3 target)
 
-`ai_profiles` + `ai_profile_prompts` tables. A `PromptAssembler` replaces
-`SessionContextBuilder` and owns the layering + precedence. Quiz / summary /
-explain / mnemonic and the capability router read their slots from the session's
-profile instead of hardcoded Java strings. Migration: `profile_masters` seed rows
-→ hidden templates; every user gets seeded copies (their `profile_masters` copies
-fold in, persona → `persona` slot); `user.bio` + `user.systemPrompt` → the
-`reader_context` slot of the default profile, then dropped. `/api/profile-masters`
-and the old builder are removed.
+Two tables:
 
-Until then the Java backend still serves `/api/profile-masters` and builds the
-old three-layer prompt — see `docs/backend.md`.
+- `ai_profiles` — `user_id`, `name`, `based_on_template` (a template key, not an
+  FK), `is_default`, `reader_level` (nullable), `enabled_capabilities` (csv).
+- `ai_profile_slot_prompts` — `profile_id`, `slot` (`SlotKey` enum), `text`,
+  `original_text`.
+
+The templates live in code: a **`SlotPromptCatalog`** class (mirror of
+`mock-backend/src/aiProfiles.js`) holds the ~10 `SlotPrompt` definitions —
+`label`, `group`, locked frames — and, per template, the default `text` of each.
+"Improving a template" = editing that class; existing profiles keep their own
+rows and are never touched.
+
+A `PromptAssembler` replaces `SessionContextBuilder` and owns the layering +
+precedence. Quiz / summary / explain / mnemonic and the capability router read
+their SlotPrompts from the session's profile instead of hardcoded Java strings.
+The core is a Java constant with a `@Value` override.
+
+Migration (`V2` DDL + a `V3` Java data migration): seed each user's copies from
+the catalog; their `profile_masters` customizations → the matching profile's
+`persona` SlotPrompt; `sessions`/`quiz_attempts` `profile_master_id` →
+`ai_profile_id`; `user.bio` + `user.systemPrompt` → the `reader_context`
+SlotPrompt of the default profile, then dropped. `/api/profile-masters`, the old
+builder, and the `profile_masters` table are removed in the same PR.
+
+Until Stage 3 lands the Java backend still serves `/api/profile-masters` and
+builds the old three-layer prompt — see `docs/backend.md`.
 
 ## Design principles
 

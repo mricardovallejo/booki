@@ -65,7 +65,7 @@ router.patch('/:id', authMiddleware, (req, res) => {
   if (Array.isArray(slots)) {
     for (const patch of slots) {
       const slot = profile.slots.find((s) => s.key === patch.key);
-      if (slot && typeof patch.content === 'string') slot.content = patch.content;
+      if (slot && typeof patch.text === 'string') slot.text = patch.text;
     }
   }
   profile.updatedAt = new Date().toISOString();
@@ -79,7 +79,7 @@ router.post('/:id/revert', authMiddleware, (req, res) => {
   const key = req.body && req.body.key;
   const slot = profile.slots.find((s) => s.key === key);
   if (!slot) return res.status(400).json({ error: 'Unknown slot key' });
-  slot.content = slot.factoryContent;
+  slot.text = slot.originalText;
   profile.updatedAt = new Date().toISOString();
   res.json(profileResponse(profile, { withSlots: true }));
 });

@@ -91,7 +91,7 @@ export default function AiProfilesPage() {
     setActionError(null);
     try {
       const other = await getAiProfile(fromId);
-      setSlotDraft('reader_context', other.slots.find((s) => s.key === 'reader_context')?.content ?? '');
+      setSlotDraft('reader_context', other.slots.find((s) => s.key === 'reader_context')?.text ?? '');
     } catch (err) {
       setActionError(getErrorMessage(err, 'Could not copy from that profile.'));
     } finally {
@@ -127,15 +127,15 @@ export default function AiProfilesPage() {
   const advancedEditedCount = useMemo(
     () =>
       (profile?.slots ?? []).filter(
-        (s) => ADVANCED_GROUPS.includes(s.group) && (draft[s.key] ?? s.content) !== s.factoryContent
+        (s) => ADVANCED_GROUPS.includes(s.group) && (draft[s.key] ?? s.text) !== s.originalText
       ).length,
     [profile, draft]
   );
 
   const activeKey = selectedKey ?? profile?.slots[0]?.key ?? null;
   const activeSlot: AiProfileSlot | undefined = profile?.slots.find((s) => s.key === activeKey);
-  const activeValue = activeSlot ? draft[activeSlot.key] ?? activeSlot.content : '';
-  const activeModified = activeSlot ? activeValue !== activeSlot.factoryContent : false;
+  const activeValue = activeSlot ? draft[activeSlot.key] ?? activeSlot.text : '';
+  const activeModified = activeSlot ? activeValue !== activeSlot.originalText : false;
 
   const onDuplicate = async () => {
     if (!selectedId) return;
@@ -453,7 +453,7 @@ function SlotGroup({
       <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-booki-muted">{label}</p>
       <ul className="space-y-0.5">
         {slots.map((slot) => {
-          const modified = (draft[slot.key] ?? slot.content) !== slot.factoryContent;
+          const modified = (draft[slot.key] ?? slot.text) !== slot.originalText;
           return (
             <li key={slot.key}>
               <button

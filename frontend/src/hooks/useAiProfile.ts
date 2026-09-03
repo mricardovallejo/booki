@@ -29,7 +29,7 @@ export function useAiProfile(id: number, onMutated?: () => void) {
     setName(next.name);
     setReaderLevel(next.readerLevel);
     setEnabledCapabilities(next.enabledCapabilities);
-    setDraft(Object.fromEntries(next.slots.map((s) => [s.key, s.content])));
+    setDraft(Object.fromEntries(next.slots.map((s) => [s.key, s.text])));
   }, []);
 
   const toggleCapability = useCallback((cap: CapabilityHint) => {
@@ -54,12 +54,12 @@ export function useAiProfile(id: number, onMutated?: () => void) {
       .finally(() => setLoading(false));
   }, [id, hydrate]);
 
-  const setSlotDraft = useCallback((key: string, content: string) => {
-    setDraft((prev) => ({ ...prev, [key]: content }));
+  const setSlotDraft = useCallback((key: string, text: string) => {
+    setDraft((prev) => ({ ...prev, [key]: text }));
   }, []);
 
   const dirtySlots = useMemo(
-    () => (profile ? profile.slots.filter((s) => (draft[s.key] ?? s.content) !== s.content) : []),
+    () => (profile ? profile.slots.filter((s) => (draft[s.key] ?? s.text) !== s.text) : []),
     [profile, draft]
   );
   const nameChanged = !!profile && name.trim().length > 0 && name.trim() !== profile.name;
@@ -79,7 +79,7 @@ export function useAiProfile(id: number, onMutated?: () => void) {
         name: nameChanged ? name.trim() : undefined,
         readerLevel: levelChanged ? readerLevel : undefined,
         enabledCapabilities: capsChanged ? enabledCapabilities : undefined,
-        slots: dirtySlots.map((s) => ({ key: s.key, content: draft[s.key] ?? s.content }))
+        slots: dirtySlots.map((s) => ({ key: s.key, text: draft[s.key] ?? s.text }))
       });
       hydrate(updated);
       onMutated?.();

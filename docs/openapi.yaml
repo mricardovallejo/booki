@@ -424,10 +424,10 @@ paths:
                   type: array
                   items:
                     type: object
-                    required: [key, content]
+                    required: [key, text]
                     properties:
                       key: { type: string }
-                      content: { type: string }
+                      text: { type: string }
       responses:
         "200":
           description: Updated
@@ -459,8 +459,8 @@ paths:
       summary: Duplicate an AI Profile
       operationId: duplicateAiProfile
       description: >
-        Creates a copy owned by the current user, with every slot's `content` and
-        `factoryContent` seeded from the source. `basedOnId` carries over so the
+        Creates a copy owned by the current user, with every SlotPrompt's `text`
+        and `originalText` seeded from the source. `basedOnId` carries over so the
         copy can still be restored to the same original template.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
@@ -485,7 +485,7 @@ paths:
       tags: [AI Profiles]
       summary: Restore one slot's original text
       operationId: revertAiProfileSlot
-      description: Sets the given slot's `content` back to its `factoryContent`.
+      description: Sets the given SlotPrompt's `text` back to its `originalText`.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
       requestBody:
@@ -1195,10 +1195,10 @@ components:
     AiProfileSlot:
       type: object
       description: >
-        One prompt in a profile. `content` is the editable body; the locked frame
+        One SlotPrompt in a profile. `text` is the editable body; the locked frame
         (`lockedPreamble` / `lockedPostamble`, either may be null) is fixed
-        because the app depends on its shape. `factoryContent` is the shipped
-        baseline used for the modified badge and revert.
+        because the app depends on its shape. `originalText` is the shipped
+        baseline used for the Edited/Original badge and restore.
       properties:
         key:
           type: string
@@ -1220,12 +1220,12 @@ components:
           enum: [persona, reader, difficulty, functions, routing]
         lockedPreamble: { type: string, nullable: true }
         lockedPostamble: { type: string, nullable: true }
-        content: { type: string }
-        factoryContent: { type: string }
+        text: { type: string }
+        originalText: { type: string }
         modified:
           type: boolean
-          description: Computed — `content != factoryContent`. Not stored.
-      required: [key, label, group, lockedPreamble, lockedPostamble, content, factoryContent, modified]
+          description: Computed — `text != originalText`. Not stored.
+      required: [key, label, group, lockedPreamble, lockedPostamble, text, originalText, modified]
 
     Session:
       type: object

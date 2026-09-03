@@ -21,13 +21,19 @@ tags:
   - name: Auth
     description: Registration and sign-in. Issues the Bearer token used by every other endpoint.
   - name: Users
-    description: The current user's own profile, including the personal context that shapes chat, quiz, and summary responses.
+    description: The current user's account details.
   - name: Documents
     description: Uploading and managing PDF books.
   - name: Tags
     description: User-defined labels for organizing the library. A document can belong to any number of tags.
-  - name: Profile Masters
-    description: Expert personas BooKI can take on during a session (tone, vocabulary, difficulty framing).
+  - name: AI Profiles
+    description: >
+      The full set of prompts a session runs on — persona, reader context,
+      difficulty levels, per-function prompts, capability routing — plus the
+      structured `readerLevel` and `enabledCapabilities`. Every account is seeded
+      with an editable copy of each shipped template; sessions always run on one
+      of the user's own profiles. The BooKI core is fixed and never part of a
+      profile.
   - name: Sessions
     description: A reading session over a page range of one document — the core unit of the product.
   - name: Quiz
@@ -134,10 +140,8 @@ paths:
       summary: Update the current user's profile
       operationId: updateCurrentUser
       description: >
-        `bio` and `systemPrompt` form the "user context" layer: combined with
-        the app's own defaults and the session's Profile Master, they shape
-        how chat, quiz, and summary responses are generated
-        (see `GET /sessions/{id}/context`).
+        Account details only. The reader's learning context now lives per
+        AI Profile (its `reader_context` slot and `readerLevel`), not on the user.
       requestBody:
         content:
           application/json:
@@ -145,8 +149,6 @@ paths:
               type: object
               properties:
                 name: { type: string }
-                bio: { type: string }
-                systemPrompt: { type: string }
       responses:
         "200":
           description: Updated profile
@@ -355,15 +357,15 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /profile-masters:
+  /ai-profiles:
     get:
-      tags: [Profile Masters]
-      summary: List my Profile Masters
-      operationId: listProfileMasters
+      tags: [AI Profiles]
+      summary: List AI Profiles
+      operationId: listAiProfiles
       description: >
-        Per-user: each account gets its own editable copy of the 4 built-in
-        defaults, seeded at registration, plus any custom ones it creates.
-        Editing or deleting a Master never affects any other user's copy.
+        The current user's own AI Profiles — every account is seeded at
+        registration with one editable copy of each shipped template (one flagged
+        `isDefault`). Summaries omit `slots`; fetch one profile for its slots.
       responses:
         "200":
           description: OK
@@ -371,69 +373,160 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: "#/components/schemas/ProfileMaster" }
+                items: { $ref: "#/components/schemas/AiProfileSummary" }
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /ai-profiles/{id}:
+    get:
+      tags: [AI Profiles]
+      summary: Get one AI Profile with its prompt slots
+      operationId: getAiProfile
+      parameters:
+        - $ref: "#/components/parameters/AiProfileId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiProfile" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [AI Profiles]
+      summary: Update one of my AI Profiles
+      operationId: updateAiProfile
+      description: >
+        Edits the profile name, `readerLevel`, `enabledCapabilities`, and/or slot
+        bodies. Only the editable `content` of a slot can change — the locked
+        frame is fixed.
+      parameters:
+        - $ref: "#/components/parameters/AiProfileId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                readerLevel:
+                  type: string
+                  nullable: true
+                  enum: [beginner, intermediate, advanced]
+                enabledCapabilities:
+                  type: array
+                  items: { $ref: "#/components/schemas/CapabilityHint" }
+                  description: >
+                    Which capabilities this profile allows. A capability left out
+                    is off for the session: never auto-triggered, and its
+                    quick-action button is hidden in the chat.
+                slots:
+                  type: array
+                  items:
+                    type: object
+                    required: [key, content]
+                    properties:
+                      key: { type: string }
+                      content: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiProfile" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [AI Profiles]
+      summary: Delete one of my AI Profiles
+      operationId: deleteAiProfile
+      description: >
+        Sessions that already used this profile keep their history. `400` if it
+        is the user's only profile.
+      parameters:
+        - $ref: "#/components/parameters/AiProfileId"
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ai-profiles/{id}/duplicate:
     post:
-      tags: [Profile Masters]
-      summary: Create a custom Profile Master
-      operationId: createProfileMaster
+      tags: [AI Profiles]
+      summary: Duplicate an AI Profile
+      operationId: duplicateAiProfile
+      description: >
+        Creates a copy owned by the current user, with every slot's `content` and
+        `factoryContent` seeded from the source. `basedOnId` carries over so the
+        copy can still be restored to the same original template.
+      parameters:
+        - $ref: "#/components/parameters/AiProfileId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, description: "Defaults to \"<source name> (copy)\"" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiProfile" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ai-profiles/{id}/revert:
+    post:
+      tags: [AI Profiles]
+      summary: Restore one slot's original text
+      operationId: revertAiProfileSlot
+      description: Sets the given slot's `content` back to its `factoryContent`.
+      parameters:
+        - $ref: "#/components/parameters/AiProfileId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name, systemPrompt]
+              required: [key]
               properties:
-                name: { type: string }
-                description: { type: string }
-                systemPrompt: { type: string }
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ProfileMaster" }
-        "400":
-          $ref: "#/components/responses/BadRequest"
-
-  /profile-masters/{id}:
-    patch:
-      tags: [Profile Masters]
-      summary: Update one of my Profile Masters
-      operationId: updateProfileMaster
-      parameters:
-        - $ref: "#/components/parameters/ProfileMasterId"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name: { type: string }
-                description: { type: string }
-                systemPrompt: { type: string }
+                key: { type: string }
       responses:
         "200":
           description: Updated
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ProfileMaster" }
+              schema: { $ref: "#/components/schemas/AiProfile" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
-    delete:
-      tags: [Profile Masters]
-      summary: Delete one of my Profile Masters
-      operationId: deleteProfileMaster
+
+  /ai-profiles/{id}/restore:
+    post:
+      tags: [AI Profiles]
+      summary: Restore the whole profile to its original template
+      operationId: restoreAiProfile
       description: >
-        Sessions and quiz attempts that already used this Master keep their
-        history — they just lose the persona tag (set to null).
+        Resets every slot's `content`, plus `readerLevel` and
+        `enabledCapabilities`, to the template identified by `basedOnId`. The
+        profile name is kept. `400` if the profile has no `basedOnId`.
       parameters:
-        - $ref: "#/components/parameters/ProfileMasterId"
+        - $ref: "#/components/parameters/AiProfileId"
       responses:
-        "204":
-          description: Deleted
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiProfile" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -454,16 +547,15 @@ paths:
                 title: { type: string, description: "Auto-generated from the document title and page range if omitted" }
                 startPage: { type: integer, minimum: 1 }
                 endPage: { type: integer, minimum: 1 }
-                profileMasterId: { type: integer, nullable: true }
+                aiProfileId:
+                  type: integer
+                  nullable: true
+                  description: >
+                    The AI Profile this session runs on. Omit to use the user's
+                    default profile (`isDefault: true`). The session keeps
+                    whichever profile it was created with.
                 difficulty: { $ref: "#/components/schemas/Difficulty" }
                 language: { $ref: "#/components/schemas/SessionLanguage" }
-                aiProvider:
-                  type: string
-                  enum: [claude, openai, kimi, ollama]
-                  description: >
-                    Which AI provider this session's chat, quiz generation/grading,
-                    and summary all use for the rest of its life. Omit to use the
-                    backend's configured default (profile-dependent — see docs/backend.md).
       responses:
         "201":
           description: Created
@@ -497,10 +589,10 @@ paths:
       summary: Inspect the layered prompt context for this session
       operationId: getSessionContext
       description: >
-        Transparency endpoint: shows exactly what shapes BooKI's answers for
-        this session — the app's own baseline behavior (incl. session
-        language), the Profile Master's persona, and the user's own stated
-        preferences. Surfaced in the frontend's "Context" info button.
+        Transparency endpoint: the ordered layers that shape BooKI's answers for
+        this session — the fixed BooKI core, then the session's AI Profile
+        contributions (difficulty rubric for the active level, persona, reader
+        context). Surfaced in the frontend's "Context" info button.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
@@ -662,7 +754,7 @@ paths:
         the session's language. Real backend: asks the session's AI provider
         (see Session.aiProvider) to write one genuine comprehension question
         per page, grounded in that page's text plus the session's layered
-        prompt (app/master/user).
+        prompt (core + AI Profile).
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -671,8 +763,9 @@ paths:
             schema:
               type: object
               properties:
-                profileMasterId: { type: integer, nullable: true, description: "Defaults to the session's own Master" }
-                difficulty: { $ref: "#/components/schemas/Difficulty" }
+                difficulty:
+                  allOf: [{ $ref: "#/components/schemas/Difficulty" }]
+                  description: Overrides the session difficulty for this round only. The session's AI Profile is always used.
                 questionCount: { type: integer, minimum: 1, maximum: 10, default: 3 }
       responses:
         "200":
@@ -712,7 +805,6 @@ paths:
                 question: { type: string, description: "Echoed back verbatim into the stored QuizAttempt for the report" }
                 answer: { type: string }
                 difficulty: { $ref: "#/components/schemas/Difficulty" }
-                profileMasterId: { type: integer, nullable: true }
       responses:
         "200":
           description: Grading result
@@ -862,9 +954,9 @@ paths:
       operationId: generateSummary
       description: >
         A genuine AI call (the session's `aiProvider`) that combines the
-        session's page text with its chat history, in the Profile Master's tone
-        and the user's own stated preferences, plus an optional free-text
-        instruction (`prompt`). `lengthPages` scales how much of each is
+        session's page text with its chat history, shaped by the session's
+        AI Profile (persona, reader context, `fn_summary` slot), plus an optional
+        free-text instruction (`prompt`). `lengthPages` scales how much of each is
         included (roughly 1–10 "pages" of density). Delivered either as a new
         BooKI chat message, or as a downloadable PDF (optionally also "sent" by
         email, same caveat as the other reports). Same generator as the `summary`
@@ -946,7 +1038,7 @@ components:
       in: path
       required: true
       schema: { type: integer }
-    ProfileMasterId:
+    AiProfileId:
       name: id
       in: path
       required: true
@@ -1029,10 +1121,6 @@ components:
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: string }
-        bio: { type: string }
-        systemPrompt:
-          type: string
-          description: The "user context" layer — the reader's own stated learning preferences, applied across every session they create.
         createdAt: { type: string, format: date-time }
       required: [id, email, name, createdAt]
 
@@ -1063,14 +1151,81 @@ components:
         createdAt: { type: string, format: date-time }
       required: [id, name, documentIds]
 
-    ProfileMaster:
+    ReaderLevel:
+      type: string
+      enum: [beginner, intermediate, advanced]
+
+    AiProfileSummary:
       type: object
+      description: An AI Profile without its prompt slots (list view).
       properties:
         id: { type: integer }
         name: { type: string }
-        description: { type: string }
-        systemPrompt: { type: string }
-      required: [id, name, description]
+        basedOnId:
+          type: integer
+          nullable: true
+          description: The shipped template this profile is a copy of — the target of "restore to original".
+        isDefault:
+          type: boolean
+          description: True for the one profile pre-selected when creating a session.
+        readerLevel:
+          allOf: [{ $ref: "#/components/schemas/ReaderLevel" }]
+          nullable: true
+        enabledCapabilities:
+          type: array
+          items: { $ref: "#/components/schemas/CapabilityHint" }
+          description: The capabilities this profile allows (subset of the four).
+        updatedAt: { type: string, format: date-time }
+        slotCount: { type: integer }
+        modifiedCount:
+          type: integer
+          description: How many slots differ from their original text.
+      required: [id, name, basedOnId, isDefault, readerLevel, enabledCapabilities, updatedAt, slotCount, modifiedCount]
+
+    AiProfile:
+      allOf:
+        - $ref: "#/components/schemas/AiProfileSummary"
+        - type: object
+          properties:
+            slots:
+              type: array
+              items: { $ref: "#/components/schemas/AiProfileSlot" }
+          required: [slots]
+
+    AiProfileSlot:
+      type: object
+      description: >
+        One prompt in a profile. `content` is the editable body; the locked frame
+        (`lockedPreamble` / `lockedPostamble`, either may be null) is fixed
+        because the app depends on its shape. `factoryContent` is the shipped
+        baseline used for the modified badge and revert.
+      properties:
+        key:
+          type: string
+          enum:
+            - persona
+            - reader_context
+            - rubric_easy
+            - rubric_medium
+            - rubric_hard
+            - fn_quiz_question
+            - fn_answer_grading
+            - fn_summary
+            - fn_explain
+            - fn_mnemonic
+            - capability_routing
+        label: { type: string }
+        group:
+          type: string
+          enum: [persona, reader, difficulty, functions, routing]
+        lockedPreamble: { type: string, nullable: true }
+        lockedPostamble: { type: string, nullable: true }
+        content: { type: string }
+        factoryContent: { type: string }
+        modified:
+          type: boolean
+          description: Computed — `content != factoryContent`. Not stored.
+      required: [key, label, group, lockedPreamble, lockedPostamble, content, factoryContent, modified]
 
     Session:
       type: object
@@ -1082,23 +1237,52 @@ components:
         endPage: { type: integer }
         currentPage: { type: integer }
         difficulty: { $ref: "#/components/schemas/Difficulty" }
-        profileMasterId: { type: integer, nullable: true }
+        aiProfileId: { type: integer, nullable: true }
+        enabledCapabilities:
+          type: array
+          items: { $ref: "#/components/schemas/CapabilityHint" }
+          description: Resolved from the session's AI Profile. Drives which quick-action buttons show.
         language: { $ref: "#/components/schemas/SessionLanguage" }
         aiProvider:
           type: string
           enum: [claude, openai, kimi, ollama]
           description: The resolved provider actually in effect — never null, even if the session didn't pick one explicitly.
         createdAt: { type: string, format: date-time }
-      required: [id, documentId, title, startPage, endPage, currentPage, difficulty, language, aiProvider, createdAt]
+      required: [id, documentId, title, startPage, endPage, currentPage, difficulty, enabledCapabilities, language, aiProvider, createdAt]
 
     SessionContext:
       type: object
-      description: The three layers combined to shape BooKI's answers for a session.
+      description: >
+        Every part of the instructions BooKI reads before answering — not just the
+        editable ones. `group` lets a client fold the heavy parts (`functions`,
+        `routing`) away.
       properties:
-        appPrompt: { type: string }
-        masterPrompt: { type: string, nullable: true }
-        userPrompt: { type: string, nullable: true }
-      required: [appPrompt, masterPrompt, userPrompt]
+        aiProfileId: { type: integer, nullable: true }
+        aiProfileName: { type: string, nullable: true }
+        language: { $ref: "#/components/schemas/SessionLanguage" }
+        difficulty: { $ref: "#/components/schemas/Difficulty" }
+        enabledCapabilities:
+          type: array
+          items: { $ref: "#/components/schemas/CapabilityHint" }
+        layers:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              group:
+                type: string
+                enum: [core, difficulty, persona, reader, functions, routing, session]
+              label: { type: string }
+              editable:
+                type: boolean
+                description: False for the fixed parts (core, session facts); true for AI Profile layers.
+              source:
+                type: string
+                description: Where the layer comes from, e.g. "App", "Session", or 'AI profile "Patient Tutor"'.
+              content: { type: string, nullable: true }
+            required: [key, group, label, editable, source, content]
+      required: [aiProfileId, aiProfileName, language, difficulty, enabledCapabilities, layers]
 
     Message:
       type: object
@@ -1122,8 +1306,8 @@ components:
     QuizConfig:
       type: object
       properties:
-        profileMasterId: { type: integer, nullable: true }
-        masterName: { type: string, nullable: true }
+        aiProfileId: { type: integer, nullable: true }
+        profileName: { type: string, nullable: true }
         difficulty: { $ref: "#/components/schemas/Difficulty" }
         questionCount: { type: integer }
       required: [difficulty, questionCount]
@@ -1156,7 +1340,7 @@ components:
         score: { type: number }
         feedback: { type: string }
         difficulty: { $ref: "#/components/schemas/Difficulty" }
-        masterName: { type: string, nullable: true }
+        profileName: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
       required: [id, pageNumber, question, answer, correct, score, feedback, difficulty, createdAt]
 

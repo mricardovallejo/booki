@@ -93,6 +93,7 @@ key covers chat and voice. Model and voice options: see
 - `docs/architecture.md` — stack and structure.
 - `docs/backend.md` — backend details.
 - `docs/frontend.md` — frontend details.
+- `docs/prompts.md` — prompts, AI Profiles, and user context.
 - `docs/ai-voice.md` — AI and voice strategy.
 - `docs/decisions.md` — architecture decisions.
 - `docs/agent-memory.md` — compact summary.

@@ -59,6 +59,10 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 
 ### Profile Masters — `/api/profile-masters`
 
+> Being replaced by **AI Profiles** (`docs/prompts.md`). The frontend already
+> moved; the endpoints and prompt builder below are what the Java backend still
+> serves until Stage 3.
+
 | Method | Route | Description |
 |--------|------|-------------|
 | GET | `/api/profile-masters` | List the current user's own Masters (4 defaults + any custom ones) |
@@ -210,7 +214,7 @@ The `AiProvider` interface (package `ai`) has 4 implementations, **all always re
 
 ### Where AI is actually called vs. templated
 
-- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the same three-layer prompt `SessionContextBuilder` builds (app baseline + Profile Master persona + the user's own `systemPrompt`). Quiz grading asks the model to reply in a strict `CORRECT:`/`SCORE:`/`FEEDBACK:` format that `QuizServiceImpl.parseGrade` parses; a response that doesn't follow the format degrades to `correct=false, score=0`, feedback = the raw text. (Provider *failures* no longer reach the parser — see below.)
+- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the three-layer prompt `SessionContextBuilder` builds (app baseline + Profile Master persona + the user's own `systemPrompt`) — being replaced by the AI-Profile layering in `docs/prompts.md`. Quiz grading asks the model to reply in a strict `CORRECT:`/`SCORE:`/`FEEDBACK:` format that `QuizServiceImpl.parseGrade` parses; a response that doesn't follow the format degrades to `correct=false, score=0`, feedback = the raw text. (Provider *failures* no longer reach the parser — see below.)
 - **Progress/quiz-correction PDF reports** (`POST /sessions/{id}/reports/*`) — deliberately stay template-based, no AI call. These are factual recaps (page counts, past Q&A already graded) where a template is more reliable than an LLM restating numbers.
 
 Variables, in `.env` at the **repo root** (sibling of `.env.example`, not inside `backend/`) or the shell environment:

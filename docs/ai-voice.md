@@ -19,15 +19,13 @@ The engine knows nothing about transport (REST / SSE / WebSocket). Today the
 transports are `POST /api/sessions/{id}/messages` (text) and
 `POST /api/sessions/{id}/voice` (audio).
 
-### The layered system prompt (`SessionContextBuilder`)
+### The layered system prompt
 
-- BooKI's base prompt, which names the session language (English / Spanish /
-  French) for the model to reply in.
-- The Profile Master's system prompt, if one was chosen for the session.
-- What the reader wrote about themselves in their own profile
-  (`User.systemPrompt`), if anything.
-- Session difficulty, document title, page range, current page.
-- Text extracted from the page range.
+Voice runs through the exact same assembled prompt as text — the core, the
+session's AI Profile layers (difficulty, persona, reader context, function
+instructions when a capability runs), the session facts and the page text. See
+`docs/prompts.md`. (Today's Java backend still builds the older three-layer form
+via `SessionContextBuilder`.)
 
 Chat, the conversational capabilities, and standalone quiz/summary generation all
 use this same builder.

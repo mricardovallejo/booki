@@ -37,8 +37,8 @@ typing, a quick-action button, or speaking — converges on one
   QUICK ACTION ─────┼──▶  ConversationEngine
   VOICE ─▶ STT ─────┘         │
                               ├─ SessionContext  (document, page range, current page,
-                              │                   language, difficulty, Profile Master,
-                              │                   user prompt, recent history)
+                              │                   language, difficulty, AI Profile
+                              │                   layers, recent history — docs/prompts.md)
                               ├─ Capabilities    (quiz · summary · explain · mnemonic)
                               ├─ AiProvider      (claude / openai / kimi / ollama)
                               │

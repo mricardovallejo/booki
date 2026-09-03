@@ -12,14 +12,14 @@ PWA application.
 - Reading is never blocked: BooKI accompanies, it doesn't turn reading into homework.
 - The core unit is the **session**: a page range of the document with its own context.
 - Text and voice are the **same** conversation — one engine, one history, one context.
-- **Profile Masters** are expert personas that shape tone, vocabulary, and depth.
+- An **AI Profile** is the full editable set of prompts a session runs on — persona, difficulty, per-function behavior (`docs/prompts.md`).
 - Quiz, summary and explanation are conversational capabilities, not separate destinations.
 - The PDF stays the visual protagonist; the UI never becomes an LMS or a dashboard.
 
 ## Core flow
 
 1. Upload a PDF.
-2. Choose a page range and create a session (difficulty, language, Profile Master, AI provider).
+2. Choose a page range and create a session (difficulty, language, AI Profile).
 3. Open the reader.
 4. Read, type, or speak with BooKI.
 5. Get contextual answers grounded in the page range — and ask BooKI to quiz you,

@@ -21,7 +21,7 @@ Practical guide: what runs on which port, the different ways to start each piece
 | `9000` / `9001` | MinIO — S3 API / web console (if using Docker) | Only needed to test `STORAGE_DRIVER=s3` locally (default is `local` = disk) — see §5 |
 | `11434`| Ollama daemon (if installed) | Only needed if a session's `aiProvider` is `ollama` — see §4 below |
 
-**Important:** the frontend always requests `/api/...` on its own port (5173), and Vite forwards (proxies) that to `http://localhost:8080` — that's set in `frontend/vite.config.ts`. This means it can **only talk to ONE backend at a time** (the real one, on 8080). The mock on 3001 is a completely separate server, only useful if you change the proxy or hit `localhost:3001` directly with `curl`/Postman.
+**Important:** the frontend always requests `/api/...` on its own port (5173), and Vite forwards (proxies) that to `http://localhost:8080` by default — that's set in `frontend/vite.config.ts`. It can **only talk to ONE backend at a time**. To point it at the mock instead, start the dev server with `VITE_PROXY_TARGET=http://localhost:3001 npm run dev`.
 
 ## 1. Frontend — `npm run dev`
 
@@ -136,7 +136,7 @@ node src/index.js
 
 - Listens on `http://localhost:3001`.
 - Comes with a preloaded demo user: `demo@booki.app` / `password`.
-- Only useful if you point something directly at `localhost:3001` (the frontend's proxy doesn't use it by default).
+- To run the frontend against it: `VITE_PROXY_TARGET=http://localhost:3001 npm run dev` (from `frontend/`).
 
 ## 4. Ollama (optional, local AI provider)
 

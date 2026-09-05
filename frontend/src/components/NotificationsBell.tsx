@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNotifications } from '../hooks/useNotifications';
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss';
 
 interface Props {
   sessionId: number;
@@ -9,11 +10,14 @@ interface Props {
 export default function NotificationsBell({ sessionId, refreshKey }: Props) {
   const { notifications, error } = useNotifications(sessionId, refreshKey);
   const [open, setOpen] = useState(false);
+  const ref = useOutsideDismiss<HTMLDivElement>(open, () => setOpen(false));
 
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
         className="relative rounded-full bg-white/5 p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
         title="Notifications"
       >

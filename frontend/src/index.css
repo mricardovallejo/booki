@@ -2,15 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Single source of truth for the palette. Stored as space-separated RGB
+   channels so Tailwind (see tailwind.config.js) can apply opacity modifiers
+   like `bg-booki-accent/15` on top of the same values. */
 :root {
-  --color-bg: #0b0b0f;
-  --color-surface: #16161d;
-  --color-card: #1f1f2a;
-  --color-card-hover: #272736;
-  --color-text: #ffffff;
-  --color-muted: #a1a1aa;
-  --color-accent: #e63946;
-  --color-accent-hover: #ff4d5a;
+  --color-bg: 11 11 15; /* #0b0b0f */
+  --color-surface: 22 22 29; /* #16161d */
+  --color-card: 31 31 42; /* #1f1f2a */
+  --color-card-hover: 39 39 54; /* #272736 */
+  --color-text: 255 255 255; /* #ffffff */
+  --color-muted: 161 161 170; /* #a1a1aa */
+  --color-accent: 230 57 70; /* #e63946 */
+  --color-accent-hover: 255 77 90; /* #ff4d5a */
 }
 
 * {
@@ -23,8 +26,8 @@ html {
 
 body {
   margin: 0;
-  background-color: var(--color-bg);
-  color: var(--color-text);
+  background-color: rgb(var(--color-bg));
+  color: rgb(var(--color-text));
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -49,7 +52,7 @@ h1, h2, h3, h4, .font-bold, .font-extrabold, .font-black {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-bg);
+  background: rgb(var(--color-bg));
 }
 
 ::-webkit-scrollbar-thumb {

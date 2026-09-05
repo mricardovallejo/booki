@@ -100,6 +100,8 @@ export interface Session {
 
 export interface Message {
   id: number;
+  /** Present on message payloads; optional to match the OpenAPI `Message` schema. */
+  sessionId?: number;
   speaker: 'USER' | 'BOOKI';
   inputType: 'TEXT' | 'VOICE';
   message: string;
@@ -110,6 +112,8 @@ export interface Tag {
   id: number;
   name: string;
   documentIds: number[];
+  /** Optional to match the OpenAPI `Tag` schema (not in its `required` list). */
+  createdAt?: string;
 }
 
 export interface QuizQuestion {

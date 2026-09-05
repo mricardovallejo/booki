@@ -24,9 +24,10 @@ export default function PdfViewer({ sessionId }: Props) {
   const [fitWidth, setFitWidth] = useState<number>();
   const [zoom, setZoom] = useState(1);
 
+  const currentPage = session?.currentPage;
   useEffect(() => {
-    if (session) setInputPage(session.currentPage);
-  }, [session?.currentPage]);
+    if (currentPage != null) setInputPage(currentPage);
+  }, [currentPage]);
 
   // Cap the rendered PDF width to the space actually available so the page
   // scales to fit instead of overflowing into a horizontal scrollbar on

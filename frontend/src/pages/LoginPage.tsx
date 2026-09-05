@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { login as loginRequest, register as registerRequest } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { ROUTES } from '../config/routes';
@@ -15,7 +15,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: Location })?.from?.pathname || ROUTES.home;
+  const from = (location.state as { from?: Location } | null)?.from?.pathname || ROUTES.home;
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');

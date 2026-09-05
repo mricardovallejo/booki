@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage } from '../lib/preferences';
 import { ROUTES } from '../config/routes';
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss';
 import Logo from './Logo';
 import ScrollToTop from './ScrollToTop';
 import type { SessionLanguage } from '../types';
@@ -12,6 +13,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [defaultLanguage, setDefaultLanguageState] = useState<SessionLanguage>(getDefaultLanguage());
+  const menuRef = useOutsideDismiss<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
 
   const onLogout = () => {
     logout();
@@ -43,9 +45,11 @@ export default function Layout() {
             <Link to={ROUTES.tags} className="transition hover:text-booki-accent">Tags</Link>
             <Link to={ROUTES.aiProfiles} className="transition hover:text-booki-accent">AI Profiles</Link>
           </nav>
-          <div className="relative flex items-center gap-3">
+          <div ref={menuRef} className="relative flex items-center gap-3">
             <button
               onClick={() => setMenuOpen((o) => !o)}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
               className="flex items-center gap-2 rounded-full bg-booki-surface/80 px-4 py-1.5 text-sm font-medium text-white backdrop-blur transition hover:bg-booki-card"
             >
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-booki-accent text-xs font-bold uppercase">
@@ -54,7 +58,10 @@ export default function Layout() {
               {user?.name || 'My account'}
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-64 rounded-lg bg-booki-surface py-2 shadow-2xl ring-1 ring-white/10">
+              <div
+                role="menu"
+                className="absolute right-0 top-full mt-2 w-64 rounded-lg bg-booki-surface py-2 shadow-2xl ring-1 ring-white/10"
+              >
                 <p className="truncate px-4 py-1.5 text-xs text-booki-muted">{user?.email}</p>
                 <div className="px-4 py-2">
                   <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-white/50">

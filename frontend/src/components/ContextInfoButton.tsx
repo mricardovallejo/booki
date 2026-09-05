@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSessionContext } from '../hooks/useSessionContext';
 import { useSession } from '../hooks/useSession';
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss';
 import { AI_PROVIDER_LABELS } from '../lib/aiProviders';
 import type { SessionContextGroup, SessionContextLayer } from '../types';
 
@@ -47,15 +48,17 @@ function LayerBlock({ layer }: { layer: SessionContextLayer }) {
 }
 
 export default function ContextInfoButton({ sessionId }: Props) {
-  const context = useSessionContext(sessionId);
+  const { context, error } = useSessionContext(sessionId);
   const { session } = useSession(sessionId);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<SessionContextGroup>>(new Set());
+  const ref = useOutsideDismiss<HTMLDivElement>(open, () => setOpen(false));
 
   const toggle = (g: SessionContextGroup) =>
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(g) ? next.delete(g) : next.add(g);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
       return next;
     });
 
@@ -65,9 +68,11 @@ export default function ContextInfoButton({ sessionId }: Props) {
   }, {});
 
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         className="rounded-full bg-white/5 p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
         title="Everything BooKI reads before answering"
       >
@@ -75,6 +80,15 @@ export default function ContextInfoButton({ sessionId }: Props) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </button>
+      {open && !context && (
+        <div className="absolute right-0 top-full z-20 mt-2 w-96 rounded-lg bg-booki-surface p-4 text-sm shadow-2xl ring-1 ring-white/10">
+          {error ? (
+            <p className="text-rose-400">{error}</p>
+          ) : (
+            <p className="text-booki-muted">Loading…</p>
+          )}
+        </div>
+      )}
       {open && context && (
         <div className="absolute right-0 top-full z-20 mt-2 max-h-[75vh] w-96 overflow-y-auto rounded-lg bg-booki-surface p-4 shadow-2xl ring-1 ring-white/10">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-booki-muted">

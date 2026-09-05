@@ -64,6 +64,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// Co-located with the provider on purpose (single import site for auth). The
+// react-refresh rule only cares about HMR granularity, which doesn't matter for
+// this rarely-touched file.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');

@@ -52,11 +52,18 @@ export function useVoiceRecorder(): UseVoiceRecorder {
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunksRef.current.push(event.data);
     };
+    recorder.onerror = () => {
+      // Hardware/codec failure mid-recording: drop what we have and reset so the
+      // mic button returns to idle instead of appearing stuck "recording".
+      chunksRef.current = [];
+      releaseStream();
+      setRecording(false);
+    };
     streamRef.current = stream;
     recorderRef.current = recorder;
     recorder.start();
     setRecording(true);
-  }, [supported]);
+  }, [supported, releaseStream]);
 
   const stop = useCallback(
     () =>
@@ -66,6 +73,12 @@ export function useVoiceRecorder(): UseVoiceRecorder {
           resolve(null);
           return;
         }
+        recorder.onerror = () => {
+          chunksRef.current = [];
+          releaseStream();
+          setRecording(false);
+          resolve(null);
+        };
         recorder.onstop = () => {
           const type = recorder.mimeType || 'audio/webm';
           const blob = new Blob(chunksRef.current, { type });

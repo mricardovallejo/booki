@@ -3,16 +3,19 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      // Values live once, as RGB channels, in src/index.css (:root). Referencing
+      // them through rgb(... / <alpha-value>) keeps opacity modifiers working
+      // (e.g. bg-booki-accent/15).
       colors: {
         booki: {
-          bg: '#0b0b0f',
-          surface: '#16161d',
-          card: '#1f1f2a',
-          'card-hover': '#272736',
-          text: '#ffffff',
-          muted: '#a1a1aa',
-          accent: '#e63946',
-          'accent-hover': '#ff4d5a'
+          bg: 'rgb(var(--color-bg) / <alpha-value>)',
+          surface: 'rgb(var(--color-surface) / <alpha-value>)',
+          card: 'rgb(var(--color-card) / <alpha-value>)',
+          'card-hover': 'rgb(var(--color-card-hover) / <alpha-value>)',
+          text: 'rgb(var(--color-text) / <alpha-value>)',
+          muted: 'rgb(var(--color-muted) / <alpha-value>)',
+          accent: 'rgb(var(--color-accent) / <alpha-value>)',
+          'accent-hover': 'rgb(var(--color-accent-hover) / <alpha-value>)'
         }
       },
       fontFamily: {

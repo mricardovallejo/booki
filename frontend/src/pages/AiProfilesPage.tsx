@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAiProfiles } from '../hooks/useAiProfiles';
 import { useAiProfile } from '../hooks/useAiProfile';
@@ -116,14 +116,17 @@ export default function AiProfilesPage() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [isDirty]);
 
-  const groupsFor = (which: AiProfileSlotGroup[]) => {
-    const slots = profile?.slots ?? [];
-    return which
-      .map((group) => ({ group, slots: slots.filter((s) => s.group === group) }))
-      .filter((g) => g.slots.length > 0);
-  };
-  const basicGrouped = useMemo(() => groupsFor(BASIC_GROUPS), [profile]);
-  const advancedGrouped = useMemo(() => groupsFor(ADVANCED_GROUPS), [profile]);
+  const groupsFor = useCallback(
+    (which: AiProfileSlotGroup[]) => {
+      const slots = profile?.slots ?? [];
+      return which
+        .map((group) => ({ group, slots: slots.filter((s) => s.group === group) }))
+        .filter((g) => g.slots.length > 0);
+    },
+    [profile]
+  );
+  const basicGrouped = useMemo(() => groupsFor(BASIC_GROUPS), [groupsFor]);
+  const advancedGrouped = useMemo(() => groupsFor(ADVANCED_GROUPS), [groupsFor]);
   const advancedEditedCount = useMemo(
     () =>
       (profile?.slots ?? []).filter(

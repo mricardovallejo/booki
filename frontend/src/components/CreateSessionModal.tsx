@@ -67,8 +67,21 @@ export default function CreateSessionModal({ document, onClose }: Props) {
 
   if (!document) return null;
 
+  const pageError =
+    !Number.isFinite(startPage) || !Number.isFinite(endPage)
+      ? 'Enter a valid page range.'
+      : startPage < 1 || endPage > document.pageCount
+        ? `Pages must be between 1 and ${document.pageCount}.`
+        : startPage > endPage
+          ? "The start page can't come after the end page."
+          : null;
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pageError) {
+      setError(pageError);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -178,13 +191,13 @@ export default function CreateSessionModal({ document, onClose }: Props) {
             </label>
           </Field>
 
-          {error && <p className="text-sm text-rose-400">{error}</p>}
+          {(error || pageError) && <p className="text-sm text-rose-400">{error || pageError}</p>}
 
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
               Cancel
             </Button>
-            <Button type="submit" disabled={loading} className="flex-1">
+            <Button type="submit" disabled={loading || !!pageError} className="flex-1">
               {loading ? 'Creating…' : 'Start reading'}
             </Button>
           </div>

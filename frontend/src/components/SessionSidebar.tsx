@@ -21,7 +21,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function SessionSidebar({ sessionId }: Props) {
-  const context = useSessionContext(sessionId);
+  const { context } = useSessionContext(sessionId);
   const [tab, setTab] = useState<Tab>('chat');
   const [refreshKey, setRefreshKey] = useState(0);
   // On mobile the panel is a drawer that floats OVER the PDF instead of

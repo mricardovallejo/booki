@@ -92,6 +92,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
   const summaryEnabled = enabledCapabilities.includes('summary');
   const [text, setText] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const recorder = useVoiceRecorder();
@@ -109,6 +110,12 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
       .catch(() => setVoiceCaps({ stt: false, tts: false }));
   }, []);
 
+  // Stop any spoken reply still playing when the panel unmounts (tab switch,
+  // leaving the session) so audio never outlives the screen that started it.
+  useEffect(() => {
+    return () => replyAudioRef.current?.pause();
+  }, []);
+
   // Cloud path when the browser can record AND the backend has an STT provider;
   // otherwise the browser SpeechRecognition fallback (posts a normal VOICE message).
   const cloudVoice = recorder.supported && !!voiceCaps?.stt;
@@ -116,24 +123,29 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
   const voiceActive = recorder.recording || fallbackVoice.listening;
 
   const playReply = (audioBase64: string, contentType: string | null) => {
+    // Never let two replies overlap: cut the previous clip before starting one.
+    replyAudioRef.current?.pause();
     const audio = new Audio(`data:${contentType ?? 'audio/mpeg'};base64,${audioBase64}`);
     replyAudioRef.current = audio;
     audio.play().catch(() => undefined);
   };
 
   const onVoicePress = async () => {
+    setVoiceError(null);
     if (cloudVoice) {
       if (recorder.recording) {
         const clip = await recorder.stop();
         if (clip) {
           const result = await sendVoice(clip, undefined, wantsAudioReply);
           if (result?.audioBase64) playReply(result.audioBase64, result.audioContentType);
+        } else {
+          setVoiceError("BooKI didn't catch any audio. Try again.");
         }
       } else {
         try {
           await recorder.start();
         } catch {
-          // mic permission denied / no device — button returns to idle, nothing to send
+          setVoiceError('BooKI needs microphone access. Enable it for this site in your browser and try again.');
         }
       }
       return;
@@ -144,6 +156,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
     }
     const transcript = await fallbackVoice.start();
     if (transcript) await send(transcript, 'VOICE');
+    else setVoiceError("BooKI couldn't hear you. Check your microphone and try again.");
   };
 
   const runQuickAction = (action: QuickAction) => send(action.text[lang], 'TEXT', action.hint);
@@ -155,6 +168,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
   const onSend = async () => {
     const value = text;
     setText('');
+    setVoiceError(null);
     await send(value, 'TEXT');
   };
 
@@ -227,6 +241,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
 
       <div className="border-t border-white/10 p-4">
         {error && <p className="mb-2 text-xs text-rose-400">{error}</p>}
+        {voiceError && <p className="mb-2 text-xs text-rose-400">{voiceError}</p>}
         {quickActions.length > 0 && (
           <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
             {quickActions.map((action) => (

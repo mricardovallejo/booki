@@ -9,9 +9,9 @@ Text, quick-action buttons and voice all converge on one **`ConversationEngine`*
 2. build the recent-history window (most recent N messages, chronological order —
    `booki.conversation.history-window`, default 20);
 3. persist the user turn (`Message`, `InputType.TEXT` or `VOICE`);
-4. assemble the system prompt via `SessionContextBuilder` plus the session's
-   page-range text, capped at `booki.conversation.max-context-chars` (24000) so a
-   very wide range can't produce an unbounded request;
+4. assemble the system prompt via `PromptAssembler` (`docs/prompts.md`) plus the
+   session's page-range text, capped at `booki.conversation.max-context-chars`
+   (24000) so a very wide range can't produce an unbounded request;
 5. call the session's `AiProvider`;
 6. persist BooKI's reply, or raise a controlled error.
 
@@ -24,8 +24,7 @@ transports are `POST /api/sessions/{id}/messages` (text) and
 Voice runs through the exact same assembled prompt as text — the core, the
 session's AI Profile layers (difficulty, persona, reader context, function
 instructions when a capability runs), the session facts and the page text. See
-`docs/prompts.md`. (Today's Java backend still builds the older three-layer form
-via `SessionContextBuilder`.)
+`docs/prompts.md`.
 
 Chat, the conversational capabilities, and standalone quiz/summary generation all
 use this same builder.

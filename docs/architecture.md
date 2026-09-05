@@ -69,7 +69,7 @@ and `docs/ai-voice.md` for the detail.
 
 - `controller` → REST controllers (incl. `VoiceController`)
 - `service` → service interfaces
-- `service/impl` → implementations (incl. `SessionContextBuilder`, the shared 3-layer prompt)
+- `service/impl` → implementations; the prompt assembly lives in `prompt/PromptAssembler` (`docs/prompts.md`)
 - `conversation` → `ConversationEngine`, `ConversationRequest/Result/Stream`
 - `conversation/capability` → `ConversationCapability` + registry + the 4 capabilities
 - `voice` → `SpeechToTextProvider` / `TextToSpeechProvider`, their OpenAI impls, `VoiceConversationService`

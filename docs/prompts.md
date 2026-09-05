@@ -5,8 +5,7 @@ answer, who owns which part, and how the pieces combine.
 
 This is the single reference for the topic. `docs/backend.md` and
 `docs/frontend.md` only point here; the decision record is `ADR-015` in
-`docs/decisions.md`. Rollout status: the **frontend + Node mock** implement this
-today; the Java backend still runs the old Profile-Master path until Stage 3.
+`docs/decisions.md`. Frontend, mock and Java backend all implement this.
 
 ## The model
 
@@ -160,35 +159,34 @@ Full schemas: `docs/openapi.yaml` (`AiProfile`, `AiProfileSlot`, `SessionContext
   not in `session.enabledCapabilities`.
 - `src/components/SessionSidebar.tsx` — shows the active profile name, linked.
 
-## Backend (Stage 3 target)
+## Backend
 
 Two tables:
 
 - `ai_profiles` — `user_id`, `name`, `based_on_template` (a template key, not an
-  FK), `is_default`, `reader_level` (nullable), `enabled_capabilities` (csv).
+  FK), `is_default`, `reader_level` (nullable), `enabled_capabilities` (csv via
+  `CapabilitySetConverter`).
 - `ai_profile_slot_prompts` — `profile_id`, `slot` (`SlotKey` enum), `text`,
-  `original_text`.
+  `original_text`. `ON DELETE CASCADE`; sessions/quiz_attempts FK to
+  `ai_profiles` is `ON DELETE SET NULL`.
 
-The templates live in code: a **`SlotPromptCatalog`** class (mirror of
-`mock-backend/src/aiProfiles.js`) holds the ~10 `SlotPrompt` definitions —
-`label`, `group`, locked frames — and, per template, the default `text` of each.
-"Improving a template" = editing that class; existing profiles keep their own
-rows and are never touched.
+Templates and the fixed core live in code: **`SlotPromptCatalog`** (mirror of
+`mock-backend/src/aiProfiles.js`). `SlotKey` carries each prompt's label, group
+and locked frame. "Improving a template" = editing that class; existing profiles
+keep their own rows and are never touched.
 
-A `PromptAssembler` replaces `SessionContextBuilder` and owns the layering +
-precedence. Quiz / summary / explain / mnemonic and the capability router read
-their SlotPrompts from the session's profile instead of hardcoded Java strings.
-The core is a Java constant with a `@Value` override.
+**`PromptAssembler`** owns the layering + precedence: `forChat(session, docText)`,
+`forFunction(session, SlotKey, difficulty, docText)`, and `describe(session)` for
+`GET /sessions/{id}/context`. `ConversationEngine` appends the capability router,
+filtered to the profile's `enabledCapabilities`; a routed directive or explicit
+`capabilityHint` for a disabled capability is rejected. Quiz / summary / explain /
+mnemonic ask the assembler for their `fn_*` SlotPrompt; their remaining inline
+text is only the per-call dynamic bits.
 
-Migration (`V2` DDL + a `V3` Java data migration): seed each user's copies from
-the catalog; their `profile_masters` customizations → the matching profile's
-`persona` SlotPrompt; `sessions`/`quiz_attempts` `profile_master_id` →
-`ai_profile_id`; `user.bio` + `user.systemPrompt` → the `reader_context`
-SlotPrompt of the default profile, then dropped. `/api/profile-masters`, the old
-builder, and the `profile_masters` table are removed in the same PR.
-
-Until Stage 3 lands the Java backend still serves `/api/profile-masters` and
-builds the old three-layer prompt — see `docs/backend.md`.
+Registration seeds one profile per template (`SlotPromptCatalog.seedFor(user)`);
+`AiProfileBackfill` does the same on startup for any user with none. The schema
+change is folded into `V1__init.sql` (no prod data) — **wipe the target DB before
+deploying it** so Flyway re-runs clean.
 
 ## Design principles
 

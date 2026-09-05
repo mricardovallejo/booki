@@ -57,18 +57,21 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 | GET | `/api/documents/{id}/file` | Stream/view the PDF file |
 | DELETE | `/api/documents/{id}` | Delete a document |
 
-### Profile Masters — `/api/profile-masters`
+### AI Profiles — `/api/ai-profiles`
 
-> Being replaced by **AI Profiles** (`docs/prompts.md`). The frontend already
-> moved; the endpoints and prompt builder below are what the Java backend still
-> serves until Stage 3.
+The full editable set of prompts a session runs on — persona, reader context,
+difficulty levels, per-function prompts, capability routing. Everything about
+this lives in **`docs/prompts.md`**; the endpoints:
 
 | Method | Route | Description |
 |--------|------|-------------|
-| GET | `/api/profile-masters` | List the current user's own Masters (4 defaults + any custom ones) |
-| POST | `/api/profile-masters` | Create a new master, owned by the current user |
-| PATCH | `/api/profile-masters/{id}` | Update one of the current user's own Masters (`404` if it belongs to someone else) |
-| DELETE | `/api/profile-masters/{id}` | Delete one of the current user's own Masters |
+| GET | `/api/ai-profiles` | The user's profiles (seeded at registration, one flagged default) — no slots |
+| GET | `/api/ai-profiles/{id}` | One profile with its SlotPrompts |
+| PATCH | `/api/ai-profiles/{id}` | Name / `readerLevel` (`""` clears) / `enabledCapabilities` / slot `text` |
+| POST | `/api/ai-profiles/{id}/duplicate` | Autonomous copy (`{name?}`) |
+| POST | `/api/ai-profiles/{id}/revert` | One SlotPrompt back to its original (`{key}`) |
+| POST | `/api/ai-profiles/{id}/restore` | Whole profile back to its shipped template |
+| DELETE | `/api/ai-profiles/{id}` | Delete (`400` if it's the only one) |
 
 ### Collections (Tags) — `/api/collections`
 
@@ -87,7 +90,7 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 
 | Method | Route | Description |
 |--------|------|-------------|
-| POST | `/api/sessions` | Create a session (document, page range, difficulty, language, Profile Master, `aiProvider`); `400` if `startPage > endPage`, `endPage` exceeds the document's real page count, or `aiProvider` isn't a known provider name |
+| POST | `/api/sessions` | Create a session (document, page range, difficulty, language, `aiProfileId`); `400` if `startPage > endPage` or `endPage` exceeds the document's real page count. Omit `aiProfileId` to use the user's default profile |
 | GET | `/api/sessions/{id}` | Load a session |
 | GET | `/api/sessions/{id}/context` | Inspect the raw prompt pieces BooKI will use (app prompt, master prompt, user prompt) — for transparency/debugging |
 | PATCH | `/api/sessions/{id}/current-page` | Update the reader's current page; `400` if outside `[startPage, endPage]` |
@@ -135,7 +138,7 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 - Passwords hashed with BCrypt.
 - CORS origins come from `booki.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`, comma-separated; defaults to `http://localhost:5173`) — see `config/SecurityConfig`. Any origin not on the list, including `http://127.0.0.1:5173` in the default dev setup, is rejected with a 403 "Invalid CORS request". For production, set it to the deployed frontend origin(s); credentials are allowed, so `*` is not an option and authentication is never relaxed to work around CORS.
 - `/api/auth/**` and `/api/health` are public; every other `/api/**` route requires a valid JWT.
-- The JWT is stateless: a valid signature is enough to authenticate, even if the `userId` it carries no longer exists (e.g. after a local DB reset, or after switching between the `local`/`dev` profiles — the H2 file and the PostgreSQL database are entirely separate user sets). Any endpoint that then looks up that user throws `NoSuchElementException` → `404 {"error": "Resource not found"}`. `GET /profile-masters` is a quieter variant of the same symptom: it doesn't `orElseThrow` on the user, it just returns an empty list for a `userId` matching nobody — so a stale token there looks like "no Masters" with no error at all, not a `404`. Either way, the fix is the same: log out and back in (or register fresh) to get a token for a user that actually exists in whichever DB the backend is currently pointed at.
+- The JWT is stateless: a valid signature is enough to authenticate, even if the `userId` it carries no longer exists (e.g. after a local DB reset, or after switching between the `local`/`dev` profiles — the H2 file and the PostgreSQL database are entirely separate user sets). Any endpoint that then looks up that user throws `NoSuchElementException` → `404 {"error": "Resource not found"}`. `GET /ai-profiles` is a quieter variant: it just returns an empty list for a `userId` matching nobody, no `404`. Either way, the fix is the same: log out and back in (or register fresh) to get a token for a user that actually exists in whichever DB the backend is currently pointed at.
 - Every error response, from every handler in `config/GlobalExceptionHandler`, uses the same `{"error": "..."}` shape — including validation (`400`), auth (`401`), not-found (`404`), and the two multipart-specific cases (missing file part, file too large). The frontend's `lib/errors.ts` (see `docs/frontend.md`) relies on this being consistent everywhere.
 
 ## Conversation engine, capabilities and voice
@@ -149,10 +152,12 @@ through `ConversationEngine.converse(ConversationRequest)`. It:
 2. builds the history window — the **most recent N** messages
    (`booki.conversation.history-window`, default 20), in chronological order;
 3. persists the user turn;
-4. assembles the system prompt via `SessionContextBuilder` (app baseline +
-   Profile Master persona + user prompt) plus the session's page-range text,
-   **capped** at `booki.conversation.max-context-chars` (default 24000) so a very
-   wide range can't produce an unbounded request;
+4. assembles the system prompt via `PromptAssembler` (the layered
+   core → rubric → persona → reader context → session facts — see `docs/prompts.md`)
+   plus the session's page-range text, **capped** at
+   `booki.conversation.max-context-chars` (default 24000) so a very wide range
+   can't produce an unbounded request, and the capability router filtered to the
+   profile's enabled set;
 5. calls the session's `AiProvider` — via a capability if one applies (below);
 6. persists BooKI's reply, or raises `ConversationFailedException`.
 
@@ -214,7 +219,7 @@ The `AiProvider` interface (package `ai`) has 4 implementations, **all always re
 
 ### Where AI is actually called vs. templated
 
-- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the three-layer prompt `SessionContextBuilder` builds (app baseline + Profile Master persona + the user's own `systemPrompt`) — being replaced by the AI-Profile layering in `docs/prompts.md`. Quiz grading asks the model to reply in a strict `CORRECT:`/`SCORE:`/`FEEDBACK:` format that `QuizServiceImpl.parseGrade` parses; a response that doesn't follow the format degrades to `correct=false, score=0`, feedback = the raw text. (Provider *failures* no longer reach the parser — see below.)
+- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the layered prompt `PromptAssembler` builds, with the matching `fn_*` SlotPrompt layered in for the capability calls (`docs/prompts.md`). Quiz grading asks the model to reply in the strict `CORRECT:`/`SCORE:`/`FEEDBACK:` format (the `fn_answer_grading` locked frame) that `QuizServiceImpl.parseGrade` parses; a response that doesn't follow the format degrades to `correct=false, score=0`, feedback = the raw text. (Provider *failures* no longer reach the parser — see below.)
 - **Progress/quiz-correction PDF reports** (`POST /sessions/{id}/reports/*`) — deliberately stay template-based, no AI call. These are factual recaps (page counts, past Q&A already graded) where a template is more reliable than an LLM restating numbers.
 
 Variables, in `.env` at the **repo root** (sibling of `.env.example`, not inside `backend/`) or the shell environment:

@@ -66,7 +66,7 @@ environment. See [docs/deployment.md](docs/deployment.md).
 1. Open `http://localhost:5173`.
 2. Sign up or log in from the login page.
 3. Upload a PDF from the home screen.
-4. Click a book to create a session (choose page range, difficulty, and a Profile Master).
+4. Click a book to create a session (choose page range, difficulty, and an AI Profile).
 5. Open the session and chat with BooKI by text or voice.
 
 ## AI configuration
@@ -103,7 +103,7 @@ key covers chat and voice. Model and voice options: see
 ## Status
 
 Core product in place: authentication, PDF library and per-page extraction,
-page-range sessions, Profile Masters, the unified conversation engine (text +
-voice + capabilities), per-session AI provider, quiz, progress, reports, and
-cloud STT/TTS. Voice streaming (incremental STT/TTS) is architected but not
+page-range sessions, AI Profiles (the per-session prompt set — `docs/prompts.md`),
+the unified conversation engine (text + voice + capabilities), per-session AI
+provider, quiz, progress, reports, and cloud STT/TTS. Voice streaming (incremental STT/TTS) is architected but not
 wired — see [docs/ai-voice.md](docs/ai-voice.md) "Streaming".

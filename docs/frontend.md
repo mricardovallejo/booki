@@ -18,8 +18,6 @@
 - **AiProfilesPage** (`/ai-profiles`, `/ai-profiles/:id`): the AI Profile editor — profile selector + Duplicate / Restore to original / Delete, and inline the per-slot prompt editor. See `docs/prompts.md`.
 - **ProfilePage**: edit the current user's name (learning preferences live in each AI Profile's Reader context slot — `docs/prompts.md`).
 
-> The AI Profile screens and the layered context panel talk to the **mock backend** only for now; the Java backend still serves `/api/profile-masters` (`docs/prompts.md` § Backend).
-
 All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `/login` when there's no authenticated user (see `context/AuthContext`).
 
 ## Main components (`src/components`)

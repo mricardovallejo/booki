@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAiProfiles } from '../hooks/useAiProfiles';
 import { useAiProfile } from '../hooks/useAiProfile';
@@ -17,27 +17,29 @@ const CAPABILITY_LABELS: { hint: CapabilityHint; label: string }[] = [
   { hint: 'mnemonic', label: 'Mnemonic' }
 ];
 
-// All slot groups, always visible — no "Advanced" fold. The reader profile is
-// handled separately (READER_KEY), it's no longer a slot.
+// All slot groups, always visible — no "Advanced" fold.
 const SLOT_GROUPS: AiProfileSlotGroup[] = ['persona', 'difficulty', 'functions', 'routing'];
 const GROUP_LABEL: Record<AiProfileSlotGroup, string> = {
-  persona: 'Master persona',
+  persona: 'Persona',
   difficulty: 'Difficulty levels',
   functions: 'Function prompts',
   routing: 'Capability routing'
 };
 
-const READER_KEY = '__reader__';
-const NEW_READER = '__new__';
+// The reader profile's starting level is stored as beginner/intermediate/advanced
+// but shown with the same Easy/Medium/Advanced words the session and quiz use, so
+// the reader isn't juggling two vocabularies for the same three levels.
 const READER_LEVELS: (ReaderLevel | '')[] = ['', 'beginner', 'intermediate', 'advanced'];
 const LEVEL_LABEL: Record<string, string> = {
   '': 'Not set',
-  beginner: 'Beginner',
-  intermediate: 'Intermediate',
+  beginner: 'Easy',
+  intermediate: 'Medium',
   advanced: 'Advanced'
 };
 
 const LABEL_PREFIX_RE = /^Function — |^Difficulty — /;
+
+type Tab = 'tutor' | 'reader';
 
 export default function AiProfilesPage() {
   const { id } = useParams();
@@ -48,6 +50,7 @@ export default function AiProfilesPage() {
   const readers = useReaderProfiles();
 
   const selectedId = id ? Number(id) : null;
+  const [tab, setTab] = useState<Tab>('tutor');
 
   // Land on a sensible profile — the user's default, else the first.
   useEffect(() => {
@@ -73,10 +76,18 @@ export default function AiProfilesPage() {
     restore
   } = editor;
 
-  // Reader profiles are edited here too, but they belong to no AI Profile — a
+  // Reader profiles are edited here too, but they belong to no tutor profile — a
   // session picks one. This picks which one you're editing (default: the user's
   // default).
-  const defaultReaderId = (readers.profiles.find((r) => r.isDefault) ?? readers.profiles[0])?.id ?? null;
+  // Land on one of the user's OWN reader profiles when they have any (their
+  // default, else the first editable one) — not the built-in read-only template,
+  // which has no Save / Delete and reads as a dead end.
+  const defaultReaderId =
+    (readers.profiles.find((r) => r.isDefault && !r.readOnly) ??
+      readers.profiles.find((r) => !r.readOnly) ??
+      readers.profiles.find((r) => r.isDefault) ??
+      readers.profiles[0])?.id ??
+    null;
   const [editingReaderId, setEditingReaderId] = useState<number | null>(null);
   const effectiveReaderId = editingReaderId ?? defaultReaderId;
   const selectedReader = readers.profiles.find((r) => r.id === effectiveReaderId) ?? null;
@@ -111,16 +122,22 @@ export default function AiProfilesPage() {
   // Deep link like /ai-profiles/5?slot=rubric_hard preselects that slot.
   useEffect(() => {
     const slot = profile?.slots.find((s) => s.key === slotParam);
-    if (slot) setSelectedKey(slot.key);
+    if (slot) {
+      setSelectedKey(slot.key);
+      setTab('tutor');
+    }
   }, [slotParam, profile]);
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [confirmDeleteReader, setConfirmDeleteReader] = useState(false);
 
-  // Guard unsaved edits (AI Profile OR reader profile): warn on tab close,
-  // confirm before switching profile or duplicating.
+  // Guard unsaved edits (tutor profile OR reader profile): warn on tab close,
+  // confirm before switching which profile you're editing, or duplicating.
+  // Switching between the Tutor / Reader tabs keeps both drafts in memory, so it
+  // needs no guard.
   const anyDirty = isDirty || readerDirty;
   const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null);
   const guardDraft = (run: () => void) => {
@@ -148,8 +165,10 @@ export default function AiProfilesPage() {
   );
   const grouped = useMemo(() => groupsFor(SLOT_GROUPS), [groupsFor]);
 
-  const activeKey = selectedKey ?? READER_KEY;
-  const showReader = activeKey === READER_KEY;
+  // Default the tutor editor to the persona slot, else the first slot there is.
+  const firstSlotKey =
+    profile?.slots.find((s) => s.group === 'persona')?.key ?? profile?.slots[0]?.key ?? null;
+  const activeKey = selectedKey ?? firstSlotKey;
   const activeSlot: AiProfileSlot | undefined = profile?.slots.find((s) => s.key === activeKey);
   const activeValue = activeSlot ? draft[activeSlot.key] ?? activeSlot.text : '';
   const activeModified = activeSlot ? activeValue !== activeSlot.originalText : false;
@@ -162,7 +181,24 @@ export default function AiProfilesPage() {
       const created = await duplicate(selectedId);
       navigate(ROUTES.aiProfile(created.id));
     } catch (err) {
-      setActionError(getErrorMessage(err, 'Could not duplicate this profile.'));
+      setActionError(getErrorMessage(err, 'Could not duplicate this tutor profile.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // A fresh tutor profile: a clean copy of the user's default (there is no
+  // blank-template endpoint, so "new" means "start from the default again").
+  const onNewProfile = async () => {
+    const base = profiles.find((p) => p.isDefault) ?? profiles[0];
+    if (!base) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const created = await duplicate(base.id, 'New tutor profile');
+      navigate(ROUTES.aiProfile(created.id));
+    } catch (err) {
+      setActionError(getErrorMessage(err, 'Could not create a tutor profile.'));
     } finally {
       setBusy(false);
     }
@@ -188,7 +224,18 @@ export default function AiProfilesPage() {
       const next = profiles.find((p) => p.id !== selectedId);
       navigate(next ? ROUTES.aiProfile(next.id) : ROUTES.aiProfiles, { replace: true });
     } catch (err) {
-      setActionError(getErrorMessage(err, 'Could not delete this profile.'));
+      setActionError(getErrorMessage(err, 'Could not delete this tutor profile.'));
+    }
+  };
+
+  // A blank editable reader profile (the backend copies the built-in scaffold).
+  const onNewReader = async () => {
+    setActionError(null);
+    try {
+      const created = await readers.create({ name: 'My reader profile' });
+      setEditingReaderId(created.id);
+    } catch (err) {
+      setActionError(getErrorMessage(err, 'Could not create a reader profile.'));
     }
   };
 
@@ -204,15 +251,6 @@ export default function AiProfilesPage() {
     } catch (err) {
       setActionError(getErrorMessage(err, 'Could not create a reader profile.'));
     }
-  };
-
-  const onPickReader = async (value: string) => {
-    setActionError(null);
-    if (value === NEW_READER) {
-      await duplicateReader(selectedReader?.id);
-      return;
-    }
-    setEditingReaderId(Number(value));
   };
 
   const onSaveReader = async () => {
@@ -232,306 +270,346 @@ export default function AiProfilesPage() {
     }
   };
 
+  const onDeleteReader = async () => {
+    if (!selectedReader) return;
+    setConfirmDeleteReader(false);
+    setActionError(null);
+    try {
+      await readers.remove(selectedReader.id);
+      setEditingReaderId(null);
+    } catch (err) {
+      setActionError(getErrorMessage(err, 'Could not delete that reader profile.'));
+    }
+  };
+
   const dirtyOrModified = isDirty || (profile?.slots.some((s) => s.modified) ?? false);
+
+  const TABS: { id: Tab; label: string; dirty: boolean }[] = [
+    { id: 'tutor', label: 'Tutor profile', dirty: isDirty },
+    { id: 'reader', label: 'Reader profile', dirty: readerDirty }
+  ];
 
   return (
     <div className="mx-auto min-h-screen max-w-5xl px-6 py-10">
-      <h1 className="text-2xl font-bold text-white">Profiles</h1>
-      <p className="mt-1 max-w-2xl text-sm text-booki-muted">
-        Edit both here. An <span className="font-semibold text-white">AI Profile</span> is the "master"
-        — persona, difficulty levels, per-function prompts. A{' '}
-        <span className="font-semibold text-white">reader profile</span> is who is reading. They're
-        independent; a session picks one of each. The BooKI core stays fixed and is part of neither.
-      </p>
+      <h1 className="text-2xl font-bold text-white">Reading setup</h1>
+      <div className="mt-1 flex items-baseline gap-1.5 text-sm text-booki-muted">
+        <span>How BooKI teaches (tutor) and who is reading (reader) — a session picks one of each.</span>
+        <Explainer label="What a tutor / reader profile is" className="max-w-2xl">
+          A <span className="text-white/70">tutor profile</span> is how BooKI teaches — persona,
+          difficulty levels, per-function prompts. A <span className="text-white/70">reader profile</span>{' '}
+          is who is reading. They're independent; a session picks one of each. BooKI's core (safety,
+          grounding, language) is fixed and part of neither — you can see it, not edit it.
+        </Explainer>
+      </div>
 
       {listError && <p className="mt-4 text-sm text-rose-400">{listError}</p>}
       {readers.error && <p className="mt-4 text-sm text-rose-400">{readers.error}</p>}
       {actionError && <p className="mt-4 text-sm text-rose-400">{actionError}</p>}
 
-      <div className="mt-6 flex flex-wrap items-end gap-3">
-        <div className="min-w-[16rem] flex-1">
-          <Field label="AI Profile">
-            <Select
-              value={selectedId ?? ''}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                if (next) guardDraft(() => navigate(ROUTES.aiProfile(next)));
-              }}
-            >
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.isDefault ? ' — default' : ''}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-        <Button variant="secondary" size="sm" disabled={busy || !selectedId} onClick={() => guardDraft(onDuplicate)}>
-          {busy ? 'Working…' : 'Duplicate'}
-        </Button>
-        {profile && dirtyOrModified && (
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmRestore(true)}>
-            Restore to original
-          </Button>
-        )}
-        {profiles.length > 1 && (
-          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
-            Delete
-          </Button>
-        )}
+      <div className="mt-6 inline-flex rounded-lg bg-booki-bg/60 p-1 text-xs font-bold">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`rounded-md px-4 py-1.5 transition ${
+              tab === t.id ? 'bg-booki-accent text-white' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            {t.label}
+            {t.dirty && (
+              <span
+                className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-white/80 align-middle"
+                title="Unsaved changes"
+              />
+            )}
+          </button>
+        ))}
       </div>
 
-      {editor.loading || listLoading ? (
-        <p className="mt-8 text-sm text-booki-muted">Loading…</p>
-      ) : !profile ? (
-        <p className="mt-8 text-sm text-booki-muted">Select a profile to view its prompts.</p>
-      ) : (
+      {tab === 'tutor' ? (
         <>
-          {error && <p className="mt-4 text-sm text-rose-400">{error}</p>}
-
-          <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
+          <div className="mt-6 flex flex-wrap items-end gap-3">
             <div className="min-w-[16rem] flex-1">
-              <Field label="AI Profile name">
-                <Input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
+              <Field label="Tutor profile">
+                <Select
+                  value={selectedId ?? ''}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (next) guardDraft(() => navigate(ROUTES.aiProfile(next)));
+                  }}
+                >
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.isDefault ? ' — default' : ''}
+                    </option>
+                  ))}
+                </Select>
               </Field>
             </div>
-            <Button onClick={save} disabled={!isDirty || saving}>
-              {saving ? 'Saving…' : isDirty ? 'Save changes' : 'Saved'}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy || profiles.length === 0}
+              onClick={() => guardDraft(onNewProfile)}
+            >
+              New
             </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy || !selectedId}
+              onClick={() => guardDraft(onDuplicate)}
+            >
+              {busy ? 'Working…' : 'Duplicate'}
+            </Button>
+            {profile && dirtyOrModified && (
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmRestore(true)}>
+                Restore to original
+              </Button>
+            )}
+            {profiles.length > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
+                Delete
+              </Button>
+            )}
           </div>
 
-          <div className="mt-6 grid gap-6 md:grid-cols-[15rem_1fr]">
-            <nav className="space-y-4">
-              <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-booki-muted">
-                  Reader profiles
-                </p>
-                <button
-                  onClick={() => setSelectedKey(READER_KEY)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition ${
-                    showReader ? 'bg-booki-accent/15 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  <span>Edit reader profiles{selectedReader ? ` · ${selectedReader.name}` : ''}</span>
-                  {readerDirty && (
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-booki-accent" title="Unsaved" />
-                  )}
-                </button>
+          {editor.loading || listLoading ? (
+            <p className="mt-8 text-sm text-booki-muted">Loading…</p>
+          ) : !profile ? (
+            <p className="mt-8 text-sm text-booki-muted">Select a tutor profile to view its prompts.</p>
+          ) : (
+            <>
+              {error && <p className="mt-4 text-sm text-rose-400">{error}</p>}
+
+              <div className="mt-6 sm:max-w-sm">
+                <Field label="Tutor profile name">
+                  <Input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
+                </Field>
               </div>
 
-              <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-booki-muted">
-                  AI Profile — {profile?.name}
-                </p>
+              <div className="mt-6 grid gap-6 md:grid-cols-[15rem_1fr]">
+                <nav className="space-y-4">
+                  {grouped.map(({ group, slots }) => (
+                    <SlotGroup
+                      key={group}
+                      label={GROUP_LABEL[group]}
+                      slots={slots}
+                      draft={draft}
+                      activeKey={activeKey}
+                      onSelect={setSelectedKey}
+                    />
+                  ))}
+                </nav>
+
+                <section className="min-w-0">
+                  {activeSlot ? (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <h2 className="text-sm font-bold text-white">{activeSlot.label}</h2>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                            activeModified ? 'bg-booki-accent/15 text-booki-accent' : 'bg-white/10 text-white/50'
+                          }`}
+                        >
+                          {activeModified ? 'Edited' : 'Original'}
+                        </span>
+                      </div>
+
+                      {activeSlot.group === 'difficulty' && (
+                        <Explainer label="How the difficulty level works">
+                          Defines what this level means — question style, scaffolding, grading strictness. A
+                          session runs at one level (set at creation, preset from the reader's starting level);
+                          the quiz tab can override it per round.
+                        </Explainer>
+                      )}
+
+                      {activeSlot.group === 'routing' && (
+                        <div className="mt-3">
+                          <Field label="Capabilities allowed in this profile">
+                            <div className="flex flex-wrap gap-2">
+                              {CAPABILITY_LABELS.map(({ hint, label }) => {
+                                const on = enabledCapabilities.includes(hint);
+                                return (
+                                  <button
+                                    key={hint}
+                                    type="button"
+                                    onClick={() => toggleCapability(hint)}
+                                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                                      on
+                                        ? 'bg-booki-accent text-white'
+                                        : 'bg-booki-bg/60 text-white/50 hover:bg-booki-card-hover'
+                                    }`}
+                                  >
+                                    {on ? '✓ ' : ''}
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <p className="mt-1.5 text-[11px] text-white/40">
+                              A capability left off is hidden in the chat and never auto-triggered. The text
+                              below only tunes how eagerly BooKI reaches for the ones left on.
+                            </p>
+                          </Field>
+                        </div>
+                      )}
+
+                      {activeSlot.lockedPreamble && (
+                        <LockedFrame label="Fixed — the app needs this" text={activeSlot.lockedPreamble} />
+                      )}
+
+                      <TextArea
+                        value={activeValue}
+                        onChange={(e) => setSlotDraft(activeSlot.key, e.target.value)}
+                        maxLength={8000}
+                        rows={8}
+                        className="mt-2 font-mono text-[13px] leading-relaxed"
+                        placeholder="Prompt text…"
+                      />
+
+                      {activeSlot.lockedPostamble && (
+                        <LockedFrame label="Fixed — the app needs this" text={activeSlot.lockedPostamble} />
+                      )}
+
+                      {activeModified && (
+                        <button
+                          onClick={() => revertSlot(activeSlot.key)}
+                          className="mt-2 text-xs font-medium text-booki-accent hover:underline"
+                        >
+                          Restore original text for this prompt
+                        </button>
+                      )}
+                    </>
+                  ) : null}
+                </section>
               </div>
 
-              {grouped.map(({ group, slots }) => (
-                <SlotGroup
-                  key={group}
-                  label={GROUP_LABEL[group]}
-                  slots={slots}
-                  draft={draft}
-                  activeKey={activeKey}
-                  onSelect={setSelectedKey}
-                />
-              ))}
-            </nav>
-
-            <section className="min-w-0">
-              {showReader ? (
-                <div className="space-y-4">
-                  <div>
-                    <h2 className="text-sm font-bold text-white">Reader profiles</h2>
-                    <p className="mt-1 text-[11px] text-white/40">
-                      Who is reading, in one study context (languages, sciences, philosophy…). Not tied
-                      to any AI Profile — you pick a reader profile when you create a session. Editing
-                      one changes it for every session that uses it.
-                    </p>
-                  </div>
-
-                  <Field label="Editing">
-                    <Select value={effectiveReaderId ?? ''} onChange={(e) => onPickReader(e.target.value)}>
+              <Button className="mt-6" onClick={save} disabled={!isDirty || saving}>
+                {saving ? 'Saving…' : isDirty ? 'Save changes' : 'Saved'}
+              </Button>
+            </>
+          )}
+        </>
+      ) : (
+        <div className="mt-6 space-y-4">
+          {readers.loading ? (
+            <p className="text-sm text-booki-muted">Loading…</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[16rem] flex-1">
+                  <Field label="Reader profile">
+                    <Select
+                      value={effectiveReaderId ?? ''}
+                      onChange={(e) => {
+                        const next = Number(e.target.value);
+                        guardDraft(() => setEditingReaderId(next));
+                      }}
+                    >
                       {readers.profiles.map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.name}
                           {r.isDefault ? ' — default' : ''}
                         </option>
                       ))}
-                      <option value={NEW_READER}>＋ New reader profile…</option>
                     </Select>
                   </Field>
-
-                  {selectedReader && (
-                    <>
-                      {selectedReader.readOnly && (
-                        <p className="rounded-lg bg-white/[0.03] px-3 py-2 text-[11px] text-white/50 ring-1 ring-white/10">
-                          This is the built-in default reader — read-only. Duplicate it to make your own,
-                          editable one.
-                        </p>
-                      )}
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label="Name">
-                          <Input
-                            value={readerDraft.name}
-                            maxLength={120}
-                            disabled={selectedReader.readOnly}
-                            onChange={(e) => setReaderDraft((d) => ({ ...d, name: e.target.value }))}
-                          />
-                        </Field>
-                        <Field label="Reader level (also goes into the assistant's prompt)">
-                          <Select
-                            value={readerDraft.readerLevel}
-                            disabled={selectedReader.readOnly}
-                            onChange={(e) =>
-                              setReaderDraft((d) => ({ ...d, readerLevel: e.target.value as ReaderLevel | '' }))
-                            }
-                          >
-                            {READER_LEVELS.map((lvl) => (
-                              <option key={lvl} value={lvl}>
-                                {LEVEL_LABEL[lvl]}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                      </div>
-
-                      <TextArea
-                        value={readerDraft.context}
-                        maxLength={4000}
-                        disabled={selectedReader.readOnly}
-                        onChange={(e) => setReaderDraft((d) => ({ ...d, context: e.target.value }))}
-                        rows={9}
-                        className="font-mono text-[13px] leading-relaxed disabled:opacity-60"
-                        placeholder={
-                          'Describe the reader for this context: their goal, how much they already know, how ' +
-                          'they like to learn (examples, definitions, pace), and anything that helps them ' +
-                          '(short paragraphs, dyslexia-friendly formatting…).'
-                        }
-                      />
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        {selectedReader.readOnly ? (
-                          <Button size="sm" onClick={() => duplicateReader(selectedReader.id)}>
-                            Duplicate to edit
-                          </Button>
-                        ) : (
-                          <>
-                            <Button size="sm" onClick={onSaveReader} disabled={!readerDirty || readerSaving}>
-                              {readerSaving ? 'Saving…' : readerDirty ? 'Save reader profile' : 'Saved'}
-                            </Button>
-                            <Button variant="secondary" size="sm" onClick={() => duplicateReader(selectedReader.id)}>
-                              Duplicate
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={async () => {
-                                setActionError(null);
-                                try {
-                                  await readers.remove(selectedReader.id);
-                                  setEditingReaderId(null);
-                                } catch (err) {
-                                  setActionError(getErrorMessage(err, 'Could not delete that reader profile.'));
-                                }
-                              }}
-                            >
-                              Delete
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
                 </div>
-              ) : activeSlot ? (
+                <Button variant="secondary" size="sm" onClick={() => guardDraft(onNewReader)}>
+                  New
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={!selectedReader}
+                  onClick={() => guardDraft(() => duplicateReader(selectedReader?.id))}
+                >
+                  Duplicate
+                </Button>
+                {selectedReader && !selectedReader.readOnly && (
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteReader(true)}>
+                    Delete
+                  </Button>
+                )}
+              </div>
+
+              {selectedReader && selectedReader.readOnly && (
+                <div className="rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/10">
+                  <p className="text-sm font-semibold text-white">
+                    "{selectedReader.name}" is the built-in template — read-only
+                  </p>
+                  <p className="mt-1 text-xs text-white/50">
+                    Renaming, the starting level, the context and Delete only work on your own reader
+                    profiles. Use <span className="font-semibold text-white">New</span> or{' '}
+                    <span className="font-semibold text-white">Duplicate</span> above to make one — it
+                    becomes your default, and Save / Delete show up here.
+                  </p>
+                </div>
+              )}
+
+              {selectedReader && !selectedReader.readOnly && (
                 <>
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-bold text-white">{activeSlot.label}</h2>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                        activeModified ? 'bg-booki-accent/15 text-booki-accent' : 'bg-white/10 text-white/50'
-                      }`}
-                    >
-                      {activeModified ? 'Edited' : 'Original'}
-                    </span>
+                  <div className="sm:max-w-sm">
+                    <Field label="Name">
+                      <Input
+                        value={readerDraft.name}
+                        maxLength={120}
+                        onChange={(e) => setReaderDraft((d) => ({ ...d, name: e.target.value }))}
+                      />
+                    </Field>
                   </div>
 
-                  {activeSlot.group === 'persona' && (
-                    <p className="mt-1 text-[11px] text-white/40">
-                      The assistant's character: give it a name and gender if you want one, set its tone, and say
-                      how it teaches (steps, analogies, how much it pushes back).
-                    </p>
-                  )}
+                  <div className="sm:max-w-[12rem]">
+                    <Field label="Starting level">
+                      <Select
+                        value={readerDraft.readerLevel}
+                        onChange={(e) =>
+                          setReaderDraft((d) => ({ ...d, readerLevel: e.target.value as ReaderLevel | '' }))
+                        }
+                      >
+                        {READER_LEVELS.map((lvl) => (
+                          <option key={lvl} value={lvl}>
+                            {LEVEL_LABEL[lvl]}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
 
-                  {activeSlot.group === 'routing' && (
-                    <div className="mt-3">
-                      <Field label="Capabilities allowed in this profile">
-                        <div className="flex flex-wrap gap-2">
-                          {CAPABILITY_LABELS.map(({ hint, label }) => {
-                            const on = enabledCapabilities.includes(hint);
-                            return (
-                              <button
-                                key={hint}
-                                type="button"
-                                onClick={() => toggleCapability(hint)}
-                                className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                                  on
-                                    ? 'bg-booki-accent text-white'
-                                    : 'bg-booki-bg/60 text-white/50 hover:bg-booki-card-hover'
-                                }`}
-                              >
-                                {on ? '✓ ' : ''}
-                                {label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p className="mt-1.5 text-[11px] text-white/40">
-                          A disabled capability is off everywhere for the session: BooKI never triggers it on
-                          its own, and its quick-action button is hidden in the chat. The text below only tunes
-                          how eagerly BooKI reaches for the enabled ones.
-                        </p>
-                      </Field>
-                    </div>
-                  )}
-
-                  {activeSlot.lockedPreamble && (
-                    <LockedFrame label="Fixed — the app needs this" text={activeSlot.lockedPreamble} />
-                  )}
+                  <Explainer label="How the starting level works">
+                    Only a starting point: a new session with this reader is preset to this level. You can
+                    change it per session, and again per quiz round. What each level <em>means</em> is set
+                    in the tutor profile's <span className="text-white/60">Difficulty levels</span>.
+                  </Explainer>
 
                   <TextArea
-                    value={activeValue}
-                    onChange={(e) => setSlotDraft(activeSlot.key, e.target.value)}
-                    maxLength={8000}
-                    rows={8}
-                    className="mt-2 font-mono text-[13px] leading-relaxed"
-                    placeholder="Prompt text…"
+                    value={readerDraft.context}
+                    maxLength={4000}
+                    onChange={(e) => setReaderDraft((d) => ({ ...d, context: e.target.value }))}
+                    rows={9}
+                    className="font-mono text-[13px] leading-relaxed"
+                    placeholder={
+                      'Describe the reader for this context: their goal, how much they already know, how ' +
+                      'they like to learn (examples, definitions, pace), and anything that helps them ' +
+                      '(short paragraphs, dyslexia-friendly formatting…).'
+                    }
                   />
 
-                  {activeSlot.lockedPostamble && (
-                    <LockedFrame label="Fixed — the app needs this" text={activeSlot.lockedPostamble} />
-                  )}
-
-                  {activeModified && (
-                    <button
-                      onClick={() => revertSlot(activeSlot.key)}
-                      className="mt-2 text-xs font-medium text-booki-accent hover:underline"
-                    >
-                      Restore original text for this prompt
-                    </button>
-                  )}
+                  <Button onClick={onSaveReader} disabled={!readerDirty || readerSaving}>
+                    {readerSaving ? 'Saving…' : readerDirty ? 'Save changes' : 'Saved'}
+                  </Button>
                 </>
-              ) : null}
-            </section>
-          </div>
-        </>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       <ConfirmDialog
         open={confirmDelete}
-        title="Delete this AI Profile?"
+        title="Delete this tutor profile?"
         description={
           profile ? `"${profile.name}" will be removed. Sessions that already used it keep their history.` : undefined
         }
@@ -554,9 +632,22 @@ export default function AiProfilesPage() {
       />
 
       <ConfirmDialog
+        open={confirmDeleteReader}
+        title="Delete this reader profile?"
+        description={
+          selectedReader
+            ? `"${selectedReader.name}" will be removed. Sessions that used it fall back to your default reader.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        onConfirm={onDeleteReader}
+        onCancel={() => setConfirmDeleteReader(false)}
+      />
+
+      <ConfirmDialog
         open={!!pendingDiscard}
         title="Discard unsaved changes?"
-        description="You have unsaved edits on an AI Profile or a reader profile. Leaving now loses them."
+        description="You have unsaved edits on a tutor profile or a reader profile. Leaving now loses them."
         confirmLabel="Discard"
         onConfirm={() => {
           const run = pendingDiscard;
@@ -566,6 +657,31 @@ export default function AiProfilesPage() {
         onCancel={() => setPendingDiscard(null)}
       />
     </div>
+  );
+}
+
+// A discreet disclosure: a small "?" badge that expands the detail inline.
+// Closed by default; keeps the page uncluttered for people who already know.
+function Explainer({
+  children,
+  label = 'More info',
+  className = ''
+}: {
+  children: ReactNode;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <details className={`text-[11px] text-white/40 ${className}`}>
+      <summary
+        title={label}
+        aria-label={label}
+        className="inline-flex h-4 w-4 cursor-pointer list-none items-center justify-center rounded-full bg-white/10 text-[10px] font-bold text-white/50 transition hover:bg-white/20 hover:text-white [&::-webkit-details-marker]:hidden"
+      >
+        ?
+      </summary>
+      <div className="mt-1.5 leading-relaxed">{children}</div>
+    </details>
   );
 }
 

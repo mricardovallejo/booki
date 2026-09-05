@@ -23,7 +23,7 @@ const FOLDED_BY_DEFAULT: SessionContextGroup[] = ['functions', 'routing'];
 const GROUP_HEADING: Record<SessionContextGroup, string> = {
   core: 'Core',
   difficulty: 'Difficulty',
-  persona: 'Master persona',
+  persona: 'Persona',
   reader: 'Reader profile',
   session: 'This session',
   functions: 'Per-action instructions',
@@ -95,8 +95,8 @@ export default function ContextInfoButton({ sessionId }: Props) {
             Everything BooKI reads before answering
           </p>
           <p className="mb-3 text-[11px] text-white/40">
-            AI model: {session ? AI_PROVIDER_LABELS[session.aiProvider] : '…'} · AI Profile:{' '}
-            {context.aiProfileName || '—'} · Reader: {context.readerProfileName || '—'}
+            AI model: {session ? AI_PROVIDER_LABELS[session.aiProvider] : '…'} · Tutor profile:{' '}
+            {context.aiProfileName || '—'} · Reader profile: {context.readerProfileName || '—'}
           </p>
 
           <div className="space-y-4 text-xs">

@@ -16,8 +16,8 @@
 - **LoginPage**: sign in / sign up (email, password, optional name). The "use demo account" shortcut is gated behind `import.meta.env.DEV`, so it (and the demo credentials) are stripped from production builds.
 - **HomePage**: list of the user's PDFs, tag filtering, and the upload flow.
 - **SessionPage**: PDF reader + chat, quiz, progress, and notifications for one session.
-- **AiProfilesPage** (`/ai-profiles`, `/ai-profiles/:id`): edits **both** the AI Profile (master: persona, difficulty, function prompts — every group visible, no Advanced fold) and, in a standalone section, the **reader profiles** (who is reading — no link to any AI Profile; a session picks one). See `docs/prompts.md`.
-- **ProfilePage**: edit the current user's name (learning preferences live in reader profiles — `docs/prompts.md`).
+- **AiProfilesPage** — "Reading setup" (`/ai-profiles`, `/ai-profiles/:id`): two tabs, **Tutor profile** and **Reader profile**. The tutor-profile tab edits the AI Profile (persona, difficulty, function prompts — every group visible, no Advanced fold); the reader-profile tab edits the reader profiles (who is reading — no link to any tutor profile; a session picks one). Both tabs share the same shape: a selector + New/Duplicate/Delete + the editor. "AI Profile" is called **tutor profile** and "master persona" just **persona** throughout the UI; the route and API names are unchanged. See `docs/prompts.md`.
+- **ProfilePage** — "Account details": edit the current user's name (learning preferences live in reader profiles — `docs/prompts.md`).
 
 All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `/login` when there's no authenticated user (see `context/AuthContext`).
 

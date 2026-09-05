@@ -45,7 +45,7 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
       <div className="w-full max-w-md rounded-2xl bg-booki-surface p-6 shadow-2xl">
         <h2 className="text-xl font-bold text-white">Summarize this session</h2>
         <p className="mt-1 text-sm text-booki-muted">
-          Combines the book's pages with our discussion so far, in your Master's and your own voice.
+          Combines the book's pages with our discussion so far, in your tutor's and your own voice.
         </p>
 
         <div className="mt-5 space-y-4">

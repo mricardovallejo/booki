@@ -52,7 +52,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
     }
   }, [document]);
 
-  // Preselect the user's default AI Profile / reader profile once the lists load.
+  // Preselect the user's default tutor profile / reader profile once the lists load.
   useEffect(() => {
     if (aiProfileId === undefined && profiles.length > 0) {
       setAiProfileId((profiles.find((p) => p.isDefault) ?? profiles[0]).id);
@@ -144,7 +144,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
             </Field>
           </div>
 
-          <Field label="Difficulty">
+          <Field label="Difficulty for this session">
             <div className="grid grid-cols-3 gap-2">
               {DIFFICULTIES.map((d) => (
                 <button
@@ -164,9 +164,16 @@ export default function CreateSessionModal({ document, onClose }: Props) {
                 </button>
               ))}
             </div>
+            <p className="mt-1 text-xs text-white/50">
+              {selectedReader?.readerLevel
+                ? `Preset from ${selectedReader.name}'s starting level. `
+                : ''}
+              Change it anytime during the session; the quiz tab can also override it per round. What
+              each level means is set in the tutor profile.
+            </p>
           </Field>
 
-          <Field label="AI Profile — the assistant's persona">
+          <Field label="Tutor profile — how BooKI teaches">
             <Select
               value={aiProfileId ?? ''}
               onChange={(e) => setAiProfileId(e.target.value ? Number(e.target.value) : undefined)}

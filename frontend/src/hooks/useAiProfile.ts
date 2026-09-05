@@ -48,7 +48,7 @@ export function useAiProfile(id: number, onMutated?: () => void) {
         hydrate(result);
         setError(null);
       })
-      .catch((err) => setError(getErrorMessage(err, 'Could not load this AI Profile.')))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load this tutor profile.')))
       .finally(() => setLoading(false));
   }, [id, hydrate]);
 

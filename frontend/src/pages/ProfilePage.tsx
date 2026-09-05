@@ -31,8 +31,8 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-6 py-12">
-      <h1 className="text-2xl font-bold text-white">Your profile</h1>
-      <p className="mt-1 text-sm text-booki-muted">Your account details.</p>
+      <h1 className="text-2xl font-bold text-white">Account details</h1>
+      <p className="mt-1 text-sm text-booki-muted">Your name and sign-in email.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4 rounded-2xl bg-booki-surface p-6">
         <Field label="Name">
@@ -56,12 +56,12 @@ export default function ProfilePage() {
           How you like to learn
         </h3>
         <p className="mt-2 text-sm text-white/70">
-          Your goal, level, and learning preferences now live inside each{' '}
+          Your goal, level, and learning preferences live in{' '}
           <Link to={ROUTES.aiProfiles} className="font-semibold text-booki-accent">
-            AI Profile
+            Reading setup
           </Link>{' '}
-          as its <span className="font-semibold text-white">Reader context</span>, so you can keep a
-          different setup per subject you study.
+          as a <span className="font-semibold text-white">reader profile</span>, so you can keep a
+          different one per subject you study.
         </p>
       </Card>
     </div>

@@ -69,7 +69,9 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
           <div>
             <h4 className="text-sm font-bold text-white">Quiz setup</h4>
             <p className="mt-1 text-xs text-booki-muted">
-              Pick how hard it is and how many questions. BooKI uses this session's AI Profile.
+              Pick how hard it is and how many questions — the difficulty here applies to this round
+              only, starting from the session's level. What each level means comes from this session's
+              tutor profile.
             </p>
           </div>
 
@@ -101,7 +103,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                       to={`${ROUTES.aiProfile(session.aiProfileId)}?slot=rubric_${config.difficulty}`}
                       className="mt-1 inline-block font-medium text-booki-accent hover:underline"
                     >
-                      Fine-tune this level in the AI Profile →
+                      Fine-tune this level in the tutor profile →
                     </Link>
                   )}
                 </div>

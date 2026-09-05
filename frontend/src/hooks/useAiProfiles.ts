@@ -16,7 +16,7 @@ export function useAiProfiles() {
         setProfiles(result);
         setError(null);
       })
-      .catch((err) => setError(getErrorMessage(err, 'Could not load AI Profiles.')))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load tutor profiles.')))
       .finally(() => setLoading(false));
   }, []);
 

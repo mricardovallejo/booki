@@ -57,8 +57,8 @@ instructions. Defence-in-depth, not a guarantee.
 
 `GET /sessions/{id}/context` returns all of these (each tagged with a `group`) so
 the reader can see exactly what shapes an answer; the ℹ button in the chat panel
-renders it. The AI Profiles editor shows every group flat (no "Advanced" fold);
-the reader profile is a separate section in that editor.
+renders it. The Reading-setup editor shows every group flat (no "Advanced" fold);
+the reader profile is a separate tab in that editor.
 
 ## The AI Profile
 
@@ -179,25 +179,33 @@ Full schemas: `docs/openapi.yaml` (`AiProfile`, `AiProfileSlot`, `ReaderProfile`
 
 ## Frontend
 
+**UI terminology.** This doc, the code (`AiProfile`, `SlotKey`), the routes
+(`/ai-profiles`) and the API keep the names below. The *user-facing* labels
+differ, and only there: **AI Profile → "tutor profile"**, **"master persona" →
+"persona"**, the page → **"Reading setup"**, `ProfilePage` → **"Account
+details"**. The reader's stored `readerLevel` is `beginner|intermediate|advanced`;
+the dropdown shows it as `Easy|Medium|Advanced` to match the session/quiz words.
+
 - `src/api/aiProfiles.ts` / `src/api/readerProfiles.ts` — the calls.
   `src/hooks/useAiProfiles.ts` (list + duplicate + delete),
   `src/hooks/useAiProfile.ts` (one profile + in-memory draft + save/revert/restore),
   `src/hooks/useReaderProfiles.ts` (list + create + update + delete),
   `src/hooks/useAiProfileSlots.ts` (read-only slots, for the quiz panel).
-- `src/pages/AiProfilesPage.tsx` — one screen that edits **both** kinds: AI
-  Profile selector + Duplicate / Restore / Delete + the slot editor (all groups
-  flat, no Advanced fold); and a standalone **Reader profiles** section (pick
-  which to edit / rename / set level / edit the shared context / save / duplicate
-  / delete — the built-in one is read-only). `?slot=` deep link, unsaved-changes
-  guard covering both.
+- `src/pages/AiProfilesPage.tsx` — one screen, **two tabs** with the same shape
+  (selector + New/Duplicate/Delete + editor). *Tutor profile* tab: the slot
+  editor (all groups flat, no Advanced fold) + Restore. *Reader profile* tab:
+  name / starting level / shared context; the built-in one is read-only (New or
+  Duplicate to get an editable one). `?slot=` deep link forces the tutor tab and
+  preselects the slot; one unsaved-changes guard covers both drafts (switching
+  tabs keeps both in memory, so it is not guarded).
 - `src/components/ContextInfoButton.tsx` — the ℹ layers popup.
-- `src/components/CreateSessionModal.tsx` — an **AI Profile picker and a reader
-  profile picker** (both default to `isDefault`); difficulty suggested from the
-  chosen reader profile's `readerLevel`.
+- `src/components/CreateSessionModal.tsx` — a **tutor-profile picker and a reader
+  profile picker** (both default to `isDefault`); difficulty preset from the
+  chosen reader profile's `readerLevel`, overridable.
 - `src/components/ChatPanel.tsx` — hides quick-action buttons for capabilities
   not in `session.enabledCapabilities`.
-- `src/components/SessionSidebar.tsx` — shows both the AI Profile and the reader
-  profile, differentiated, linked to the editor.
+- `src/components/SessionSidebar.tsx` — shows both, as `Tutor: <name>` /
+  `Reader: <name>` chips linked to the editor.
 
 ## Backend
 

@@ -43,7 +43,7 @@ export default function Layout() {
             </Link>
             <Link to={ROUTES.library} className="transition hover:text-booki-accent">My books</Link>
             <Link to={ROUTES.tags} className="transition hover:text-booki-accent">Tags</Link>
-            <Link to={ROUTES.aiProfiles} className="transition hover:text-booki-accent">AI Profiles</Link>
+            <Link to={ROUTES.aiProfiles} className="transition hover:text-booki-accent">Reading setup</Link>
           </nav>
           <div ref={menuRef} className="relative flex items-center gap-3">
             <button
@@ -84,14 +84,14 @@ export default function Layout() {
                   onClick={() => setMenuOpen(false)}
                   className="block px-4 py-2 text-sm text-white/90 transition hover:bg-booki-card"
                 >
-                  Edit profile
+                  Account details
                 </Link>
                 <Link
                   to={ROUTES.aiProfiles}
                   onClick={() => setMenuOpen(false)}
                   className="block px-4 py-2 text-sm text-white/90 transition hover:bg-booki-card"
                 >
-                  AI Profiles
+                  Reading setup
                 </Link>
                 <button
                   onClick={onLogout}

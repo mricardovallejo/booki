@@ -1,5 +1,6 @@
 package com.booki.voice;
 
+import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
@@ -37,6 +38,7 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
         this.configured = apiKey != null && !apiKey.isBlank();
         this.model = model;
         this.webClient = WebClient.builder()
+                .clientConnector(OutboundHttp.connector())
                 .baseUrl(baseUrl)
                 .defaultHeader("Authorization", "Bearer " + (apiKey == null ? "" : apiKey))
                 .build();
@@ -71,6 +73,7 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
                     .body(BodyInserters.fromMultipartData(form.build()))
                     .retrieve()
                     .bodyToMono(String.class)
+                    .timeout(OutboundHttp.CALL_TIMEOUT)
                     .block();
             JsonNode root = JSON.readTree(response);
             String text = root.path("text").asString();

@@ -24,6 +24,7 @@ import com.booki.repository.SessionRepository;
 import com.booki.service.SessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -67,6 +68,7 @@ public class SessionServiceImpl implements SessionService {
     );
 
     @Override
+    @Transactional
     public SessionResponse createSession(Long userId, SessionRequest request) {
         Document document = documentRepository.findByIdAndUserId(request.getDocumentId(), userId)
                 .orElseThrow(() -> new NoSuchElementException("Document not found"));
@@ -112,17 +114,20 @@ public class SessionServiceImpl implements SessionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public SessionResponse getSession(Long userId, Long sessionId) {
         return toResponse(findOwned(userId, sessionId));
     }
 
     @Override
+    @Transactional(readOnly = true)
     public SessionContextResponse getContext(Long userId, Long sessionId) {
         Session session = findOwned(userId, sessionId);
         return promptAssembler.describe(session);
     }
 
     @Override
+    @Transactional
     public SessionResponse updateCurrentPage(Long userId, Long sessionId, Integer currentPage) {
         Session session = findOwned(userId, sessionId);
         if (currentPage == null || currentPage < session.getStartPage() || currentPage > session.getEndPage()) {
@@ -135,6 +140,7 @@ public class SessionServiceImpl implements SessionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<MessageResponse> getMessages(Long userId, Long sessionId) {
         Session session = findOwned(userId, sessionId);
         return messageRepository.findBySessionIdOrderByCreatedAtAsc(session.getId()).stream()
@@ -144,8 +150,10 @@ public class SessionServiceImpl implements SessionService {
 
     @Override
     public MessageResponse sendMessage(Long userId, Long sessionId, MessageRequest request) {
-        // Conversational orchestration now lives in ConversationEngine, shared by
-        // text, quick actions and (later) voice. This stays as the REST adapter.
+        // Deliberately NOT @Transactional: ConversationEngine spans a slow model
+        // call and persists the user turn and the reply as separate units so a
+        // provider failure never leaves a fake reply behind. A transaction here
+        // would hold a DB connection open across that call and undo that design.
         ConversationResult result = conversationEngine.converse(new ConversationRequest(
                 userId, sessionId, request.getMessage(), parseInputType(request.getInputType()),
                 request.getCapabilityHint()));
@@ -153,11 +161,13 @@ public class SessionServiceImpl implements SessionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public SessionProgressResponse getProgress(Long userId, Long sessionId) {
         return progressCalculator.compute(findOwned(userId, sessionId));
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<SessionNotificationResponse> getNotifications(Long userId, Long sessionId) {
         Session session = findOwned(userId, sessionId);
         Map<String, String> t = NOTIF_TEXT.get(promptAssembler.resolveLanguage(session.getLanguage()));

@@ -21,10 +21,10 @@ public class OpenApiConfig {
     private static final String BEARER_SCHEME = "bearerAuth";
 
     @Bean
-    public OpenAPI kobiBackendApiOpenApi() {
+    public OpenAPI bookiBackendApiOpenApi() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("kobi-backend-api")
+                        .title("booki-backend-api")
                         .version("1.0.0")
                         .description("Live-generated contract for BooKI's backend. See docs/openapi.yaml in the repo for the hand-written design contract this must stay in sync with.")
                         .license(new License().name("Proprietary — internal use only")))

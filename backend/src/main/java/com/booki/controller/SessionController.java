@@ -10,6 +10,7 @@ import com.booki.dto.SessionNotificationResponse;
 import com.booki.dto.SessionProgressResponse;
 import com.booki.dto.SessionRequest;
 import com.booki.dto.SessionResponse;
+import com.booki.dto.UpdateCurrentPageRequest;
 import com.booki.service.ReportService;
 import com.booki.service.SessionService;
 import com.booki.util.SecurityUtil;
@@ -20,7 +21,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/sessions")
@@ -48,8 +48,9 @@ public class SessionController {
 
     @PatchMapping("/{id}/current-page")
     public ResponseEntity<SessionResponse> updateCurrentPage(@PathVariable Long id,
-                                                             @RequestBody Map<String, Integer> body) {
-        return ResponseEntity.ok(sessionService.updateCurrentPage(SecurityUtil.currentUserId(), id, body.get("currentPage")));
+                                                             @Valid @RequestBody UpdateCurrentPageRequest request) {
+        return ResponseEntity.ok(
+                sessionService.updateCurrentPage(SecurityUtil.currentUserId(), id, request.getCurrentPage()));
     }
 
     @GetMapping("/{id}/messages")
@@ -81,21 +82,21 @@ public class SessionController {
 
     @PostMapping("/{id}/reports/progress")
     public ResponseEntity<SentReportResponse> sendProgressReport(@PathVariable Long id,
-                                                                  @RequestBody SendReportRequest request) {
+                                                                  @Valid @RequestBody SendReportRequest request) {
         SentReportResponse response = reportService.sendProgressReport(SecurityUtil.currentUserId(), id, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/{id}/reports/quiz")
     public ResponseEntity<SentReportResponse> sendQuizReport(@PathVariable Long id,
-                                                              @RequestBody SendReportRequest request) {
+                                                              @Valid @RequestBody SendReportRequest request) {
         SentReportResponse response = reportService.sendQuizReport(SecurityUtil.currentUserId(), id, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/{id}/summary")
     public ResponseEntity<Object> generateSummary(@PathVariable Long id,
-                                                   @RequestBody GenerateSummaryRequest request) {
+                                                   @Valid @RequestBody GenerateSummaryRequest request) {
         Object response = reportService.generateSummary(SecurityUtil.currentUserId(), id, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

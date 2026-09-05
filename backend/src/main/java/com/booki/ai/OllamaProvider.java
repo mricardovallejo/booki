@@ -1,5 +1,6 @@
 package com.booki.ai;
 
+import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,7 @@ public class OllamaProvider implements AiProvider {
                           @Value("${booki.ai.ollama.model}") String model) {
         this.model = model;
         this.webClient = WebClient.builder()
+                .clientConnector(OutboundHttp.connector())
                 .baseUrl(baseUrl)
                 .defaultHeader("Content-Type", "application/json")
                 .build();
@@ -60,6 +62,7 @@ public class OllamaProvider implements AiProvider {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(String.class)
+                    .timeout(OutboundHttp.CALL_TIMEOUT)
                     .block();
             JsonNode root = JSON.readTree(response);
             String content = root.path("message").path("content").asString();

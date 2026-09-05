@@ -34,13 +34,13 @@ public class AiProfileController {
 
     @PatchMapping("/{id}")
     public ResponseEntity<AiProfileResponse> update(@PathVariable Long id,
-                                                    @RequestBody UpdateAiProfileRequest request) {
+                                                    @Valid @RequestBody UpdateAiProfileRequest request) {
         return ResponseEntity.ok(aiProfileService.update(SecurityUtil.currentUserId(), id, request));
     }
 
     @PostMapping("/{id}/duplicate")
     public ResponseEntity<AiProfileResponse> duplicate(@PathVariable Long id,
-                                                       @RequestBody(required = false) DuplicateAiProfileRequest request) {
+                                                       @Valid @RequestBody(required = false) DuplicateAiProfileRequest request) {
         String name = request != null ? request.getName() : null;
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(aiProfileService.duplicate(SecurityUtil.currentUserId(), id, name));

@@ -7,6 +7,7 @@ import com.booki.dto.QuizReportResponse;
 import com.booki.dto.SubmitQuizAnswerRequest;
 import com.booki.service.QuizService;
 import com.booki.util.SecurityUtil;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,14 +21,14 @@ public class QuizController {
 
     @PostMapping("/quiz")
     public ResponseEntity<QuizGenerateResponse> generateQuiz(@PathVariable Long sessionId,
-                                                              @RequestBody(required = false) GenerateQuizRequest request) {
+                                                              @Valid @RequestBody(required = false) GenerateQuizRequest request) {
         GenerateQuizRequest body = request != null ? request : new GenerateQuizRequest();
         return ResponseEntity.ok(quizService.generateQuiz(SecurityUtil.currentUserId(), sessionId, body));
     }
 
     @PostMapping("/quiz/answer")
     public ResponseEntity<QuizAnswerResponse> submitAnswer(@PathVariable Long sessionId,
-                                                            @RequestBody SubmitQuizAnswerRequest request) {
+                                                            @Valid @RequestBody SubmitQuizAnswerRequest request) {
         return ResponseEntity.ok(quizService.submitAnswer(SecurityUtil.currentUserId(), sessionId, request));
     }
 

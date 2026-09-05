@@ -36,7 +36,7 @@ public class TagController {
     }
 
     @PatchMapping("/{id}")
-    public ResponseEntity<TagResponse> rename(@PathVariable Long id, @RequestBody UpdateTagRequest request) {
+    public ResponseEntity<TagResponse> rename(@PathVariable Long id, @Valid @RequestBody UpdateTagRequest request) {
         return ResponseEntity.ok(tagService.rename(SecurityUtil.currentUserId(), id, request));
     }
 

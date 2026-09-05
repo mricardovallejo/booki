@@ -1,6 +1,7 @@
 package com.booki.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
@@ -9,6 +10,7 @@ import java.util.List;
 public class CreateTagRequest {
 
     @NotBlank
+    @Size(max = 80)
     private String name;
 
     /** Any id not owned by the caller is silently dropped. */

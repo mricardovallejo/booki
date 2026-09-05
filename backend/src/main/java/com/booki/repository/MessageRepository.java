@@ -9,6 +9,8 @@ import java.util.List;
 public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findBySessionIdOrderByCreatedAtAsc(Long sessionId);
 
+    long countBySessionId(Long sessionId);
+
     /**
      * Newest-first slice of a session's messages, for building the conversation
      * window sent to the model. Callers restore chronological order before use;

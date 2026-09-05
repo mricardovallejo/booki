@@ -4,6 +4,7 @@ import com.booki.dto.UpdateUserRequest;
 import com.booki.dto.UserResponse;
 import com.booki.service.UserService;
 import com.booki.util.SecurityUtil;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,7 +22,7 @@ public class UserController {
     }
 
     @PatchMapping("/me")
-    public ResponseEntity<UserResponse> updateCurrentUser(@RequestBody UpdateUserRequest request) {
+    public ResponseEntity<UserResponse> updateCurrentUser(@Valid @RequestBody UpdateUserRequest request) {
         return ResponseEntity.ok(userService.updateCurrentUser(SecurityUtil.currentUserId(), request));
     }
 }

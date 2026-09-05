@@ -1,5 +1,6 @@
 package com.booki.voice;
 
+import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -38,6 +39,7 @@ public class OpenAiTextToSpeechProvider implements TextToSpeechProvider {
         // TTS mp3 clip routinely exceeds that, which fails the whole response
         // with a DataBufferLimitException even though OpenAI returned 200 OK.
         this.webClient = WebClient.builder()
+                .clientConnector(OutboundHttp.connector())
                 .baseUrl(baseUrl)
                 .defaultHeader("Authorization", "Bearer " + (apiKey == null ? "" : apiKey))
                 .exchangeStrategies(ExchangeStrategies.builder()
@@ -75,6 +77,7 @@ public class OpenAiTextToSpeechProvider implements TextToSpeechProvider {
                             "response_format", "mp3"))
                     .retrieve()
                     .bodyToMono(byte[].class)
+                    .timeout(OutboundHttp.CALL_TIMEOUT)
                     .block();
             if (audio == null || audio.length == 0) {
                 throw new VoiceProviderException("tts", "audio response was empty", null);

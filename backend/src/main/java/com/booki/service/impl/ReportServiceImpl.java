@@ -27,6 +27,7 @@ import com.booki.storage.StorageAdapter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -56,6 +57,7 @@ public class ReportServiceImpl implements ReportService {
     private static final Pattern EMAIL_RE = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     @Override
+    @Transactional(readOnly = true)
     public List<SentReportResponse> listReports(Long userId, Long sessionId) {
         Session session = findOwned(userId, sessionId);
         return sentReportRepository.findBySessionIdOrderByCreatedAtDesc(session.getId()).stream()
@@ -64,6 +66,7 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
+    @Transactional
     public SentReportResponse sendProgressReport(Long userId, Long sessionId, SendReportRequest request) {
         Session session = findOwned(userId, sessionId);
         String email = requireValidEmail(request.getEmail());
@@ -100,6 +103,7 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
+    @Transactional
     public SentReportResponse sendQuizReport(Long userId, Long sessionId, SendReportRequest request) {
         Session session = findOwned(userId, sessionId);
         String email = requireValidEmail(request.getEmail());
@@ -144,6 +148,9 @@ public class ReportServiceImpl implements ReportService {
         return toResponse(report);
     }
 
+    // Not @Transactional: generateSummaryText makes a slow model call, and a
+    // transaction spanning it would hold a DB connection open for its duration.
+    // The only writes are a single Message row or a single SentReport row.
     @Override
     public Object generateSummary(Long userId, Long sessionId, GenerateSummaryRequest request) {
         Session session = findOwned(userId, sessionId);

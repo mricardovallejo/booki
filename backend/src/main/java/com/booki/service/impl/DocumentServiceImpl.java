@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -44,6 +45,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final StorageAdapter storage;
 
     @Override
+    @Transactional
     public DocumentResponse uploadDocument(Long userId, MultipartFile file) {
         User user = userRepository.findById(userId).orElseThrow();
         String originalName = file.getOriginalFilename();
@@ -51,41 +53,60 @@ public class DocumentServiceImpl implements DocumentService {
         String safeName = title.replaceAll("[^a-zA-Z0-9.-]", "_");
         String key = "documents/" + UUID.randomUUID() + "_" + safeName;
 
+        byte[] bytes;
         try {
-            byte[] bytes = file.getBytes();
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Could not read the uploaded file", e);
+        }
 
-            // Parse before storing, so an unreadable upload never leaves an object behind.
-            try (PDDocument pdDocument = Loader.loadPDF(bytes)) {
-                int pageCount = pdDocument.getNumberOfPages();
-                storage.put(key, bytes, "application/pdf");
-
-                Document document = new Document();
-                document.setUser(user);
-                document.setTitle(title);
-                document.setFilePath(key);
-                document.setPageCount(pageCount);
-                documentRepository.save(document);
-
-                PDFTextStripper stripper = new PDFTextStripper();
-                for (int i = 1; i <= pageCount; i++) {
-                    stripper.setStartPage(i);
-                    stripper.setEndPage(i);
-                    String text = stripper.getText(pdDocument).trim();
-                    DocumentPage page = new DocumentPage();
-                    page.setDocument(document);
-                    page.setPageNumber(i);
-                    page.setExtractedText(text);
-                    documentPageRepository.save(page);
-                }
-
-                return toResponse(document);
+        // Parse fully before storing anything, so an unreadable upload never
+        // leaves an object behind.
+        int pageCount;
+        List<String> pageTexts;
+        try (PDDocument pdDocument = Loader.loadPDF(bytes)) {
+            pageCount = pdDocument.getNumberOfPages();
+            pageTexts = new ArrayList<>(pageCount);
+            PDFTextStripper stripper = new PDFTextStripper();
+            for (int i = 1; i <= pageCount; i++) {
+                stripper.setStartPage(i);
+                stripper.setEndPage(i);
+                pageTexts.add(stripper.getText(pdDocument).trim());
             }
         } catch (IOException e) {
             throw new IllegalArgumentException("Invalid or unreadable PDF file", e);
         }
+
+        storage.put(key, bytes, "application/pdf");
+        try {
+            Document document = new Document();
+            document.setUser(user);
+            document.setTitle(title);
+            document.setFilePath(key);
+            document.setPageCount(pageCount);
+            documentRepository.save(document);
+
+            for (int i = 0; i < pageCount; i++) {
+                DocumentPage page = new DocumentPage();
+                page.setDocument(document);
+                page.setPageNumber(i + 1);
+                page.setExtractedText(pageTexts.get(i));
+                documentPageRepository.save(page);
+            }
+            return toResponse(document);
+        } catch (RuntimeException e) {
+            // The transaction will roll the rows back; drop the stored object too.
+            try {
+                storage.delete(key);
+            } catch (RuntimeException ignored) {
+                // best effort
+            }
+            throw e;
+        }
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<DocumentResponse> listDocuments(Long userId) {
         return documentRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(this::toResponse)
@@ -93,11 +114,13 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public DocumentResponse getDocument(Long userId, Long documentId) {
         return toResponse(findOwned(userId, documentId));
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Resource getDocumentFile(Long userId, Long documentId) {
         Document document = findOwned(userId, documentId);
         return storage.get(document.getFilePath());

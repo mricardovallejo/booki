@@ -1,5 +1,6 @@
 package com.booki.ai;
 
+import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.reactive.function.client.WebClient;
 import tools.jackson.databind.JsonNode;
@@ -30,6 +31,7 @@ public abstract class OpenAiCompatibleProvider implements AiProvider {
     protected OpenAiCompatibleProvider(String baseUrl, String apiKey, String model) {
         this.model = model;
         this.webClient = WebClient.builder()
+                .clientConnector(OutboundHttp.connector())
                 .baseUrl(baseUrl)
                 .defaultHeader("Authorization", "Bearer " + apiKey)
                 .defaultHeader("Content-Type", "application/json")
@@ -62,6 +64,7 @@ public abstract class OpenAiCompatibleProvider implements AiProvider {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(String.class)
+                    .timeout(OutboundHttp.CALL_TIMEOUT)
                     .block();
             JsonNode root = JSON.readTree(response);
             JsonNode first = root.path("choices").path(0).path("message").path("content");

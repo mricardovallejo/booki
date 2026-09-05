@@ -1,5 +1,7 @@
 package com.booki.dto;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
@@ -12,18 +14,24 @@ import java.util.List;
 @Data
 public class UpdateAiProfileRequest {
 
+    @Size(max = 120)
     private String name;
 
     /** "beginner" | "intermediate" | "advanced" | "" (clear); null = leave unchanged. */
+    @Size(max = 20)
     private String readerLevel;
 
     private List<String> enabledCapabilities;
 
-    private List<SlotPatch> slots;
+    private List<@Valid SlotPatch> slots;
 
     @Data
     public static class SlotPatch {
+
+        @Size(max = 100)
         private String key;
+
+        @Size(max = 8000)
         private String text;
     }
 }

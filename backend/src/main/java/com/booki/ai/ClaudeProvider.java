@@ -1,5 +1,6 @@
 package com.booki.ai;
 
+import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -38,6 +39,7 @@ public class ClaudeProvider implements AiProvider, StreamingAiProvider {
                           @Value("${booki.ai.claude.model}") String model) {
         this.model = model;
         this.webClient = WebClient.builder()
+                .clientConnector(OutboundHttp.connector())
                 .baseUrl("https://api.anthropic.com/v1")
                 .defaultHeader("x-api-key", apiKey)
                 .defaultHeader("anthropic-version", "2023-06-01")
@@ -60,6 +62,7 @@ public class ClaudeProvider implements AiProvider, StreamingAiProvider {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(String.class)
+                    .timeout(OutboundHttp.CALL_TIMEOUT)
                     .block();
             JsonNode root = JSON.readTree(response);
             for (JsonNode block : root.path("content")) {
@@ -96,6 +99,7 @@ public class ClaudeProvider implements AiProvider, StreamingAiProvider {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() { })
+                    .timeout(OutboundHttp.CALL_TIMEOUT)
                     .doOnNext(event -> handleStreamEvent(event.data(), full, stream))
                     .blockLast();
 

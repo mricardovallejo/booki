@@ -1,6 +1,6 @@
 import api from './client';
 import { ENDPOINTS } from '../config/endpoints';
-import type { AiProfile, AiProfileSummary, CapabilityHint, ReaderLevel } from '../types';
+import type { AiProfile, AiProfileSummary, CapabilityHint } from '../types';
 
 export const listAiProfiles = () =>
   api.get<AiProfileSummary[]>(ENDPOINTS.aiProfiles.list).then((r) => r.data);
@@ -13,8 +13,6 @@ export const duplicateAiProfile = (id: number, name?: string) =>
 
 export interface UpdateAiProfileRequest {
   name?: string;
-  /** A ReaderLevel, or "" to clear it. Omit to leave unchanged. */
-  readerLevel?: ReaderLevel | '';
   enabledCapabilities?: CapabilityHint[];
   slots?: { key: string; text: string }[];
 }

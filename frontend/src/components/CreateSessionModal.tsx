@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createSession } from '../api/sessions';
 import { useAiProfiles } from '../hooks/useAiProfiles';
+import { useReaderProfiles } from '../hooks/useReaderProfiles';
 import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage, toSessionLanguage } from '../lib/preferences';
 import { ROUTES } from '../config/routes';
 import { getErrorMessage } from '../lib/errors';
@@ -29,11 +30,13 @@ const LEVEL_TO_DIFFICULTY: Record<ReaderLevel, Difficulty> = {
 export default function CreateSessionModal({ document, onClose }: Props) {
   const navigate = useNavigate();
   const { profiles, error: profilesError } = useAiProfiles();
+  const { profiles: readerProfiles, error: readerError } = useReaderProfiles();
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState(1);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [difficultyTouched, setDifficultyTouched] = useState(false);
   const [aiProfileId, setAiProfileId] = useState<number | undefined>(undefined);
+  const [readerProfileId, setReaderProfileId] = useState<number | undefined>(undefined);
   const [language, setLanguage] = useState<SessionLanguage>(getDefaultLanguage());
   const [rememberLanguage, setRememberLanguage] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -49,21 +52,26 @@ export default function CreateSessionModal({ document, onClose }: Props) {
     }
   }, [document]);
 
-  // Preselect the pre-designated factory profile once the list loads.
+  // Preselect the user's default AI Profile / reader profile once the lists load.
   useEffect(() => {
     if (aiProfileId === undefined && profiles.length > 0) {
       setAiProfileId((profiles.find((p) => p.isDefault) ?? profiles[0]).id);
     }
   }, [profiles, aiProfileId]);
-
-  // Suggest a difficulty from the chosen profile's reader level, unless the
-  // reader has already picked one by hand.
-  const selectedProfile = profiles.find((p) => p.id === aiProfileId);
   useEffect(() => {
-    if (!difficultyTouched && selectedProfile?.readerLevel) {
-      setDifficulty(LEVEL_TO_DIFFICULTY[selectedProfile.readerLevel]);
+    if (readerProfileId === undefined && readerProfiles.length > 0) {
+      setReaderProfileId((readerProfiles.find((r) => r.isDefault) ?? readerProfiles[0]).id);
     }
-  }, [selectedProfile, difficultyTouched]);
+  }, [readerProfiles, readerProfileId]);
+
+  // Suggest a difficulty from the chosen reader profile's level, unless the
+  // reader has already picked one by hand.
+  const selectedReader = readerProfiles.find((r) => r.id === readerProfileId);
+  useEffect(() => {
+    if (!difficultyTouched && selectedReader?.readerLevel) {
+      setDifficulty(LEVEL_TO_DIFFICULTY[selectedReader.readerLevel]);
+    }
+  }, [selectedReader, difficultyTouched]);
 
   if (!document) return null;
 
@@ -95,6 +103,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
         endPage,
         difficulty,
         aiProfileId,
+        readerProfileId,
         language
       });
       navigate(ROUTES.session(session.id));
@@ -157,7 +166,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
             </div>
           </Field>
 
-          <Field label="AI Profile">
+          <Field label="AI Profile — the assistant's persona">
             <Select
               value={aiProfileId ?? ''}
               onChange={(e) => setAiProfileId(e.target.value ? Number(e.target.value) : undefined)}
@@ -170,6 +179,21 @@ export default function CreateSessionModal({ document, onClose }: Props) {
               ))}
             </Select>
             {profilesError && <p className="mt-1 text-xs text-rose-400">{profilesError}</p>}
+          </Field>
+
+          <Field label="Reader profile — who is reading">
+            <Select
+              value={readerProfileId ?? ''}
+              onChange={(e) => setReaderProfileId(e.target.value ? Number(e.target.value) : undefined)}
+            >
+              {readerProfiles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                  {r.isDefault ? ' — default' : ''}
+                </option>
+              ))}
+            </Select>
+            {readerError && <p className="mt-1 text-xs text-rose-400">{readerError}</p>}
           </Field>
 
           <Field label="BooKI's interaction language">

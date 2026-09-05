@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getAiProfile, restoreAiProfile, revertAiProfileSlot, updateAiProfile } from '../api/aiProfiles';
 import { getErrorMessage } from '../lib/errors';
-import type { AiProfile, CapabilityHint, ReaderLevel } from '../types';
+import type { AiProfile, CapabilityHint } from '../types';
 
 type SlotDraft = Record<string, string>;
 
 /**
- * Loads one AI Profile and holds an in-memory draft of its editable fields (name,
- * reader level, slot bodies) so the editor screen stays purely presentational: it
- * reads `draft`/`name`/`readerLevel` and calls back into the setters / `save` /
- * `revertSlot`.
+ * Loads one AI Profile and holds an in-memory draft of its editable fields
+ * (name, capabilities, slot bodies) so the editor screen stays purely
+ * presentational: it reads `draft`/`name` and calls back into the setters /
+ * `save` / `revertSlot`.
  *
  * `onMutated` is invoked after any successful save/revert so a caller showing the
  * profile list can refresh it.
@@ -17,7 +17,6 @@ type SlotDraft = Record<string, string>;
 export function useAiProfile(id: number, onMutated?: () => void) {
   const [profile, setProfile] = useState<AiProfile | null>(null);
   const [name, setName] = useState('');
-  const [readerLevel, setReaderLevel] = useState<ReaderLevel | null>(null);
   const [enabledCapabilities, setEnabledCapabilities] = useState<CapabilityHint[]>([]);
   const [draft, setDraft] = useState<SlotDraft>({});
   const [loading, setLoading] = useState(true);
@@ -27,7 +26,6 @@ export function useAiProfile(id: number, onMutated?: () => void) {
   const hydrate = useCallback((next: AiProfile) => {
     setProfile(next);
     setName(next.name);
-    setReaderLevel(next.readerLevel);
     setEnabledCapabilities(next.enabledCapabilities);
     setDraft(Object.fromEntries(next.slots.map((s) => [s.key, s.text])));
   }, []);
@@ -63,12 +61,11 @@ export function useAiProfile(id: number, onMutated?: () => void) {
     [profile, draft]
   );
   const nameChanged = !!profile && name.trim().length > 0 && name.trim() !== profile.name;
-  const levelChanged = !!profile && readerLevel !== profile.readerLevel;
   const capsChanged =
     !!profile &&
     (enabledCapabilities.length !== profile.enabledCapabilities.length ||
       enabledCapabilities.some((c) => !profile.enabledCapabilities.includes(c)));
-  const isDirty = dirtySlots.length > 0 || nameChanged || levelChanged || capsChanged;
+  const isDirty = dirtySlots.length > 0 || nameChanged || capsChanged;
 
   const save = useCallback(async () => {
     if (!profile || !isDirty) return;
@@ -77,7 +74,6 @@ export function useAiProfile(id: number, onMutated?: () => void) {
     try {
       const updated = await updateAiProfile(id, {
         name: nameChanged ? name.trim() : undefined,
-        readerLevel: levelChanged ? (readerLevel ?? '') : undefined,
         enabledCapabilities: capsChanged ? enabledCapabilities : undefined,
         slots: dirtySlots.map((s) => ({ key: s.key, text: draft[s.key] ?? s.text }))
       });
@@ -94,8 +90,6 @@ export function useAiProfile(id: number, onMutated?: () => void) {
     id,
     nameChanged,
     name,
-    levelChanged,
-    readerLevel,
     capsChanged,
     enabledCapabilities,
     dirtySlots,
@@ -131,8 +125,6 @@ export function useAiProfile(id: number, onMutated?: () => void) {
     profile,
     name,
     setName,
-    readerLevel,
-    setReaderLevel,
     enabledCapabilities,
     toggleCapability,
     draft,

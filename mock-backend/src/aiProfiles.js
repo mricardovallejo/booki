@@ -1,7 +1,8 @@
-// AI Profile shape used by the mock backend. Stage 1 preview of the real contract:
-// one profile = the full set of editable prompts a session runs on (everything
-// except the core). Factory profiles are read-only seeds; a user duplicates one
-// to get an editable copy.
+// AI Profile shape used by the mock backend. An AI Profile is the "master": the
+// persona, the difficulty rubrics, the per-function prompts and capability
+// routing. It says nothing about who is reading — that's a Reader Profile (see
+// readerProfiles.js), chosen per session alongside the AI Profile. Factory
+// profiles are read-only seeds; a user duplicates one to get an editable copy.
 
 // The core is never part of a profile and never editable. Served read-only via
 // the session context endpoint.
@@ -20,8 +21,7 @@ const CORE_PROMPT =
 // user cannot edit because the program depends on its shape). `null` frame means
 // the whole slot is free text.
 const SLOT_DEFS = [
-  { key: 'persona', label: 'Persona', group: 'persona', lockedPreamble: null, lockedPostamble: null },
-  { key: 'reader_context', label: 'Reader context', group: 'reader', lockedPreamble: null, lockedPostamble: null },
+  { key: 'persona', label: 'Master persona', group: 'persona', lockedPreamble: null, lockedPostamble: null },
   { key: 'rubric_easy', label: 'Difficulty — Easy', group: 'difficulty', lockedPreamble: null, lockedPostamble: null },
   { key: 'rubric_medium', label: 'Difficulty — Medium', group: 'difficulty', lockedPreamble: null, lockedPostamble: null },
   { key: 'rubric_hard', label: 'Difficulty — Advanced', group: 'difficulty', lockedPreamble: null, lockedPostamble: null },
@@ -61,7 +61,6 @@ const SLOT_DEFS = [
 
 // Dev-grade defaults. Kept short on purpose — the strong prompts come later.
 const SHARED_DEFAULTS = {
-  reader_context: '',
   rubric_easy:
     'Easy: assume little prior knowledge. Short sentences, common words. Ask the reader to recall or restate one idea at a time. Accept partial answers and build on them.',
   rubric_medium:
@@ -127,7 +126,6 @@ function buildFactoryAiProfiles() {
     source: 'factory',
     basedOnId: null,
     isDefault: !!tpl.isDefault,
-    readerLevel: null,
     enabledCapabilities: [...CAPABILITIES],
     updatedAt: new Date().toISOString(),
     slots: SLOT_DEFS.map((def) => {
@@ -148,16 +146,15 @@ function seedUserAiProfiles(templates, userId, startId) {
     source: 'custom',
     basedOnId: tpl.id,
     isDefault: !!tpl.isDefault,
-    readerLevel: tpl.readerLevel ?? null,
     enabledCapabilities: [...(tpl.enabledCapabilities ?? CAPABILITIES)],
     updatedAt: new Date().toISOString(),
     slots: tpl.slots.map((s) => ({ ...s }))
   }));
 }
 
-// Reset a copy's editable fields to the template it was based on.
+// Reset a copy's prompts + capabilities to its template. The reader profile it's
+// paired with is the user's choice and is left alone.
 function restoreFromTemplate(profile, template) {
-  profile.readerLevel = template.readerLevel ?? null;
   profile.enabledCapabilities = [...(template.enabledCapabilities ?? CAPABILITIES)];
   profile.slots = template.slots.map((s) => ({ key: s.key, text: s.text, originalText: s.originalText }));
   profile.updatedAt = new Date().toISOString();
@@ -183,7 +180,6 @@ function profileResponse(profile, { withSlots } = {}) {
     id: profile.id,
     name: profile.name,
     isDefault: !!profile.isDefault,
-    readerLevel: profile.readerLevel ?? null,
     enabledCapabilities: profile.enabledCapabilities ?? [...CAPABILITIES],
     updatedAt: profile.updatedAt
   };

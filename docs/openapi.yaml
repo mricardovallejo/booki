@@ -47,6 +47,13 @@ tags:
       with an editable copy of each shipped template; sessions always run on one
       of the user's own profiles. The BooKI core is fixed and never part of a
       profile.
+
+      NOTE: the frontend + Node mock have moved the reader context out into a
+      separate **Reader Profile** entity (`/reader-profiles`; the session picks
+      one via `session.readerProfileId`; `readerLevel` lives on the reader
+      profile) — see `docs/prompts.md` and ADR-017. This spec still describes the
+      current Spring contract (reader_context slot, readerLevel on the AI
+      Profile); it is updated when the backend split lands.
   - name: Sessions
     description: A reading session over a page range of one document — the core unit of the product.
   - name: Quiz

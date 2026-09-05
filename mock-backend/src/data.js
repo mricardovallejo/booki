@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { buildFactoryAiProfiles, seedUserAiProfiles } = require('./aiProfiles');
+const { FACTORY_READER } = require('./readerProfiles');
 
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -23,22 +24,40 @@ let users = [
 const factoryTemplates = buildFactoryAiProfiles();
 let aiProfiles = [...factoryTemplates];
 
-/** Give a user their own copy of every factory template. Returns the new copies. */
-function seedAiProfilesForUser(userId) {
+// Reader profiles: who is reading, per study context. Every list starts with the
+// read-only FACTORY_READER (id 1); users duplicate it into their own.
+let readerProfiles = [{ ...FACTORY_READER }];
+
+function nextReaderProfileId() {
+  return readerProfiles.length ? Math.max(...readerProfiles.map((r) => r.id)) + 1 : 1;
+}
+
+/** Give a user their own copy of every AI template. */
+function seedProfilesForUser(userId) {
   const nextId = aiProfiles.length ? Math.max(...aiProfiles.map((p) => p.id)) + 1 : 1;
   const copies = seedUserAiProfiles(factoryTemplates, userId, nextId);
   aiProfiles.push(...copies);
-  return copies;
+  return { copies };
 }
 
-// Demo user starts with the 4 copies; their "Patient Tutor" one carries a
-// filled-in reader context so the UI has something to show.
+// Demo user: the 4 AI copies + one custom reader profile. Its seed sessions
+// (below) pick a reader profile each.
+let demoExamPrepReaderId = null;
 (() => {
-  const copies = seedAiProfilesForUser(1);
-  const tutor = copies.find((p) => p.name === 'Patient Tutor');
-  tutor.readerLevel = 'intermediate';
-  tutor.slots.find((s) => s.key === 'reader_context').text =
-    'Studying for a certification exam, fairly new to the topic. Prefers short answers with one concrete example and little jargon.';
+  seedProfilesForUser(1);
+  const examPrep = {
+    id: nextReaderProfileId(),
+    userId: 1,
+    name: 'Exam prep',
+    isDefault: false,
+    readOnly: false,
+    readerLevel: 'intermediate',
+    context:
+      'Studying for a certification exam, fairly new to the topic. Prefers short answers with one concrete example and little jargon.',
+    updatedAt: new Date().toISOString()
+  };
+  readerProfiles.push(examPrep);
+  demoExamPrepReaderId = examPrep.id;
 })();
 
 let documents = [];
@@ -170,8 +189,8 @@ async function seedData() {
   );
 
   sessions.push(
-    { id: 1, userId, documentId: 1, title: 'Introduction to Physics.pdf (pp. 1-2)', startPage: 1, endPage: 2, currentPage: 1, difficulty: 'easy', aiProfileId: 5, language: 'en', createdAt: nowIso() },
-    { id: 2, userId, documentId: 2, title: 'History of Rome.pdf (pp. 1-4)', startPage: 1, endPage: 4, currentPage: 1, difficulty: 'medium', aiProfileId: 6, language: 'en', createdAt: nowIso() }
+    { id: 1, userId, documentId: 1, title: 'Introduction to Physics.pdf (pp. 1-2)', startPage: 1, endPage: 2, currentPage: 1, difficulty: 'easy', aiProfileId: 5, readerProfileId: demoExamPrepReaderId, language: 'en', createdAt: nowIso() },
+    { id: 2, userId, documentId: 2, title: 'History of Rome.pdf (pp. 1-4)', startPage: 1, endPage: 4, currentPage: 1, difficulty: 'medium', aiProfileId: 6, readerProfileId: null, language: 'en', createdAt: nowIso() }
   );
 
   messages.push(
@@ -186,8 +205,9 @@ module.exports = {
   UPLOADS_DIR,
   users,
   aiProfiles,
+  readerProfiles,
   factoryTemplates,
-  seedAiProfilesForUser,
+  seedProfilesForUser,
   documents,
   documentPages,
   sessions,

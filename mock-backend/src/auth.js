@@ -1,4 +1,4 @@
-const { users, nowIso, seedAiProfilesForUser } = require('./data');
+const { users, nowIso, seedProfilesForUser } = require('./data');
 
 const JWT_SECRET = 'mock-secret-do-not-use-in-production';
 
@@ -34,7 +34,7 @@ function register(email, password, name) {
     createdAt: nowIso()
   };
   users.push(user);
-  seedAiProfilesForUser(user.id);
+  seedProfilesForUser(user.id);
   return { token: generateToken(user.email, user.id), user: toUserResponse(user) };
 }
 

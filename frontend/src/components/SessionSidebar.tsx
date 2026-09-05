@@ -44,16 +44,30 @@ export default function SessionSidebar({ sessionId }: Props) {
         <div className="min-w-0">
           <h3 className="font-logo text-lg leading-tight text-white">BooKI</h3>
           {context?.aiProfileName && context.aiProfileId ? (
-            <Link
-              to={ROUTES.aiProfile(context.aiProfileId)}
-              title="This session's AI Profile — click to edit"
-              className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full bg-booki-accent/10 py-0.5 pl-1.5 pr-2 text-[11px] font-semibold text-booki-accent ring-1 ring-inset ring-booki-accent/25 transition hover:bg-booki-accent/20 hover:ring-booki-accent/40"
-            >
-              <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 2.5l2.35 5.68 6.15.53-4.68 4.03 1.42 6.01L12 15.9 6.76 18.76l1.42-6.01L3.5 8.71l6.15-.53L12 2.5z" />
-              </svg>
-              <span className="truncate">{context.aiProfileName}</span>
-            </Link>
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              <Link
+                to={ROUTES.aiProfile(context.aiProfileId)}
+                title="This session's AI Profile (the persona) — click to edit"
+                className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-booki-accent/10 py-0.5 pl-1.5 pr-2 text-[11px] font-semibold text-booki-accent ring-1 ring-inset ring-booki-accent/25 transition hover:bg-booki-accent/20 hover:ring-booki-accent/40"
+              >
+                <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2.5l2.35 5.68 6.15.53-4.68 4.03 1.42 6.01L12 15.9 6.76 18.76l1.42-6.01L3.5 8.71l6.15-.53L12 2.5z" />
+                </svg>
+                <span className="truncate">{context.aiProfileName}</span>
+              </Link>
+              {context.readerProfileName && (
+                <Link
+                  to={ROUTES.aiProfiles}
+                  title="This session's reader profile — click to edit"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/5 py-0.5 pl-1.5 pr-2 text-[11px] font-semibold text-white/70 ring-1 ring-inset ring-white/10 transition hover:bg-white/10 hover:text-white"
+                >
+                  <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="truncate">{context.readerProfileName}</span>
+                </Link>
+              )}
+            </div>
           ) : (
             <p className="mt-0.5 truncate text-xs text-booki-muted">Reading assistant</p>
           )}

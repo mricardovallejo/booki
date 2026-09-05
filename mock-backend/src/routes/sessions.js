@@ -5,6 +5,7 @@ const {
   documents,
   documentPages,
   aiProfiles,
+  readerProfiles,
   quizAttempts,
   sentReports,
   nowIso
@@ -42,6 +43,31 @@ function slotContent(profile, key) {
   return s && s.text ? s.text : null;
 }
 
+// The reader context is not a slot and not tied to the AI Profile: the session
+// picks a reader profile, falling back to the user's default (the built-in one
+// or one they flagged default).
+function readerProfileFor(session) {
+  const visible = readerProfiles.filter((r) => r.userId === session.userId || r.userId === null);
+  return (
+    visible.find((r) => r.id === session.readerProfileId) ||
+    visible.find((r) => r.isDefault) ||
+    visible[0] ||
+    null
+  );
+}
+
+// The assembled reader-context text: the reader level line (if set) plus the
+// free-text context — the level is part of what the model reads, not just a
+// difficulty hint on the create-session screen.
+function readerContentFor(session) {
+  const r = readerProfileFor(session);
+  if (!r) return null;
+  const parts = [];
+  if (r.readerLevel) parts.push(`Reader level: ${r.readerLevel}.`);
+  if (r.context && r.context.trim()) parts.push(r.context.trim());
+  return parts.length ? parts.join('\n') : null;
+}
+
 function enabledCapabilitiesFor(session) {
   const profile = profileFor(session);
   return profile && Array.isArray(profile.enabledCapabilities)
@@ -57,6 +83,7 @@ function buildContext(session) {
   const profile = profileFor(session);
   const doc = documents.find((d) => d.id === session.documentId);
   const source = profile ? `AI profile "${profile.name}"` : 'AI profile';
+  const reader = readerProfileFor(session);
   const enabled = enabledCapabilitiesFor(session);
 
   const layers = [
@@ -69,14 +96,14 @@ function buildContext(session) {
       source,
       content: slotContent(profile, RUBRIC_SLOT[difficulty])
     },
-    { key: 'persona', group: 'persona', label: 'Persona', editable: true, source, content: slotContent(profile, 'persona') },
+    { key: 'persona', group: 'persona', label: 'Master persona', editable: true, source, content: slotContent(profile, 'persona') },
     {
       key: 'reader_context',
       group: 'reader',
-      label: 'Reader context',
+      label: 'Reader profile',
       editable: true,
-      source,
-      content: slotContent(profile, 'reader_context')
+      source: reader ? `Reader profile "${reader.name}"` : 'Reader profile',
+      content: readerContentFor(session)
     }
   ];
 
@@ -119,6 +146,8 @@ function buildContext(session) {
   return {
     aiProfileId: profile ? profile.id : null,
     aiProfileName: profile ? profile.name : null,
+    readerProfileId: reader ? reader.id : null,
+    readerProfileName: reader ? reader.name : null,
     language: lang,
     difficulty,
     enabledCapabilities: enabled,
@@ -127,6 +156,7 @@ function buildContext(session) {
 }
 
 function toSessionResponse(session) {
+  const reader = readerProfileFor(session);
   return {
     id: session.id,
     documentId: session.documentId,
@@ -136,6 +166,7 @@ function toSessionResponse(session) {
     currentPage: session.currentPage,
     difficulty: session.difficulty,
     aiProfileId: session.aiProfileId ?? null,
+    readerProfileId: reader ? reader.id : null,
     enabledCapabilities: enabledCapabilitiesFor(session),
     language: session.language || 'en',
     // The provider is a backend/deployment concern, not a per-session user choice.
@@ -262,7 +293,7 @@ function mockReply(session, userMessage, isFirstExchange) {
   }
 
   if (isFirstExchange) {
-    const readerContext = slotContent(profile, 'reader_context');
+    const readerContext = readerContentFor(session);
     if (readerContext) {
       reply += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(readerContext);
     }
@@ -333,7 +364,7 @@ function buildSummaryContent(session, lengthPages, customPrompt) {
   const settings = summaryLengthSettings(lengthPages);
   const labels = SUMMARY_LABELS[lang];
   const profile = profileFor(session);
-  const readerContext = slotContent(profile, 'reader_context');
+  const readerContext = readerContentFor(session);
   const tone = profile ? profile.name : 'assistant';
 
   const pages = pagesInRange(session);
@@ -374,7 +405,7 @@ function generateQuiz(session, config) {
   const lang = SUPPORTED_LANGUAGES.includes(session.language) ? session.language : 'en';
   const template = QUIZ_TEMPLATES[lang] || QUIZ_TEMPLATES.en;
   const questionCount = Math.min(10, Math.max(1, Number(config.questionCount) || 3));
-  const readerContext = slotContent(profileFor(session), 'reader_context');
+  const readerContext = readerContentFor(session);
 
   return pagesInRange(session)
     .slice(0, questionCount)
@@ -429,7 +460,7 @@ function gradeAnswer(session, pageNumber, answer, difficulty, isFirstAttempt) {
 
   let feedback = correct ? FEEDBACK[lang].correct : FEEDBACK[lang].incorrect;
   if (isFirstAttempt) {
-    const readerContext = slotContent(profileFor(session), 'reader_context');
+    const readerContext = readerContentFor(session);
     if (readerContext) {
       feedback += (USER_NOTE_PREFIX[lang] || USER_NOTE_PREFIX.en)(readerContext);
     }
@@ -504,7 +535,7 @@ function computeNotifications(session) {
 }
 
 router.post('/', authMiddleware, (req, res) => {
-  const { documentId, title, startPage, endPage, difficulty, aiProfileId, language } = req.body;
+  const { documentId, title, startPage, endPage, difficulty, aiProfileId, readerProfileId, language } = req.body;
   const doc = documents.find((d) => d.id === documentId && d.userId === req.userId);
   if (!doc) return res.status(404).json({ error: 'Document not found' });
 
@@ -514,6 +545,13 @@ router.post('/', authMiddleware, (req, res) => {
     // No profile chosen → the user's pre-designated default profile.
     mine.find((p) => p.isDefault) ||
     mine[0] ||
+    null;
+
+  const visibleReaders = readerProfiles.filter((r) => r.userId === req.userId || r.userId === null);
+  const resolvedReader =
+    (readerProfileId ? visibleReaders.find((r) => r.id === Number(readerProfileId)) : null) ||
+    visibleReaders.find((r) => r.isDefault) ||
+    visibleReaders[0] ||
     null;
 
   const session = {
@@ -526,6 +564,7 @@ router.post('/', authMiddleware, (req, res) => {
     currentPage: startPage,
     difficulty: difficulty || 'medium',
     aiProfileId: resolvedProfile ? resolvedProfile.id : null,
+    readerProfileId: resolvedReader ? resolvedReader.id : null,
     language: SUPPORTED_LANGUAGES.includes(language) ? language : 'en',
     createdAt: nowIso()
   };

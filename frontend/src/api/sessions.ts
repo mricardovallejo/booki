@@ -22,6 +22,7 @@ export interface CreateSessionRequest {
   startPage: number;
   endPage: number;
   aiProfileId?: number;
+  readerProfileId?: number;
   difficulty: Difficulty;
   language: SessionLanguage;
 }

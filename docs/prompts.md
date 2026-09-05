@@ -4,21 +4,37 @@ How BooKI decides *what* to say — the instructions the model reads before ever
 answer, who owns which part, and how the pieces combine.
 
 This is the single reference for the topic. `docs/backend.md` and
-`docs/frontend.md` only point here; the decision record is `ADR-015` in
-`docs/decisions.md`. Frontend, mock and Java backend all implement this.
+`docs/frontend.md` only point here; the decision record is `ADR-015` (and
+`ADR-017` for the reader-profile split) in `docs/decisions.md`.
+
+> **Status:** the reader-profile split (below) is implemented in the **frontend
+> and the Node mock**; the Spring backend still carries `reader_context` as a
+> per-profile slot and gets the split in a follow-up. Everything else matches
+> across all three.
 
 ## The model
 
-Every conversational turn assembles one system prompt from ~7 parts. Two halves:
+Every conversational turn assembles one system prompt. Three owners:
 
-- **Core** — fixed, app-owned, never shown as editable. Safety, grounding in the
-  page range, "respond in the session language", encouraging tone, and the
-  conflict rule. One string; not part of any profile.
-- **AI Profile** — everything else, and all of it editable by the user: the
-  persona, the reader context, the three difficulty levels, the per-function
-  instructions, and capability routing.
+- **Core** — fixed, app-owned, never editable. Safety, grounding in the page
+  range, "respond in the session language", encouraging tone, the conflict rule,
+  and the injection-defence line. One string; not part of any profile.
+- **AI Profile** — the "master": the persona, the three difficulty rubrics, the
+  per-function instructions, and capability routing. All user-editable.
+- **Reader profile** — who is reading, in one study context ("Languages",
+  "Sciences", "Philosophy"): their goal, prior knowledge, how they like to learn,
+  any accessibility need. Its own named, reusable entity, with **no association
+  to any AI Profile**. There is a built-in **read-only default** ("General
+  reader", a fill-in scaffold); the user duplicates it to make editable ones.
+  **Shared** — editing a reader profile changes it for every session that uses
+  it. `readerLevel` (beginner/intermediate/advanced) lives here, drives the
+  create-session difficulty suggestion, AND is prepended to the reader-context
+  the model reads (`Reader level: intermediate.`).
 
-A session points at exactly one AI Profile and keeps it for life.
+A **session** picks one AI Profile **and** one reader profile at creation
+(`session.aiProfileId`, `session.readerProfileId`); both are shown in the
+session sidebar, differentiated. The reader profile defaults to the user's
+default when not chosen.
 
 ## The layered prompt
 
@@ -29,8 +45,8 @@ In precedence order (written into the core so the model knows it):
 | 1 | **Core** | app | no |
 | 2 | **Difficulty** — the rubric for the active level | AI Profile | yes |
 | 3 | **Function contract + body** — only when a capability runs | AI Profile | body only |
-| 4 | **Persona** | AI Profile | yes |
-| 5 | **Reader context** | AI Profile | yes |
+| 4 | **Master persona** | AI Profile | yes |
+| 5 | **Reader profile** — the reader context | Reader profile | yes |
 | — | Session facts (document, page range, current page) + the page text | session | no |
 | — | Capability routing (plain chat only) | AI Profile | body only |
 
@@ -45,7 +61,8 @@ instructions. Defence-in-depth, not a guarantee.
 
 `GET /sessions/{id}/context` returns all of these (each tagged with a `group`) so
 the reader can see exactly what shapes an answer; the ℹ button in the chat panel
-renders it, folding the function/routing groups away by default.
+renders it. The AI Profiles editor shows every group flat (no "Advanced" fold);
+the reader profile is a separate section in that editor.
 
 ## The AI Profile
 
@@ -58,8 +75,7 @@ that the user can't touch. A `null` frame means the whole SlotPrompt is free tex
 
 | key | shown as | group | locked frame |
 |---|---|---|---|
-| `persona` | Persona | persona | — |
-| `reader_context` | Reader context | reader | — |
+| `persona` | Master persona | persona | — |
 | `rubric_easy` / `_medium` / `_hard` | Difficulty — Easy/Medium/Advanced | difficulty | — |
 | `fn_quiz_question` | Function — Quiz question | functions | "output only the question…" |
 | `fn_answer_grading` | Function — Answer grading | functions | the `CORRECT:` / `SCORE:` / `FEEDBACK:` format |
@@ -68,11 +84,17 @@ that the user can't touch. A `null` frame means the whole SlotPrompt is free tex
 | `fn_mnemonic` | Function — Mnemonic | functions | — |
 | `capability_routing` | Capability routing | routing | the `{"capability":"<name>"}` contract |
 
+(`reader_context` used to be a slot here; it's now the separate Reader profile.
+The Spring backend still has the slot until the follow-up — see Status above.)
+
 ### Structured fields (not SlotPrompts)
 
-- **`readerLevel`** — `beginner` / `intermediate` / `advanced` / null. Sits on
-  the reader-context slot in the editor. Only use: the create-session screen
-  suggests a difficulty from it (beginner→Easy …), which the user can override.
+- **`session.readerProfileId`** — which reader profile the session runs on
+  (null → the user's default). The AI Profile carries nothing about the reader.
+- **`readerLevel`** — `beginner` / `intermediate` / `advanced` / null, on the
+  **reader profile**. The create-session screen suggests a difficulty from it
+  (beginner→Easy …), which the user can override; it is also written into the
+  assembled reader-context layer.
 - **`enabledCapabilities`** — a subset of `quiz` / `summary` / `explain` /
   `mnemonic`. A capability left out is **off for the whole session**: BooKI never
   triggers it on its own, and its quick-action button is hidden in the chat. The
@@ -92,9 +114,14 @@ that the user can't touch. A `null` frame means the whole SlotPrompt is free tex
   It powers the computed **Edited / Original** badge (`text != originalText`,
   never a stored flag), the per-SlotPrompt **Restore original text**, and the
   whole-profile **Restore to original** (`POST /ai-profiles/{id}/restore` —
-  re-seeds all SlotPrompts + `readerLevel` + `enabledCapabilities` from
-  `basedOnId`, keeps the name).
+  re-seeds all SlotPrompts + `enabledCapabilities` from `basedOnId`, keeps the
+  name).
 - **Duplicate** makes another autonomous copy.
+- **Reader profiles**: a built-in read-only "General reader" (a fill-in scaffold,
+  `readOnly`, `isDefault` until the user sets their own default) plus whatever
+  the user has made. `POST /reader-profiles` (optionally `fromId` to copy),
+  `PATCH`/`DELETE` (the built-in one is not editable/deletable — 404). Deleting a
+  reader profile: sessions that used it fall back to the default at read time.
 - **When a shipped template's text is later improved: only the hidden template
   changes. Existing user profiles are never touched** — edited or not. A user who
   wants the new text does "Restore to original" or redoes that prompt by hand.
@@ -122,16 +149,16 @@ Three separate things:
 
 ## How a turn is assembled
 
-- **Plain chat**: core + rubric(active level) + persona + reader context +
-  session facts + page text + `capability_routing`. If the model replies with
-  exactly `{"capability":"<name>"}` for an *enabled* capability, that capability
-  runs instead; otherwise its reply is the answer.
+- **Plain chat**: core + rubric(active level) + master persona + reader profile
+  context + session facts + page text + `capability_routing`. If the model
+  replies with exactly `{"capability":"<name>"}` for an *enabled* capability,
+  that capability runs instead; otherwise its reply is the answer.
 - **Quick-action button / explicit capability**: skips routing, runs the
   capability directly (rejected if it isn't enabled).
 - **A capability call** (quiz question, grading, summary, explain, mnemonic):
-  core + rubric + the function's locked frame + its editable body + persona +
-  reader context + the relevant page(s). Grading and quiz generation parse the
-  model's reply against the locked frame's format.
+  core + rubric + the function's locked frame + its editable body + master
+  persona + reader profile context + the relevant page(s). Grading and quiz
+  generation parse the model's reply against the locked frame's format.
 
 ## API surface
 
@@ -139,39 +166,59 @@ Three separate things:
 |---|---|---|
 | GET | `/ai-profiles` | the user's profiles (no slots) |
 | GET | `/ai-profiles/{id}` | one profile with slots |
-| PATCH | `/ai-profiles/{id}` | name (≤120) / `readerLevel` / `enabledCapabilities` / slot bodies (≤8000 each) — `@Valid` |
+| PATCH | `/ai-profiles/{id}` | name (≤120) / `enabledCapabilities` / slot bodies (≤8000 each) — `@Valid` |
 | POST | `/ai-profiles/{id}/duplicate` | autonomous copy |
 | POST | `/ai-profiles/{id}/revert` | one SlotPrompt back to its `originalText` |
-| POST | `/ai-profiles/{id}/restore` | whole profile back to its template |
+| POST | `/ai-profiles/{id}/restore` | prompts + capabilities back to the template |
 | DELETE | `/ai-profiles/{id}` | delete (400 if it's the only one) |
-| GET | `/sessions/{id}/context` | the assembled layers + `enabledCapabilities` |
+| GET | `/reader-profiles` | the built-in read-only default + the user's own |
+| POST | `/reader-profiles` | create, optionally `{fromId}` to copy (defaults to the built-in) |
+| PATCH | `/reader-profiles/{id}` | `name` / `context` (≤4000) / `readerLevel` / `isDefault: true` — 404 on the built-in |
+| DELETE | `/reader-profiles/{id}` | delete an own one — 404 on the built-in |
+| POST | `/sessions` | `{…, aiProfileId?, readerProfileId?}` — both default to the user's default |
+| GET | `/sessions/{id}/context` | the assembled layers + `aiProfileName` + `readerProfileName` |
 
-Full schemas: `docs/openapi.yaml` (`AiProfile`, `AiProfileSlot`, `SessionContext`).
+Full schemas: `docs/openapi.yaml` (`AiProfile`, `AiProfileSlot`, `ReaderProfile`,
+`SessionContext`). *Reader-profile endpoints: frontend + mock; Spring backend
+follow-up.*
 
 ## Frontend
 
-- `src/api/aiProfiles.ts` — the calls. `src/hooks/useAiProfiles.ts` (list +
-  duplicate + delete), `src/hooks/useAiProfile.ts` (one profile + in-memory
-  draft of every editable field + save/revert/restore), `src/hooks/useAiProfileSlots.ts`
-  (read-only slots, for the quiz panel).
-- `src/pages/AiProfilesPage.tsx` — one screen: profile selector +
-  Duplicate / Restore to original / Delete, and inline the slot editor (slot
-  nav, locked frame greyed out, Edited/Original badge, `?slot=` deep link,
-  Advanced section folding functions + routing away, unsaved-changes guard).
+- `src/api/aiProfiles.ts` / `src/api/readerProfiles.ts` — the calls.
+  `src/hooks/useAiProfiles.ts` (list + duplicate + delete),
+  `src/hooks/useAiProfile.ts` (one profile + in-memory draft + save/revert/restore),
+  `src/hooks/useReaderProfiles.ts` (list + create + update + delete),
+  `src/hooks/useAiProfileSlots.ts` (read-only slots, for the quiz panel).
+- `src/pages/AiProfilesPage.tsx` — one screen that edits **both** kinds: AI
+  Profile selector + Duplicate / Restore / Delete + the slot editor (all groups
+  flat, no Advanced fold); and a standalone **Reader profiles** section (pick
+  which to edit / rename / set level / edit the shared context / save / duplicate
+  / delete — the built-in one is read-only). `?slot=` deep link, unsaved-changes
+  guard covering both
+  the AI Profile and the reader profile).
 - `src/components/ContextInfoButton.tsx` — the ℹ layers popup.
-- `src/components/CreateSessionModal.tsx` — profile picker (defaults to
-  `isDefault`), difficulty suggested from `readerLevel`.
+- `src/components/CreateSessionModal.tsx` — an **AI Profile picker and a reader
+  profile picker** (both default to `isDefault`); difficulty suggested from the
+  chosen reader profile's `readerLevel`.
 - `src/components/ChatPanel.tsx` — hides quick-action buttons for capabilities
   not in `session.enabledCapabilities`.
-- `src/components/SessionSidebar.tsx` — shows the active profile name, linked.
+- `src/components/SessionSidebar.tsx` — shows both the AI Profile and the reader
+  profile, differentiated, linked to the editor.
 
 ## Backend
 
-Two tables:
+> The reader-profile split is **not yet in the Spring backend**. Today it still
+> has `reader_context` as a slot and `reader_level` on `ai_profiles`. The
+> follow-up: a `reader_profiles` table, `sessions.reader_profile_id` (+ a
+> read-only factory reader), drop the `reader_context` slot + `reader_level`
+> column, and resolve the reader context in `PromptAssembler` from the session's
+> reader profile. See `ADR-017`.
+
+Two tables (current):
 
 - `ai_profiles` — `user_id`, `name`, `based_on_template` (a template key, not an
-  FK), `is_default`, `reader_level` (nullable), `enabled_capabilities` (csv via
-  `CapabilitySetConverter`).
+  FK), `is_default`, `reader_level` (nullable → moving to `reader_profiles`),
+  `enabled_capabilities` (csv via `CapabilitySetConverter`).
 - `ai_profile_slot_prompts` — `profile_id`, `slot` (`SlotKey` enum), `text`,
   `original_text`. `ON DELETE CASCADE`; sessions/quiz_attempts FK to
   `ai_profiles` is `ON DELETE SET NULL`.
@@ -196,8 +243,12 @@ deploying it** so Flyway re-runs clean.
 
 ## Design principles
 
-- **One object per session.** No separate "persona library" + "learner profile" +
-  "function settings" — the AI Profile is already per study-context.
+- **The master and the reader are two things.** The AI Profile ("master") is the
+  persona + difficulty + function prompts. Who is reading — different for
+  languages vs. sciences vs. philosophy — is a **reader profile**, reusable
+  across masters and shared when edited. (ADR-015 folded them into one object;
+  ADR-017 split the reader back out once "one reader context per persona" proved
+  confusing in practice.)
 - **Structured where the machine cares, free text where the human does.**
   Output formats and the capability list are structured/locked; tone and approach
   are free text.

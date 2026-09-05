@@ -12,7 +12,26 @@ export interface User {
 }
 
 /** Which family a prompt slot belongs to, used to group them in the editor. */
-export type AiProfileSlotGroup = 'persona' | 'reader' | 'difficulty' | 'functions' | 'routing';
+export type AiProfileSlotGroup = 'persona' | 'difficulty' | 'functions' | 'routing';
+
+/** Structured self-assessed level, used to suggest a session difficulty. */
+export type ReaderLevel = 'beginner' | 'intermediate' | 'advanced';
+
+/**
+ * Who is reading, in one study context ("Languages", "Sciences", "Philosophy").
+ * Describes the reader, not the assistant — an Ai Profile points at one via
+ * `readerProfileId`. Shared: editing it affects every profile that uses it.
+ */
+export interface ReaderProfile {
+  id: number;
+  name: string;
+  isDefault: boolean;
+  /** The built-in default is read-only — duplicate it to make your own. */
+  readOnly: boolean;
+  readerLevel: ReaderLevel | null;
+  context: string;
+  updatedAt: string;
+}
 
 /**
  * One SlotPrompt inside an AI Profile. `text` is the editable body; the locked
@@ -31,14 +50,10 @@ export interface AiProfileSlot {
   modified: boolean;
 }
 
-/** Structured self-assessed level, used to suggest a session difficulty. */
-export type ReaderLevel = 'beginner' | 'intermediate' | 'advanced';
-
 export interface AiProfileSummary {
   id: number;
   name: string;
   isDefault: boolean;
-  readerLevel: ReaderLevel | null;
   /** Which conversational capabilities this profile allows (subset of CapabilityHint). */
   enabledCapabilities: CapabilityHint[];
   updatedAt: string;
@@ -70,6 +85,9 @@ export interface SessionContextLayer {
 export interface SessionContext {
   aiProfileId: number | null;
   aiProfileName: string | null;
+  /** Present once the reader-profile split reaches the backend (frontend + mock have it). */
+  readerProfileId?: number | null;
+  readerProfileName?: string | null;
   language: SessionLanguage;
   difficulty: Difficulty;
   enabledCapabilities: CapabilityHint[];
@@ -92,6 +110,7 @@ export interface Session {
   currentPage: number;
   difficulty: Difficulty;
   aiProfileId?: number | null;
+  readerProfileId?: number | null;
   enabledCapabilities: CapabilityHint[];
   language: SessionLanguage;
   aiProvider: AiProvider;

@@ -46,6 +46,12 @@ export const ENDPOINTS = {
     restore: (id: number) => `/ai-profiles/${id}/restore`,
     delete: (id: number) => `/ai-profiles/${id}`
   },
+  readerProfiles: {
+    list: '/reader-profiles',
+    create: '/reader-profiles',
+    byId: (id: number) => `/reader-profiles/${id}`,
+    delete: (id: number) => `/reader-profiles/${id}`
+  },
   sessions: {
     create: '/sessions',
     byId: (id: number) => `/sessions/${id}`,

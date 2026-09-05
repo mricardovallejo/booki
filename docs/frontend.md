@@ -16,7 +16,11 @@
 - **LoginPage**: sign in / sign up (email, password, optional name). The "use demo account" shortcut is gated behind `import.meta.env.DEV`, so it (and the demo credentials) are stripped from production builds.
 - **HomePage**: list of the user's PDFs, tag filtering, and the upload flow.
 - **SessionPage**: PDF reader + chat, quiz, progress, and notifications for one session.
-- **AiProfilesPage** — "Reading setup" (`/ai-profiles`, `/ai-profiles/:id`): two tabs, **Tutor profile** and **Reader profile**. The tutor-profile tab edits the AI Profile (persona, difficulty, function prompts — every group visible, no Advanced fold); the reader-profile tab edits the reader profiles (who is reading — no link to any tutor profile; a session picks one). Both tabs share the same shape: a selector + New/Duplicate/Delete + the editor. "AI Profile" is called **tutor profile** and "master persona" just **persona** throughout the UI; the route and API names are unchanged. See `docs/prompts.md`.
+- **AiProfilesPage** — "Reading setup" (`/ai-profiles`, `/ai-profiles/:id`): two tabs, **Tutor profile** and **Reader profile**, same shape — a selector + `New` / `Duplicate` / `Delete`, the editor, then a `Save changes` button at the bottom.
+  - *Tutor profile* tab: the flat slot editor (persona, difficulty, function prompts, capability routing — no Advanced fold) + `Restore to original`. `New` = a fresh copy of the user's default (there is no blank template); `Duplicate` = a copy of the selected one. Selection is the route (`/ai-profiles/:id`).
+  - *Reader profile* tab: `Name` / `Starting level` / shared `context`. It lands on one of the user's own profiles when any exist. The built-in "General reader" is read-only — it shows an explanatory callout instead of a form; `New` (blank) or `Duplicate` makes an editable one.
+  - Long help text is a small "?" disclosure (`Explainer`), kept to two: what the profiles are, and how the difficulty / starting level works.
+  - "AI Profile" is called **tutor profile** and "master persona" just **persona** throughout the UI; routes and API names are unchanged. See `docs/prompts.md`.
 - **ProfilePage** — "Account details": edit the current user's name (learning preferences live in reader profiles — `docs/prompts.md`).
 
 All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `/login` when there's no authenticated user (see `context/AuthContext`).

@@ -46,7 +46,7 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 | Method | Route | Description |
 |--------|------|-------------|
 | GET | `/api/users/me` | Get the current user's profile |
-| PATCH | `/api/users/me` | Update the display name (the only editable user field — learning preferences are per AI Profile) |
+| PATCH | `/api/users/me` | Update the display name (the only editable user field — learning preferences live in reader profiles) |
 
 ### Documents — `/api/documents`
 
@@ -60,9 +60,10 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 
 ### AI Profiles — `/api/ai-profiles` · Reader Profiles — `/api/reader-profiles`
 
-The AI Profile is the "master" (persona, difficulty, per-function prompts,
-routing); the reader profile is who is reading. A session picks one of each.
-Full model in **`docs/prompts.md`**; the endpoints:
+The AI Profile (the UI calls it a **tutor profile**) holds the persona,
+difficulty, per-function prompts and routing; the reader profile is who is
+reading. A session picks one of each. Full model in **`docs/prompts.md`**; the
+endpoints:
 
 | Method | Route | Description |
 |--------|------|-------------|
@@ -97,7 +98,7 @@ Full model in **`docs/prompts.md`**; the endpoints:
 |--------|------|-------------|
 | POST | `/api/sessions` | Create a session (document, page range, difficulty, language, `aiProfileId?`, `readerProfileId?`); `400` if `startPage > endPage` or `endPage` exceeds the document's real page count. Omit either profile id to use the user's default |
 | GET | `/api/sessions/{id}` | Load a session |
-| GET | `/api/sessions/{id}/context` | Inspect the assembled prompt layers (core, difficulty, master persona, reader profile, per-function, routing, session facts) each tagged with a `group`, plus `aiProfileName` / `readerProfileName`. See `docs/prompts.md` |
+| GET | `/api/sessions/{id}/context` | Inspect the assembled prompt layers (core, difficulty, persona, reader profile, per-function, routing, session facts) each tagged with a `group`, plus `aiProfileName` / `readerProfileName`. See `docs/prompts.md` |
 | PATCH | `/api/sessions/{id}/current-page` | Update the reader's current page; body `{ "currentPage": n }` (`UpdateCurrentPageRequest`, `@NotNull`); `400` if outside `[startPage, endPage]` |
 | GET | `/api/sessions/{id}/messages` | Conversation history |
 | POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `502` if the AI provider fails |

@@ -41,7 +41,7 @@ In precedence order (written into the core so the model knows it):
 | 1 | **Core** | app | no |
 | 2 | **Difficulty** — the rubric for the active level | AI Profile | yes |
 | 3 | **Function contract + body** — only when a capability runs | AI Profile | body only |
-| 4 | **Master persona** | AI Profile | yes |
+| 4 | **Persona** | AI Profile | yes |
 | 5 | **Reader profile** — the reader context | Reader profile | yes |
 | — | Session facts (document, page range, current page) + the page text | session | no |
 | — | Capability routing (plain chat only) | AI Profile | body only |
@@ -71,7 +71,7 @@ that the user can't touch. A `null` frame means the whole SlotPrompt is free tex
 
 | key | shown as | group | locked frame |
 |---|---|---|---|
-| `persona` | Master persona | persona | — |
+| `persona` | Persona | persona | — |
 | `rubric_easy` / `_medium` / `_hard` | Difficulty — Easy/Medium/Advanced | difficulty | — |
 | `fn_quiz_question` | Function — Quiz question | functions | "output only the question…" |
 | `fn_answer_grading` | Function — Answer grading | functions | the `CORRECT:` / `SCORE:` / `FEEDBACK:` format |
@@ -145,15 +145,15 @@ Three separate things:
 
 ## How a turn is assembled
 
-- **Plain chat**: core + rubric(active level) + master persona + reader profile
+- **Plain chat**: core + rubric(active level) + persona + reader profile
   context + session facts + page text + `capability_routing`. If the model
   replies with exactly `{"capability":"<name>"}` for an *enabled* capability,
   that capability runs instead; otherwise its reply is the answer.
 - **Quick-action button / explicit capability**: skips routing, runs the
   capability directly (rejected if it isn't enabled).
 - **A capability call** (quiz question, grading, summary, explain, mnemonic):
-  core + rubric + the function's locked frame + its editable body + master
-  persona + reader profile context + the relevant page(s). Grading and quiz
+  core + rubric + the function's locked frame + its editable body + persona
+  + reader profile context + the relevant page(s). Grading and quiz
   generation parse the model's reply against the locked frame's format.
 
 ## API surface
@@ -192,12 +192,16 @@ the dropdown shows it as `Easy|Medium|Advanced` to match the session/quiz words.
   `src/hooks/useReaderProfiles.ts` (list + create + update + delete),
   `src/hooks/useAiProfileSlots.ts` (read-only slots, for the quiz panel).
 - `src/pages/AiProfilesPage.tsx` — one screen, **two tabs** with the same shape
-  (selector + New/Duplicate/Delete + editor). *Tutor profile* tab: the slot
-  editor (all groups flat, no Advanced fold) + Restore. *Reader profile* tab:
-  name / starting level / shared context; the built-in one is read-only (New or
-  Duplicate to get an editable one). `?slot=` deep link forces the tutor tab and
+  (selector + New/Duplicate/Delete + editor + a bottom `Save changes`).
+  *Tutor profile* tab: the slot editor (all groups flat, no Advanced fold) +
+  Restore; `New` copies the user's default (no blank template), `Duplicate`
+  copies the selected one; selection lives in the route. *Reader profile* tab:
+  name / starting level / shared context; it lands on one of the user's own
+  profiles, and the read-only built-in shows a callout instead of a form (`New`
+  = blank, `Duplicate` = copy). `?slot=` deep link forces the tutor tab and
   preselects the slot; one unsaved-changes guard covers both drafts (switching
-  tabs keeps both in memory, so it is not guarded).
+  tabs keeps both in memory, so it is not guarded). Long help is a small "?"
+  disclosure (`Explainer`), used twice.
 - `src/components/ContextInfoButton.tsx` — the ℹ layers popup.
 - `src/components/CreateSessionModal.tsx` — a **tutor-profile picker and a reader
   profile picker** (both default to `isDefault`); difficulty preset from the

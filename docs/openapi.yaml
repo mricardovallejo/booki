@@ -717,7 +717,7 @@ paths:
       description: >
         Transparency endpoint: the ordered layers that shape BooKI's answers for
         this session — the fixed BooKI core, the session's AI Profile
-        contributions (difficulty rubric for the active level, master persona,
+        contributions (difficulty rubric for the active level, persona,
         per-function, routing) and the reader profile's context. Also returns
         `aiProfileName` and `readerProfileName`. Surfaced in the "Context" info
         button.

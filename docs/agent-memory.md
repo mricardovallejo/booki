@@ -16,7 +16,7 @@ PWA for Android/Windows/Linux.
 
 ## Conventions
 
-- Code in English: `Document`, `Session`, `AiProfile` (the "master"), `ReaderProfile` (who reads), `Message`. `ProfileMaster` is gone (ADR-015 / ADR-017).
+- Code in English: `Document`, `Session`, `AiProfile` (UI: "tutor profile"; ADR-018), `ReaderProfile` (who reads), `Message`. `ProfileMaster` is gone (ADR-015 / ADR-017).
 - Base package: `com.booki`.
 - Backend: Controller → Service (interface) → ServiceImpl → Repository. Write DTOs carry `@Valid` constraints; multi-write services are `@Transactional`; uncaught errors are sanitized. Security posture: ADR-016.
 - Frontend: `pages/` → `components/` → `api/` → `hooks/`. `npm run lint` + `tsc --noEmit` + `build` are the CI gate.

@@ -70,7 +70,7 @@ async function createSamplePdf(title, pageTexts) {
       color: rgb(0.1, 0.1, 0.2)
     });
 
-    page.drawText(`Página ${idx + 1}`, {
+    page.drawText(`Page ${idx + 1}`, {
       x: 72,
       y: height - 104,
       size: 12,
@@ -110,30 +110,30 @@ async function createSamplePdf(title, pageTexts) {
 async function seedData() {
   const sampleDocs = [
     {
-      title: 'Introducción a la Física',
+      title: 'Introduction to Physics',
       pages: [
-        'La física es la ciencia natural que estudia la materia, la energía, el espacio y el tiempo, y las interacciones entre ellos. En este libro exploraremos los principios fundamentales que rigen el comportamiento del universo. Comenzaremos por la cinemática, que describe el movimiento sin preocuparse por sus causas.',
-        'La cinemática utiliza conceptos como posición, velocidad y aceleración. La velocidad es la rapidez con dirección, mientras que la aceleración mide el cambio de velocidad en el tiempo. Estos conceptos nos permiten predecir la trayectoria de un objeto.',
-        'Las leyes de Newton son el pilar de la mecánica clásica. La primera ley establece que un objeto permanecerá en reposo o en movimiento rectilíneo uniforme a menos que actúe sobre él una fuerza neta. La segunda ley relaciona fuerza, masa y aceleración.',
-        'El trabajo y la energía son conceptos centrales. El trabajo se define como la fuerza aplicada por el desplazamiento en la dirección de la fuerza. La energía cinética depende de la masa y del cuadrado de la velocidad. La conservación de la energía es uno de los principios más poderosos de la física.'
+        'Physics is the natural science that studies matter, energy, space and time, and the interactions between them. In this book we explore the fundamental principles that govern the behaviour of the universe. We start with kinematics, which describes motion without worrying about its causes.',
+        'Kinematics uses concepts such as position, velocity and acceleration. Velocity is speed with a direction, while acceleration measures the change in velocity over time. These concepts let us predict the trajectory of an object.',
+        "Newton's laws are the foundation of classical mechanics. The first law states that an object stays at rest or in uniform straight-line motion unless a net force acts on it. The second law relates force, mass and acceleration.",
+        'Work and energy are central concepts. Work is the force applied times the displacement in the direction of the force. Kinetic energy depends on mass and the square of velocity. Conservation of energy is one of the most powerful principles in physics.'
       ]
     },
     {
-      title: 'Historia de Roma',
+      title: 'History of Rome',
       pages: [
-        'Roma fue fundada, según la tradición, en el año 753 a.C. por Rómulo y Remo. La ciudad comenzó como un pequeño asentamiento en la orilla del río Tíber y creció hasta convertirse en uno de los imperios más grandes de la historia.',
-        'La República Romana se caracterizó por un sistema de gobierno con senadores, cónsules y tribunos. Aunque no era una democracia moderna, incluía mecanismos de equilibrio y representación que influyeron en posteriores sistemas políticos.',
-        'Las guerras púnicas contra Cartago definieron el destino del Mediterráneo occidental. Aníbal cruzó los Alpes con elefantes y causó severas derrotas a Roma, pero finalmente Escipión el Africano venció en Zama.',
-        'El Imperio Romano alcanzó su mayor extensión bajo Trajano. La red de calzadas, el derecho romano y la extensión de la ciudadanía fueron legados que perduraron mucho después de la caída de Occidente en el siglo V d.C.'
+        'Rome was founded, according to tradition, in 753 BC by Romulus and Remus. The city began as a small settlement on the bank of the Tiber and grew into one of the largest empires in history.',
+        'The Roman Republic was characterised by a system of government with senators, consuls and tribunes. Though not a modern democracy, it included checks and balances and forms of representation that influenced later political systems.',
+        'The Punic Wars against Carthage decided the fate of the western Mediterranean. Hannibal crossed the Alps with elephants and inflicted severe defeats on Rome, but Scipio Africanus finally won at Zama.',
+        'The Roman Empire reached its greatest extent under Trajan. The road network, Roman law and the spread of citizenship were legacies that outlasted the fall of the West in the 5th century AD.'
       ]
     },
     {
-      title: 'Programación para Principiantes',
+      title: 'Programming for Beginners',
       pages: [
-        'Programar consiste en dar instrucciones precisas a una computadora. Estas instrucciones se escriben en lenguajes de programación que luego se traducen a código máquina. Aprender a programar desarrolla el pensamiento lógico y la capacidad de resolver problemas.',
-        'Las variables son contenedores de datos. Pueden almacenar números, texto, listas o estructuras más complejas. Elegir nombres claros para las variables hace que el código sea más fácil de leer y mantener.',
-        'Las funciones permiten agrupar instrucciones reutilizables. Una función recibe parámetros, realiza operaciones y puede devolver un resultado. Modularizar el código con funciones reduce errores y facilita las pruebas.',
-        'Los condicionales y los bucles controlan el flujo del programa. Un if ejecuta código solo cuando se cumple una condición, mientras que un bucle repite instrucciones hasta que deja de cumplirse una condición.'
+        'Programming is about giving a computer precise instructions. Those instructions are written in programming languages that are then translated to machine code. Learning to program develops logical thinking and problem-solving.',
+        'Variables are containers for data. They can hold numbers, text, lists or more complex structures. Choosing clear names for variables makes code easier to read and maintain.',
+        'Functions let you group reusable instructions. A function takes parameters, performs operations and can return a result. Splitting code into functions reduces errors and makes testing easier.',
+        'Conditionals and loops control the flow of a program. An if runs code only when a condition holds, while a loop repeats instructions until a condition stops holding.'
       ]
     }
   ];
@@ -170,15 +170,15 @@ async function seedData() {
   );
 
   sessions.push(
-    { id: 1, userId, documentId: 1, title: 'Introducción a la Física.pdf (págs. 1-2)', startPage: 1, endPage: 2, currentPage: 1, difficulty: 'easy', aiProfileId: 5, language: 'es', createdAt: nowIso() },
-    { id: 2, userId, documentId: 2, title: 'Historia de Roma.pdf (págs. 1-4)', startPage: 1, endPage: 4, currentPage: 1, difficulty: 'medium', aiProfileId: 6, language: 'es', createdAt: nowIso() }
+    { id: 1, userId, documentId: 1, title: 'Introduction to Physics.pdf (pp. 1-2)', startPage: 1, endPage: 2, currentPage: 1, difficulty: 'easy', aiProfileId: 5, language: 'en', createdAt: nowIso() },
+    { id: 2, userId, documentId: 2, title: 'History of Rome.pdf (pp. 1-4)', startPage: 1, endPage: 4, currentPage: 1, difficulty: 'medium', aiProfileId: 6, language: 'en', createdAt: nowIso() }
   );
 
   messages.push(
-    { id: 1, sessionId: 1, speaker: 'USER', inputType: 'TEXT', message: '¿Qué es la cinemática?', createdAt: nowIso() },
-    { id: 2, sessionId: 1, speaker: 'BOOKI', inputType: 'TEXT', message: 'La cinemática es la rama de la física que describe el movimiento de los objetos usando conceptos como posición, velocidad y aceleración, sin analizar las causas de ese movimiento.', createdAt: nowIso() },
-    { id: 3, sessionId: 2, speaker: 'USER', inputType: 'TEXT', message: '¿Quién fundó Roma?', createdAt: nowIso() },
-    { id: 4, sessionId: 2, speaker: 'BOOKI', inputType: 'TEXT', message: 'Según la tradición, Roma fue fundada por Rómulo y Remo en el año 753 a.C.', createdAt: nowIso() }
+    { id: 1, sessionId: 1, speaker: 'USER', inputType: 'TEXT', message: 'What is kinematics?', createdAt: nowIso() },
+    { id: 2, sessionId: 1, speaker: 'BOOKI', inputType: 'TEXT', message: 'Kinematics is the branch of physics that describes the motion of objects using concepts like position, velocity and acceleration, without analysing the causes of that motion.', createdAt: nowIso() },
+    { id: 3, sessionId: 2, speaker: 'USER', inputType: 'TEXT', message: 'Who founded Rome?', createdAt: nowIso() },
+    { id: 4, sessionId: 2, speaker: 'BOOKI', inputType: 'TEXT', message: 'According to tradition, Rome was founded by Romulus and Remus in 753 BC.', createdAt: nowIso() }
   );
 }
 

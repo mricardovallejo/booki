@@ -48,7 +48,8 @@ class PromptAssemblerTest {
         assertThat(prompt).contains("Advanced: assume a close reading");                    // rubric_hard
         assertThat(prompt).contains("You are a patient tutor");                             // persona
         assertThat(prompt).contains("Reply in Spanish.");                                   // session facts
-        assertThat(prompt).endsWith("DOCUMENT CONTEXT:\nPAGE TEXT");
+        assertThat(prompt).contains("<<<BEGIN DOCUMENT>>>\nPAGE TEXT\n<<<END DOCUMENT>>>");  // fenced page text
+        assertThat(prompt).endsWith("<<<END DOCUMENT>>>");
         assertThat(prompt).doesNotContain("Easy: assume little prior knowledge");           // other rubrics not included
     }
 

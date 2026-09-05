@@ -23,16 +23,28 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const MAX_UPLOAD_BYTES = 40 * 1024 * 1024;
+
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
     if (!file) return;
     setError(null);
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      setError('Only PDF files can be uploaded.');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError('That PDF is larger than 40 MB. Try a smaller file or split it.');
+      return;
+    }
+
     try {
       await upload(file);
     } catch (err) {
       setError(getErrorMessage(err, 'Could not upload this file.'));
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 

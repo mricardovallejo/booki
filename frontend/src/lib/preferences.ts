@@ -8,9 +8,18 @@ export const LANGUAGE_LABELS: Record<SessionLanguage, string> = {
   fr: 'Français'
 };
 
+export function isSessionLanguage(value: string): value is SessionLanguage {
+  return value in LANGUAGE_LABELS;
+}
+
+/** Narrow a raw <select> value to a SessionLanguage, falling back to English. */
+export function toSessionLanguage(value: string): SessionLanguage {
+  return isSessionLanguage(value) ? value : 'en';
+}
+
 export function getDefaultLanguage(): SessionLanguage {
   const stored = localStorage.getItem(KEY);
-  if (stored === 'en' || stored === 'es' || stored === 'fr') return stored;
+  if (stored && isSessionLanguage(stored)) return stored;
   return 'en';
 }
 

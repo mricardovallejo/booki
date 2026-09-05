@@ -237,7 +237,7 @@ export default function AiProfilesPage() {
           <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-[16rem] flex-1">
               <Field label="Profile name">
-                <Input value={name} onChange={(e) => setName(e.target.value)} />
+                <Input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
               </Field>
             </div>
             <Button onClick={save} disabled={!isDirty || saving}>
@@ -371,6 +371,7 @@ export default function AiProfilesPage() {
                 <TextArea
                   value={activeValue}
                   onChange={(e) => setSlotDraft(activeSlot.key, e.target.value)}
+                  maxLength={8000}
                   rows={8}
                   className="mt-2 font-mono text-[13px] leading-relaxed"
                   placeholder={

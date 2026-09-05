@@ -58,9 +58,9 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
     const originalName = req.file.originalname || 'document.pdf';
     const titleBase = originalName.replace(/\.pdf$/i, '');
     const pageTexts = [
-      `Este es el documento "${titleBase}". Aquí comienza tu lectura con BooKI. Puedes crear sesiones por rango de páginas y conversar con el asistente sobre el contenido.`,
-      `Página 2 de "${titleBase}". En una versión real, este texto sería el contenido extraído automáticamente del PDF que subiste.`,
-      `Página 3 de "${titleBase}". Sigue leyendo, avanza páginas y haz preguntas a BooKI cuando lo necesites.`
+      `This is the document "${titleBase}". Your reading with BooKI starts here. You can create page-range sessions and talk to the assistant about the content.`,
+      `Page 2 of "${titleBase}". In a real build this text would be the content extracted automatically from the PDF you uploaded.`,
+      `Page 3 of "${titleBase}". Keep reading, move through the pages, and ask BooKI questions whenever you need to.`
     ];
 
     const { fileName, filePath, pageCount } = await createSamplePdf(titleBase, pageTexts);

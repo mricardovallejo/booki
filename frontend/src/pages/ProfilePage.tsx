@@ -36,7 +36,7 @@ export default function ProfilePage() {
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4 rounded-2xl bg-booki-surface p-6">
         <Field label="Name">
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
         </Field>
         <Field label="Email">
           <Input value={user?.email || ''} disabled className="opacity-60" />

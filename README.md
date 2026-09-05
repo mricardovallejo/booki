@@ -93,7 +93,7 @@ key covers chat and voice. Model and voice options: see
 - `docs/architecture.md` — stack and structure.
 - `docs/backend.md` — backend details.
 - `docs/frontend.md` — frontend details.
-- `docs/prompts.md` — prompts, AI Profiles, and user context.
+- `docs/prompts.md` — prompts and AI Profiles (persona, reader context, difficulty, per-function behaviour).
 - `docs/ai-voice.md` — AI and voice strategy.
 - `docs/decisions.md` — architecture decisions.
 - `docs/agent-memory.md` — compact summary.
@@ -105,5 +105,12 @@ key covers chat and voice. Model and voice options: see
 Core product in place: authentication, PDF library and per-page extraction,
 page-range sessions, AI Profiles (the per-session prompt set — `docs/prompts.md`),
 the unified conversation engine (text + voice + capabilities), per-session AI
-provider, quiz, progress, reports, and cloud STT/TTS. Voice streaming (incremental STT/TTS) is architected but not
-wired — see [docs/ai-voice.md](docs/ai-voice.md) "Streaming".
+provider, quiz, progress, reports, and cloud STT/TTS. A post-review hardening
+pass (ADR-016) added `/actuator` auth, security headers/CSP, request validation,
+provider timeouts, transactions, an ESLint gate and a deploy-time test gate.
+Voice streaming (incremental STT/TTS) is architected but not wired — see
+[docs/ai-voice.md](docs/ai-voice.md) "Streaming".
+
+**Next:** separating "reader profiles" from AI Profiles into their own
+named, reusable entity (backend + frontend), then a backend test suite and DB
+schema cleanup.

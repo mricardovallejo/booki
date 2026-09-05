@@ -26,7 +26,7 @@ export default defineConfig({
       manifest: {
         name: 'BooKI',
         short_name: 'BooKI',
-        description: 'Lector de PDF con asistente contextual por texto y voz',
+        description: 'PDF reader with a context-aware assistant, by text or voice',
         theme_color: '#0f172a',
         background_color: '#ffffff',
         display: 'standalone',

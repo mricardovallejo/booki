@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage } from '../lib/preferences';
+import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage, toSessionLanguage } from '../lib/preferences';
 import { ROUTES } from '../config/routes';
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss';
 import Logo from './Logo';
@@ -69,7 +69,7 @@ export default function Layout() {
                   </label>
                   <select
                     value={defaultLanguage}
-                    onChange={(e) => onChangeDefaultLanguage(e.target.value as SessionLanguage)}
+                    onChange={(e) => onChangeDefaultLanguage(toSessionLanguage(e.target.value))}
                     className="w-full rounded-md bg-booki-card px-2 py-1.5 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-booki-accent"
                   >
                     {(Object.keys(LANGUAGE_LABELS) as SessionLanguage[]).map((lang) => (

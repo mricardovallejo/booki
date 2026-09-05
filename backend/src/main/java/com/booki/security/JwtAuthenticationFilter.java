@@ -1,5 +1,6 @@
 package com.booki.security;
 
+import com.booki.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,6 +21,7 @@ import java.util.Collections;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -35,14 +37,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (jwtUtil.validateToken(token)) {
             String email = jwtUtil.extractEmail(token);
             Long userId = jwtUtil.extractUserId(token);
-            UserDetails userDetails = User.builder()
-                    .username(email)
-                    .password("")
-                    .authorities(Collections.emptyList())
-                    .build();
-            UsernamePasswordAuthenticationToken auth =
-                    new UsernamePasswordAuthenticationToken(userDetails, userId, userDetails.getAuthorities());
-            SecurityContextHolder.getContext().setAuthentication(auth);
+            // A signed, unexpired token for an account that has since been
+            // deleted is no longer a valid identity.
+            if (userId != null && email != null && userRepository.existsById(userId)) {
+                UserDetails userDetails = User.builder()
+                        .username(email)
+                        .password("")
+                        .authorities(Collections.emptyList())
+                        .build();
+                UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(userDetails, userId, userDetails.getAuthorities());
+                SecurityContextHolder.getContext().setAuthentication(auth);
+            }
         }
 
         filterChain.doFilter(request, response);

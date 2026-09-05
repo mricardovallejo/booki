@@ -60,6 +60,13 @@ public class DocumentServiceImpl implements DocumentService {
             throw new IllegalArgumentException("Could not read the uploaded file", e);
         }
 
+        // Reject anything that isn't a PDF by its magic bytes ("%PDF-") before it
+        // reaches PDFBox — a large binary that isn't a PDF shouldn't cost a full
+        // parse attempt.
+        if (!looksLikePdf(bytes)) {
+            throw new IllegalArgumentException("Only PDF files are accepted");
+        }
+
         // Parse fully before storing anything, so an unreadable upload never
         // leaves an object behind.
         int pageCount;
@@ -149,6 +156,21 @@ public class DocumentServiceImpl implements DocumentService {
             // Object already gone or storage unavailable; the DB rows are the
             // source of truth and they are already deleted.
         }
+    }
+
+    /** PDF files start with "%PDF-" (allowing a few leading bytes some tools prepend). */
+    private static boolean looksLikePdf(byte[] bytes) {
+        if (bytes == null || bytes.length < 5) {
+            return false;
+        }
+        int limit = Math.min(bytes.length - 4, 1024);
+        for (int i = 0; i <= limit; i++) {
+            if (bytes[i] == '%' && bytes[i + 1] == 'P' && bytes[i + 2] == 'D'
+                    && bytes[i + 3] == 'F' && bytes[i + 4] == '-') {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Document findOwned(Long userId, Long documentId) {

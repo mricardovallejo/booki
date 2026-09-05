@@ -8,6 +8,10 @@ import Button from '../components/ui/Button';
 import { Field, Input } from '../components/ui/FormField';
 import Logo from '../components/Logo';
 
+// Dev-only convenience. `import.meta.env.DEV` is statically false in a
+// production build, so Vite tree-shakes the button and these constants out of
+// the shipped bundle entirely.
+const DEMO_ENABLED = import.meta.env.DEV;
 const DEMO_EMAIL = 'demo@booki.app';
 const DEMO_PASSWORD = 'password';
 
@@ -98,9 +102,11 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <Button variant="ghost" onClick={fillDemo} className="mt-4 w-full !text-white/70">
-          Use demo account (demo@booki.app / password)
-        </Button>
+        {DEMO_ENABLED && (
+          <Button variant="ghost" onClick={fillDemo} className="mt-4 w-full !text-white/70">
+            Use demo account (demo@booki.app / password)
+          </Button>
+        )}
 
         <p className="mt-6 text-center text-sm text-booki-muted">
           {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}

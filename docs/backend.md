@@ -17,14 +17,14 @@ This starts the backend on `http://localhost:8080` without needing PostgreSQL or
 
 ## Main entities
 
-- `User`: email, password hash, display name, bio, and a free-text `systemPrompt` the reader can write about themselves (used to personalize BooKI's tone).
+- `User`: email, password hash, display name. Nothing else — the reader's goal / level / learning preferences used to live here as `bio` + `systemPrompt`; ADR-015 moved them into each AI Profile's `reader_context` slot.
 - `Document`: metadata for a PDF uploaded by the user (title, file path, page count).
 - `DocumentPage`: text extracted per page of a document.
-- `ProfileMaster`: an expert persona (name, short description, system prompt, `isActive` flag) selectable when creating a session. **Per-user, not global**: every account gets its own editable copy of the 4 built-in defaults, seeded from template rows (`user_id IS NULL`) at registration; editing or deleting one never affects any other user's copy. Deleting one clears (sets to `null`) the `profileMasterId` on any `Session`/`QuizAttempt` that referenced it — their history is kept, they just lose the persona tag.
+- `AiProfile` + `SlotPrompt`: the full editable prompt set a session runs on — persona, reader context, difficulty rubrics, per-function prompts, capability routing — plus structured `readerLevel` and `enabledCapabilities`. Per-user; seeded from code templates at registration. Everything about this is in **`docs/prompts.md`** (ADR-015; the old `ProfileMaster` entity is gone).
 - `Tag`: a per-user label a document can be filed under (many-to-many with `Document`); exposed via the `/api/collections` endpoints for historical reasons — see note below.
-- `Session`: a page range (`startPage`/`endPage`) of a document, with `currentPage`, chosen `difficulty`, `language`, `aiProvider` (nullable — see AI configuration below), and an optional `ProfileMaster`.
+- `Session`: a page range (`startPage`/`endPage`) of a document, with `currentPage`, chosen `difficulty`, `language`, `aiProvider` (nullable — see AI configuration below), and an optional `AiProfile` (FK is `ON DELETE SET NULL`). `configJson` and `completedAt` are unused legacy columns kept only because dropping them needs a migration (folded into the AI-Profiles refactor).
 - `Message`: one turn of conversation history in a session (`USER` / `BOOKI`, `TEXT` / `VOICE`). Text and voice turns share this single model — a voice turn is just a `Message` whose `inputType` is `VOICE`; raw audio is never stored.
-- `QuizAttempt`: a generated quiz question for a page plus the reader's answer, correctness, score, and feedback.
+- `QuizAttempt`: a generated quiz question for a page plus the reader's answer, correctness, score, and feedback; FKs to the `AiProfile` it was graded under (`ON DELETE SET NULL`).
 - `SentReport`: a record of a progress/quiz report generated (and optionally emailed) for a session.
 
 ## REST API
@@ -45,14 +45,14 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 | Method | Route | Description |
 |--------|------|-------------|
 | GET | `/api/users/me` | Get the current user's profile |
-| PATCH | `/api/users/me` | Update name/bio/systemPrompt |
+| PATCH | `/api/users/me` | Update the display name (the only editable user field — learning preferences are per AI Profile) |
 
 ### Documents — `/api/documents`
 
 | Method | Route | Description |
 |--------|------|-------------|
 | GET | `/api/documents` | List the current user's PDFs |
-| POST | `/api/documents` | Upload a PDF (multipart, field `file`); `400` on a missing/invalid/unreadable PDF |
+| POST | `/api/documents` | Upload a PDF (multipart, field `file`); `400` if the bytes don't start with `%PDF-` (checked before PDFBox) or the PDF is unreadable; `413`/`400` past the 50 MB multipart cap |
 | GET | `/api/documents/{id}` | Get one document's metadata |
 | GET | `/api/documents/{id}/file` | Stream/view the PDF file |
 | DELETE | `/api/documents/{id}` | Delete a document |
@@ -92,8 +92,8 @@ this lives in **`docs/prompts.md`**; the endpoints:
 |--------|------|-------------|
 | POST | `/api/sessions` | Create a session (document, page range, difficulty, language, `aiProfileId`); `400` if `startPage > endPage` or `endPage` exceeds the document's real page count. Omit `aiProfileId` to use the user's default profile |
 | GET | `/api/sessions/{id}` | Load a session |
-| GET | `/api/sessions/{id}/context` | Inspect the raw prompt pieces BooKI will use (app prompt, master prompt, user prompt) — for transparency/debugging |
-| PATCH | `/api/sessions/{id}/current-page` | Update the reader's current page; `400` if outside `[startPage, endPage]` |
+| GET | `/api/sessions/{id}/context` | Inspect the assembled prompt layers BooKI will use (core, difficulty, persona, reader context, per-function, routing, session facts), each tagged with a `group` — for transparency/debugging. See `docs/prompts.md` |
+| PATCH | `/api/sessions/{id}/current-page` | Update the reader's current page; body `{ "currentPage": n }` (`UpdateCurrentPageRequest`, `@NotNull`); `400` if outside `[startPage, endPage]` |
 | GET | `/api/sessions/{id}/messages` | Conversation history |
 | POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `502` if the AI provider fails |
 | POST | `/api/sessions/{id}/voice` | Voice turn: multipart `audio` (+ optional `capabilityHint`). Backend transcribes → same `ConversationEngine` → optional spoken reply. Returns the persisted user + bot messages and a base64 MP3 (or `null`). `502` if transcription fails |
@@ -126,20 +126,33 @@ this lives in **`docs/prompts.md`**; the endpoints:
 |--------|------|-------------|
 | GET | `/api/reports/{id}/file` | Download a generated report PDF |
 
-### Health — `/api/health` (public)
+### Health — `/api/health` + `/actuator` (partly public)
 
-| Method | Route | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Liveness check |
+| Method | Route | Access | Description |
+|--------|------|--------|-------------|
+| GET | `/api/health` | public | Simple liveness check (`HealthController`) |
+| GET | `/actuator/health` + `/actuator/health/{liveness,readiness}` | public | Aggregate status only for anonymous callers; per-dependency detail (`db`, `diskSpace`, `ssl`, custom `storage`) is shown only to an authenticated caller (`show-details: when-authorized`). Cloud Run's probe uses these. |
+| GET | `/actuator/info` | **JWT** | Version/build info; `info.java`/`info.os` are turned off |
+| — | `/v3/api-docs`, `/swagger-ui` | — | Enabled **only in the `local` profile**; a deployed instance (which runs the `dev` profile) doesn't expose them at all |
 
 ## Security
 
-- JWT Bearer token in the `Authorization` header (`security/JwtAuthenticationFilter`, `security/JwtUtil`).
-- Passwords hashed with BCrypt.
-- CORS origins come from `booki.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`, comma-separated; defaults to `http://localhost:5173`) — see `config/SecurityConfig`. Any origin not on the list, including `http://127.0.0.1:5173` in the default dev setup, is rejected with a 403 "Invalid CORS request". For production, set it to the deployed frontend origin(s); credentials are allowed, so `*` is not an option and authentication is never relaxed to work around CORS.
-- `/api/auth/**` and `/api/health` are public; every other `/api/**` route requires a valid JWT.
-- The JWT is stateless: a valid signature is enough to authenticate, even if the `userId` it carries no longer exists (e.g. after a local DB reset, or after switching between the `local`/`dev` profiles — the H2 file and the PostgreSQL database are entirely separate user sets). Any endpoint that then looks up that user throws `NoSuchElementException` → `404 {"error": "Resource not found"}`. `GET /ai-profiles` is a quieter variant: it just returns an empty list for a `userId` matching nobody, no `404`. Either way, the fix is the same: log out and back in (or register fresh) to get a token for a user that actually exists in whichever DB the backend is currently pointed at.
-- Every error response, from every handler in `config/GlobalExceptionHandler`, uses the same `{"error": "..."}` shape — including validation (`400`), auth (`401`), not-found (`404`), and the two multipart-specific cases (missing file part, file too large). The frontend's `lib/errors.ts` (see `docs/frontend.md`) relies on this being consistent everywhere.
+- **JWT Bearer** token in the `Authorization` header (`security/JwtAuthenticationFilter`, `security/JwtUtil`). Passwords hashed with BCrypt. Sessions are stateless (no server session store).
+- **JWT signing key** comes from `booki.jwt.secret` (env `JWT_SECRET`). If it's unset, the shipped placeholder, or shorter than 32 bytes, `JwtUtil` signs with a **random ephemeral key** and logs a loud warning — `bootRunLocal` and the test suite work with zero setup, but the ephemeral key doesn't survive a restart and differs per instance, so a real deployment **must** set `JWT_SECRET` (`openssl rand -base64 32`). There is no predictable default key anymore.
+- The auth filter **rejects a token whose user no longer exists** (`userRepository.existsById`) — a leftover token from a wiped DB or a deleted account no longer authenticates. `extractUserId` is null-safe. (Previously a valid signature alone was enough; the "log out and back in after a DB reset" advice still applies, you just get a `401` now instead of a later `404`.)
+- **CORS** origins come from `booki.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`, comma-separated; default `http://localhost:5173`), applied to `/api/**` only. Allowed request headers are an explicit list (`Authorization, Content-Type, Accept, X-Requested-With`), not `*`. Credentials are allowed, so `*` origins are not an option; any origin not on the list (incl. `http://127.0.0.1:5173` by default) gets a `403`.
+- **Route access**: `/api/auth/**`, `/api/health`, `/actuator/health/**`, `OPTIONS`, and (in `local`) the swagger paths are public; **every other request requires a valid JWT** (`anyRequest().authenticated()`).
+- **Error responses**: every handler in `config/GlobalExceptionHandler` returns the same `{"error": "..."}` shape — validation (`400`), auth (`401`), not-found (`404`, generic "Resource not found"), AI/voice provider failure (`502`), and the multipart cases. An **uncaught `RuntimeException` returns a fixed neutral `500` message** ("Something went wrong on our side…"); the real exception (which can carry bucket names, class names, paths) is logged, never sent to the client. The frontend's `lib/errors.ts` relies on the `{error}` shape being everywhere.
+- **Prompt-injection defence-in-depth**: `PromptAssembler` fences the page text between `<<<BEGIN DOCUMENT>>>` / `<<<END DOCUMENT>>>`, and the core prompt states that the document and the reader's messages are material, not instructions. The uploaded file is also validated as a real PDF (`%PDF-` magic bytes) before PDFBox touches it, and the STT provider only accepts audio MIME types on a small allowlist.
+
+## Resilience
+
+- **Transactions**: service reads that walk lazy associations are `@Transactional(readOnly = true)`; multi-write operations (`createSession`, `updateCurrentPage`, `uploadDocument`, `register`, the report generators) are `@Transactional` so a mid-way failure rolls back cleanly. `uploadDocument` also deletes the just-stored object if the DB write fails. `ConversationEngine.sendMessage` and `generateSummary` are **deliberately not** transactional — they span a slow model call and persist their parts separately so a provider failure never leaves a fake reply behind. (`spring.jpa.open-in-view` is still on and currently masks any missed case; disabling it is a later step.)
+- **Outbound HTTP timeouts** (`config/OutboundHttp`): every AI/voice provider `WebClient` gets a 10 s connect timeout, a 60 s idle (no-bytes) read timeout, and a 120 s whole-call ceiling (`Mono.timeout` for blocking calls, per-chunk `Flux.timeout` for the Claude stream). A hung upstream can no longer park a request thread indefinitely; the timeout surfaces as the same `502` as any other provider failure.
+
+## Request validation
+
+Every write endpoint has `@Valid` on its `@RequestBody`. Free-text fields carry `@Size` caps (persona / reader-context slots ≤ 8000, names ≤ 120, prompts ≤ 2000), enum-ish strings carry `@Pattern` (`difficulty` ∈ `easy|medium|hard`, `deliverAs` ∈ `chat|pdf`), numeric ranges carry `@Min`/`@Max` (`lengthPages` 1–10), and email fields carry `@Email`. A violation is a `400 {"error": "field: message"}` via `GlobalExceptionHandler.handleValidation`.
 
 ## Conversation engine, capabilities and voice
 
@@ -237,7 +250,7 @@ OLLAMA_MODEL=llama3.2:1b                 # optional, this is already the default
 
 `.env` isn't read by Spring Boot itself — `backend/build.gradle`'s `bootRun`/`bootRunLocal` tasks parse it and inject each `KEY=VALUE` line as a JVM environment variable before launching, so it works no matter which terminal you run `./gradlew` from. A variable already `export`ed in the real shell always wins over `.env` (same convention as dotenv tooling elsewhere) — `.env` only fills in what's missing. `.env` is gitignored (`.env.example` is the tracked template).
 
-On failure (network error, missing/invalid key, model not found, Ollama not running, or an empty/unparseable payload) a provider now throws `AiProviderException` instead of returning canned apology text. `ConversationEngine` turns that into `ConversationFailedException`, and `GlobalExceptionHandler` returns **`502` `{"error": "The reading assistant is temporarily unavailable…"}`** — a real, distinguishable error the frontend surfaces instead of persisting a fake BooKI answer. Quiz/summary endpoints propagate it the same way. Verified end-to-end **with a real, funded Anthropic key**: chat, quiz generation, quiz grading, and summary all produce genuine, content-grounded responses.
+On failure (network error, missing/invalid key, model not found, Ollama not running, an empty/unparseable payload, or a **timeout** — see Resilience above) a provider now throws `AiProviderException` instead of returning canned apology text. `ConversationEngine` turns that into `ConversationFailedException`, and `GlobalExceptionHandler` returns **`502` `{"error": "The reading assistant is temporarily unavailable…"}`** — a real, distinguishable error the frontend surfaces instead of persisting a fake BooKI answer. Quiz/summary endpoints propagate it the same way. Verified end-to-end **with a real, funded Anthropic key**: chat, quiz generation, quiz grading, and summary all produce genuine, content-grounded responses.
 
 Two Anthropic-specific errors worth recognizing from the backend's own log (the API response is the generic `502` above):
 - **`401 Unauthorized`** — the key was copied from the wrong place. It must come from console.anthropic.com → API Keys, not a claude.ai chat session (a different account/system entirely).

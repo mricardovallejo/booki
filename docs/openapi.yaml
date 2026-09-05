@@ -8,6 +8,19 @@ info:
     run server-side. Some descriptions still reference the older Node
     mock-backend under `mock-backend/`, which tracks the same request/response
     shapes.
+
+
+    Every write body is `@Valid`-checked: free-text fields have length caps
+    (persona/reader-context slots ≤ 8000, names ≤ 120, prompts ≤ 2000),
+    `difficulty` ∈ `easy|medium|hard`, `deliverAs` ∈ `chat|pdf`, `lengthPages`
+    ∈ 1–10, email fields must be well-formed. A violation is
+    `400 {"error": "field: message"}`. An uncaught server error is a
+    `500 {"error": "Something went wrong on our side. Please try again."}` —
+    detail is logged, never returned.
+
+
+    Auth: a Bearer token whose user no longer exists (wiped DB, deleted account)
+    is rejected as `401`, not silently accepted.
   version: "1.0.0"
   license:
     name: Proprietary — internal use only
@@ -178,9 +191,11 @@ paths:
       summary: Upload a PDF
       operationId: uploadDocument
       description: >
-        Real backend: extracts text per page (e.g. Apache PDFBox) and persists
-        one `DocumentPage` row per page. Mock backend: ignores the uploaded
-        file's real content and generates a few placeholder pages instead.
+        Real backend: rejects anything whose bytes don't start with `%PDF-`
+        (checked before PDFBox), then extracts text per page and persists one
+        `DocumentPage` row per page, atomically (a mid-way failure rolls back and
+        removes the stored object). 50 MB multipart cap. Mock backend: ignores
+        the file's real content and generates a few placeholder pages instead.
       requestBody:
         required: true
         content:
@@ -189,7 +204,10 @@ paths:
               type: object
               required: [file]
               properties:
-                file: { type: string, format: binary }
+                file:
+                  type: string
+                  format: binary
+                  description: A PDF file (must begin with the `%PDF-` header).
       responses:
         "201":
           description: Uploaded
@@ -712,9 +730,19 @@ paths:
                 audio:
                   type: string
                   format: binary
-                  description: The recorded clip (e.g. webm/opus from MediaRecorder).
+                  description: >
+                    The recorded clip. Content-type must be one of
+                    audio/webm, audio/ogg, audio/mp4, audio/mpeg, audio/mp3,
+                    audio/wav — anything else is rejected before STT.
                 capabilityHint:
                   $ref: "#/components/schemas/CapabilityHint"
+                wantsAudioReply:
+                  type: boolean
+                  default: true
+                  description: >
+                    When false, the turn skips TTS and returns
+                    `audioBase64: null` even if TTS is configured — a text-only
+                    voice reply (cheaper, better for reading together).
       responses:
         "201":
           description: Persisted user + bot messages, plus the spoken reply

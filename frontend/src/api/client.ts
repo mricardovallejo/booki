@@ -1,5 +1,11 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
-import { API_BASE } from '../config/endpoints';
+import { API_BASE, API_BASE_IS_SECURE } from '../config/endpoints';
+import { getAuthToken, setAuthToken } from '../lib/authToken';
+
+if (!API_BASE_IS_SECURE) {
+  // A plaintext API base in production would send the bearer token in the clear.
+  console.error('[booki] VITE_API_BASE_URL is not HTTPS — the auth token will not be sent.');
+}
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -9,16 +15,9 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const raw = localStorage.getItem('booki-auth');
-  if (raw) {
-    try {
-      const { token } = JSON.parse(raw);
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch {
-      // ignore
-    }
+  const token = getAuthToken();
+  if (token && API_BASE_IS_SECURE) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -58,6 +57,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      setAuthToken(null);
       localStorage.removeItem('booki-auth');
       window.location.href = '/login';
     }

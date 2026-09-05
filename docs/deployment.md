@@ -1,10 +1,11 @@
 # BooKI Deployment Plan
 
-Status: **Phases 1–6 in place.** One deployed environment, plus local
-development. Scope is a **minimal first deployment** — stand the app up for a
-small trusted group. Sentry, backups, rate-limiting and the rest are deferred
-(Phase 7) until there's real traffic; the architecture makes adding them a
-config change, not a redesign.
+Status: **Phases 1–6 in place**, plus the post-Kimi hardening pass (ADR-016:
+`/actuator` behind auth, CSP/security headers, request validation, provider
+timeouts, a deploy test gate). One deployed environment, plus local development.
+Scope is still a **minimal first deployment** — stand the app up for a small
+trusted group. Sentry, DB backups, rate-limiting and `HttpOnly`-cookie auth are
+deferred (Phase 7) until there's real traffic.
 
 Guiding priorities: **industry-standard, flexible, vendor-neutral, free right
 now**. Frontend, backend, database and file storage are **four separate,
@@ -283,15 +284,15 @@ HTTP probe, so none is set in the Dockerfile.
 
 ## Phase 5 — Actuator ✅ + provision runbook
 
-### Actuator (done — commit on branch)
+### Actuator
 
-`application.yml` exposes `health` + `info` (public — `SecurityConfig` ends with
-`anyRequest().permitAll()`; gate `/actuator` before going wide).
-`/actuator/health` shows one entry per dependency — `db`, `diskSpace`,
-`ssl`, and a custom **`storage`** (a `HealthIndicator` calling
-`StorageAdapter.ping()` — `Files.isWritable` for local, `HeadBucket` for S3).
-`probes.enabled: true` adds `/actuator/health/{liveness,readiness}` for the
-Cloud Run startup probe.
+`application.yml` exposes `health` + `info`. **As of ADR-016**: `/actuator/health`
+and the `{liveness,readiness}` probes are public (Cloud Run needs them) but show
+only the aggregate status to anonymous callers — the per-dependency breakdown
+(`db`, `diskSpace`, `ssl`, and a custom **`storage`** `HealthIndicator` calling
+`StorageAdapter.ping()`) needs a JWT (`show-details: when-authorized`).
+`/actuator/info` needs a JWT. Everything else (`anyRequest()`) is `authenticated()`.
+Swagger/springdoc is off outside the `local` profile.
 
 ### Setup runbook — one-time, done in the browser
 
@@ -429,17 +430,26 @@ Run won't run two at this traffic); with 2+ it locks and the others wait.
 
 ## Phase 7 — Deferred until it grows
 
-Not now — the first deployment doesn't need it. Revisit when BooKI has real traffic:
+**Done in the post-Kimi hardening pass (ADR-016):** `/actuator` behind auth,
+security headers / CSP (`firebase.json`), exception-message sanitization,
+provider timeouts, transactions, request validation, a deploy-time test gate
+(`deploy.yml` `verify` job), ESLint in CI, and the deleted-user token check.
+A deploy now **requires** `JWT_SECRET` to be a real random value (the backend
+falls back to a per-instance ephemeral key + warning otherwise — see ADR-016 /
+`docs/backend.md`).
 
-1. **AI cost guard** — per-user rate limit on the conversation + voice endpoints;
-   a hard monthly spend alert on the OpenAI account. *(The one item worth a
-   glance even now: set a billing alert on the OpenAI key.)*
+Still deferred — revisit when BooKI has real traffic:
+
+1. **AI cost guard** — per-user rate limit on the conversation + voice endpoints
+   (Bucket4j); a hard monthly spend alert on the OpenAI account. *(Worth a glance
+   even now: set a billing alert on the OpenAI key.)*
 2. **DB backups** beyond Neon's free 7-day history (weekly `pg_dump` to GCS).
 3. **Sentry** (or GlitchTip) for error monitoring.
-4. **Security headers** / CSP; gate `/actuator` behind auth.
-5. **Auth**: email verification / password reset / refresh tokens.
-6. `/security-review` on the branch; Workload Identity Federation instead of the
-   SA key.
+4. **Auth**: `HttpOnly`-cookie sessions instead of `localStorage`, email
+   verification / password reset / refresh tokens, a real `prod` profile
+   (the deploy currently runs `dev`).
+5. `/security-review` on the branch; Workload Identity Federation instead of the
+   SA key. `react-router` 6→7 (open-redirect advisory, breaking upgrade).
 
 ---
 

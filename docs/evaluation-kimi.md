@@ -1,256 +1,264 @@
-# Evaluación Kimi — Proyecto BooKI
+# Kimi Evaluation — BooKI Project
 
-**Fecha:** 2026-09-02  
-**Alcance:** backend (Spring Boot) + frontend (React/TypeScript/Vite).  
-**Mandato:** solo lectura; sin cambios de código.  
-**Método:** revisión de la documentación del repo (`docs/*.md`, `README.md`, `openapi.yaml`), exploración manual del código y análisis con subagentes especializados.
+**Date:** 2026-09-02
+**Scope:** backend (Spring Boot) + frontend (React/TypeScript/Vite).
+**Mandate:** read-only; no code changes.
+**Method:** review of the repo documentation (`docs/*.md`, `README.md`, `openapi.yaml`), manual code exploration, and analysis with specialized subagents.
 
 ---
 
-## 1. Resumen ejecutivo
+> **Remediation status (2026-09-05) — see ADR-016.** Addressed in 3 stages:
+> **(1)** frontend quality/architecture (ESLint, `useOutsideDismiss`, valid HTML in cards, error states in hooks, deduplicated palette, voice robustness);
+> **(2)** backend quality (`@Transactional`, `WebClient` timeouts, typed DTOs + `@Valid`/`@Size`/`@Pattern`, `count` queries, `kobi`→`booki` typo);
+> **(3)** security + details (JWT with no predictable default, `/actuator` behind auth, `GlobalExceptionHandler` no longer leaks `ex.getMessage()`, CORS with an explicit header list, filter rejects tokens for deleted users, prompt-injection fences, `%PDF-` upload validation, STT MIME allowlist; frontend: demo credentials dev-only, security headers in `firebase.json`, in-memory token, markdown links with `rel`, upload validation; CI: `lint`+`tsc` in `ci.yml`, `verify` gate in `deploy.yml`).
+> **Accepted / deferred:** JWT in `localStorage` (no `HttpOnly` cookie), account enumeration on `register`, model-JSON routing, a real `prod` profile, rate-limiting, `react-router` 6→7, `generateSummary: Object`, schema cleanup, and the **backend test suite** (these go with the "reader profiles" refactor and the testing stage).
 
-BooKI es un monorepo con un backend Spring Boot 4.1 (Java 21) y un frontend React 18 + TypeScript + Vite + PWA. El producto es un asistente conversacional para leer PDFs, con sesiones por rango de páginas, chat/voz, quiz, resúmenes y "Profile Masters". La arquitectura general está bien pensada: motor de conversación transport-agnostic, proveedores de IA intercambiables, almacenamiento detrás de una interfaz (`StorageAdapter`), y una separación clara de capas en el backend.
+---
 
-**Puntos fuertes destacados:**
+## 1. Executive summary
 
-- Backend con buena separación de responsabilidades (controller → service interface → impl → repository → domain).
-- `ConversationEngine` es genuinamente neutral al transporte y gestiona correctamente los fallos de proveedores de IA sin persistir respuestas falsas.
-- La voz se procesa en el backend, manteniendo credenciales server-side y unificando texto/voz en un mismo modelo `Message`.
-- El frontend tiene tipado estricto, separación api/hooks/components, y manejo consistente de errores con `getErrorMessage`.
-- Flyway, perfiles (`dev`/`local`/`test`), Dockerfile multi-stage, Docker Compose y GitHub Actions están presentes.
+BooKI is a monorepo with a Spring Boot 4.1 (Java 21) backend and a React 18 + TypeScript + Vite + PWA frontend. The product is a conversational assistant for reading PDFs, with page-range sessions, chat/voice, quizzes, summaries, and "Profile Masters". The overall architecture is well thought out: a transport-agnostic conversation engine, swappable AI providers, storage behind an interface (`StorageAdapter`), and a clear layer separation in the backend.
 
-**Riesgos críticos que deben abordarse antes de escalar o abrir a más usuarios:**
+**Notable strengths:**
 
-1. **Seguridad:** JWT en `localStorage`, secret JWT por defecto predecible, `/actuator` público, posible inyección de prompts, y endpoints de autenticación sin rate-limiting.
-2. **Calidad/robustez:** falta `@Transactional` en muchos métodos de servicio (riesgo de `LazyInitializationException` y escrituras no atómicas), timeouts ausentes en todos los `WebClient`, cobertura de tests muy baja (~4 archivos de test para ~80 archivos de producción).
-3. **Mantenimiento:** sin configuración ESLint (el script `npm run lint` falla), credenciales demo en el frontend, y endpoints con `ResponseEntity<Object>` o `Map<String, Integer>` que pierden el contrato tipado.
+- Backend with good separation of responsibilities (controller → service interface → impl → repository → domain).
+- `ConversationEngine` is genuinely transport-neutral and handles AI provider failures correctly without persisting fake responses.
+- Voice is processed in the backend, keeping credentials server-side and unifying text/voice under a single `Message` model.
+- The frontend has strict typing, an api/hooks/components split, and consistent error handling with `getErrorMessage`.
+- Flyway, profiles (`dev`/`local`/`test`), a multi-stage Dockerfile, Docker Compose and GitHub Actions are all present.
 
-En resumen: el proyecto es **funcional y bien arquitectónico para un MVP**, pero necesita endurecimiento de seguridad, transacciones, tests y deuda técnica antes de pasar a producción pública.
+**Critical risks to address before scaling or opening to more users:**
+
+1. **Security:** JWT in `localStorage`, a predictable default JWT secret, a public `/actuator`, possible prompt injection, and auth endpoints with no rate-limiting.
+2. **Quality/robustness:** missing `@Transactional` on many service methods (`LazyInitializationException` and non-atomic writes), no timeouts on any `WebClient`, very low test coverage (~4 test files for ~80 production files).
+3. **Maintenance:** no ESLint config (the `npm run lint` script fails), demo credentials in the frontend, and endpoints returning `ResponseEntity<Object>` or `Map<String, Integer>` that lose the typed contract.
+
+In short: the project is **functional and well-architected for an MVP**, but needs security hardening, transactions, tests and technical-debt cleanup before going to public production.
 
 ---
 
 ## 2. Backend
 
-### 2.1 Arquitectura y calidad de código
+### 2.1 Architecture and code quality
 
-**Lo que está bien:**
+**What's good:**
 
-- Estructura de paquetes coherente con `docs/architecture.md` y `docs/backend.md`: `controller`, `service`/`service/impl`, `domain`, `repository`, `dto`, `config`, `security`, `ai`, `conversation`, `voice`, `storage`.
-- Uso consistente de inyección por constructor + Lombok `@RequiredArgsConstructor`.
-- `ConversationEngine` (`backend/src/main/java/com/booki/conversation/ConversationEngine.java`) centraliza el flujo conversacional y es transport-neutral; `SessionServiceImpl` y `VoiceConversationService` son adaptadores finos.
-- `AiProviderRegistry` (`backend/src/main/java/com/booki/ai/AiProviderRegistry.java`) permite la selección de proveedor por sesión.
-- `StorageAdapter` (`backend/src/main/java/com/booki/storage/StorageAdapter.java`) es una buena costura para cambiar entre disco local y S3/GCS/R2/MinIO sin tocar el resto del código.
-- `CapabilityRegistry` (`backend/src/main/java/com/booki/conversation/capability/CapabilityRegistry.java`) implementa un enrutamiento provider-neutral de capacidades conversacionales, aunque con limitaciones de seguridad (ver §3.5).
+- Package structure coherent with `docs/architecture.md` and `docs/backend.md`: `controller`, `service`/`service/impl`, `domain`, `repository`, `dto`, `config`, `security`, `ai`, `conversation`, `voice`, `storage`.
+- Consistent use of constructor injection + Lombok `@RequiredArgsConstructor`.
+- `ConversationEngine` (`backend/src/main/java/com/booki/conversation/ConversationEngine.java`) centralizes the conversational flow and is transport-neutral; `SessionServiceImpl` and `VoiceConversationService` are thin adapters.
+- `AiProviderRegistry` (`backend/src/main/java/com/booki/ai/AiProviderRegistry.java`) enables per-session provider selection.
+- `StorageAdapter` (`backend/src/main/java/com/booki/storage/StorageAdapter.java`) is a good seam for switching between local disk and S3/GCS/R2/MinIO without touching the rest of the code.
+- `CapabilityRegistry` (`backend/src/main/java/com/booki/conversation/capability/CapabilityRegistry.java`) implements provider-neutral routing of conversational capabilities, though with security limitations (see §3.5).
 
-**Problemas concretos:**
+**Concrete issues:**
 
-| # | Archivo(s) | Línea(s) | Problema | Severidad |
-|---|------------|----------|----------|-----------|
-| 1 | `service/impl/SessionServiceImpl.java` | 105, 110, 146, 151 | Métodos de lectura acceden a asociaciones LAZY (`session.getDocument().getTitle()`, `session.getProfileMaster()`) sin `@Transactional(readOnly = true)`. Riesgo real de `LazyInitializationException` en producción. | Alta |
-| 2 | `service/impl/DocumentServiceImpl.java` | 46 | `uploadDocument` no es transaccional: guarda en storage, luego documento, luego páginas. Un fallo intermedio deja objetos huérfanos. | Alta |
-| 3 | `service/impl/AuthServiceImpl.java` | 26 | `register` guarda el usuario y luego siembra los Profile Masters; si falla la siembra, el usuario queda sin masters. | Media |
-| 4 | `service/impl/ReportServiceImpl.java` | 65, 101, 146 | Los métodos `sendProgressReport`/`sendQuizReport` generan el PDF y luego guardan la fila; no son transaccionales y tampoco envían email (los nombres son engañosos). | Media |
-| 5 | `service/impl/SessionProgressCalculator.java` | 26-27 | Carga listas completas de mensajes e intentos solo para contarlas. Debería usar `countBySessionId`. | Media |
-| 6 | `service/impl/SessionContextBuilder.java` | 49 | Recarga el `User` desde el repositorio aunque `session.getUser()` ya tiene la FK. | Baja |
-| 7 | `controller/SessionController.java` | 49-53 | `updateCurrentPage` acepta `Map<String, Integer>` en lugar de un DTO tipado. | Media |
-| 8 | `controller/SessionController.java` | 97 | `generateSummary` devuelve `ResponseEntity<Object>`, perdiendo tipado y precisión en OpenAPI. | Media |
-| 9 | Varios controllers | varias | Muchos endpoints de escritura no usan `@Valid` en el body: `ProfileMasterController.update`, `UserController.updateCurrentUser`, `QuizController.submitAnswer`, `TagController.rename`, `SessionController.updateCurrentPage`, etc. | Media |
-| 10 | `config/OpenApiConfig.java` | 27 | Título del OpenAPI es `"kobi-backend-api"` en lugar de `"booki-backend-api"` (typo). | Baja |
-| 11 | `domain/Session.java` / `domain/ProfileMaster.java` | — | `configJson` existe y siempre se guarda como `"{}"`; es peso muerto. `Session.completedAt` también existe sin lógica. | Baja |
-| 12 | `domain/*.java` | — | No hay restricciones `CHECK` a nivel de base de datos para columnas enum (`messages.speaker`, `sessions.difficulty`, etc.). | Baja |
+| # | File(s) | Line(s) | Issue | Severity |
+|---|---------|---------|-------|----------|
+| 1 | `service/impl/SessionServiceImpl.java` | 105, 110, 146, 151 | Read methods access LAZY associations (`session.getDocument().getTitle()`, `session.getProfileMaster()`) without `@Transactional(readOnly = true)`. Real risk of `LazyInitializationException` in production. | High |
+| 2 | `service/impl/DocumentServiceImpl.java` | 46 | `uploadDocument` is not transactional: it writes to storage, then the document, then pages. A mid-way failure leaves orphaned objects. | High |
+| 3 | `service/impl/AuthServiceImpl.java` | 26 | `register` saves the user and then seeds the Profile Masters; if seeding fails, the user is left with no masters. | Medium |
+| 4 | `service/impl/ReportServiceImpl.java` | 65, 101, 146 | `sendProgressReport`/`sendQuizReport` generate the PDF and then save the row; they are not transactional and also don't send email (the names are misleading). | Medium |
+| 5 | `service/impl/SessionProgressCalculator.java` | 26-27 | Loads full lists of messages and attempts just to count them. Should use `countBySessionId`. | Medium |
+| 6 | `service/impl/SessionContextBuilder.java` | 49 | Reloads the `User` from the repository even though `session.getUser()` already has the FK. | Low |
+| 7 | `controller/SessionController.java` | 49-53 | `updateCurrentPage` accepts `Map<String, Integer>` instead of a typed DTO. | Medium |
+| 8 | `controller/SessionController.java` | 97 | `generateSummary` returns `ResponseEntity<Object>`, losing typing and OpenAPI precision. | Medium |
+| 9 | Several controllers | various | Many write endpoints don't use `@Valid` on the body: `ProfileMasterController.update`, `UserController.updateCurrentUser`, `QuizController.submitAnswer`, `TagController.rename`, `SessionController.updateCurrentPage`, etc. | Medium |
+| 10 | `config/OpenApiConfig.java` | 27 | The OpenAPI title is `"kobi-backend-api"` instead of `"booki-backend-api"` (typo). | Low |
+| 11 | `domain/Session.java` / `domain/ProfileMaster.java` | — | `configJson` exists and is always saved as `"{}"`; dead weight. `Session.completedAt` also exists with no logic. | Low |
+| 12 | `domain/*.java` | — | No database-level `CHECK` constraints for enum columns (`messages.speaker`, `sessions.difficulty`, etc.). | Low |
 
-### 2.2 Seguridad
+### 2.2 Security
 
-**Lo que está bien:**
+**What's good:**
 
-- Contraseñas hasheadas con BCrypt (`config/SecurityConfig.java:59-61`).
-- JWT stateless, sin sesiones en servidor (`SecurityConfig.java:43`).
-- Emails normalizados a minúsculas (`service/impl/AuthServiceImpl.java:53-55`).
-- Checks de propiedad consistentes mediante `findByIdAndUserId` en repositorios.
-- Las claves de proveedores de IA y voz son server-side únicamente.
-- `LocalStorageAdapter` previene path traversal (`storage/LocalStorageAdapter.java:74-80`).
+- Passwords hashed with BCrypt (`config/SecurityConfig.java:59-61`).
+- Stateless JWT, no server-side sessions (`SecurityConfig.java:43`).
+- Emails normalized to lowercase (`service/impl/AuthServiceImpl.java:53-55`).
+- Consistent ownership checks via `findByIdAndUserId` in repositories.
+- AI and voice provider keys are server-side only.
+- `LocalStorageAdapter` prevents path traversal (`storage/LocalStorageAdapter.java:74-80`).
 
-**Riesgos y vulnerabilidades:**
+**Risks and vulnerabilities:**
 
-| # | Archivo(s) | Línea(s) | Problema | Severidad |
-|---|------------|----------|----------|-----------|
-| 1 | `src/main/resources/application.yml` | 45 | `JWT_SECRET` tiene un valor por defecto predecible y público. Si alguien despliega sin cambiarlo, los tokens se pueden firmar/validar por cualquiera. | Crítica |
-| 2 | `config/SecurityConfig.java` | 45-50 | `/actuator/**` es público (`anyRequest().permitAll()`), y `management.endpoint.health.show-details: always` expone detalles de DB, storage, disco, SSL, etc. | Alta |
-| 3 | `security/JwtUtil.java` | 53-63 | `extractEmail`/`extractUserId` llaman a `parseToken` sin try/catch; un payload malformado puede lanzar excepción no controlada. | Media |
-| 4 | `security/JwtAuthenticationFilter.java` | 35-46 | No verifica que el usuario aún exista en la BD; un token de un usuario borrado sigue siendo válido hasta su expiración. | Media |
-| 5 | `service/impl/AuthServiceImpl.java` | 29 | `"Email already registered"` permite enumeración de cuentas; debería devolver el mismo mensaje genérico que el login. | Media |
-| 6 | `config/SecurityConfig.java` | 64-73 | CORS: `allowedHeaders(List.of("*"))` + `allowCredentials(true)` es permisivo; además se aplica a `/**` incluyendo `/actuator`. | Media |
-| 7 | `config/GlobalExceptionHandler.java` | 95-99 | El handler de `RuntimeException` devuelve `ex.getMessage()` al cliente, pudiendo filtrar rutas, nombres de buckets, clases internas, etc. | Alta |
-| 8 | `service/impl/SessionContextBuilder.java` / `ai/*` / `conversation/capability/*` | varias | El contenido del PDF, `User.systemPrompt`, `ProfileMaster.systemPrompt` y mensajes del usuario se concatenan directamente en prompts sin delimitadores ni instrucciones defensivas. Permite inyección de prompts. | Alta |
-| 9 | `conversation/capability/CapabilityRegistry.java` | 80-95 | El enrutamiento por JSON (`{"capability":"..."}`) depende del modelo; un mensaje del usuario puede inducir al modelo a emitir ese JSON y disparar una capacidad involuntariamente. | Media |
-| 10 | `service/impl/DocumentServiceImpl.java` | 47-86 | No valida que el archivo subido sea PDF antes de entregarlo a PDFBox; un archivo de 50 MB no-PDF consume memoria/CPU. | Media |
-| 11 | `voice/OpenAiSpeechToTextProvider.java` | 55 | Acepta el MIME type del navegador sin validar contra una lista blanca. | Baja |
-| 12 | `ai/OpenAiCompatibleProvider.java` / `ClaudeProvider.java` / `voice/*` | varias | No hay timeouts/retries explícitos en los `WebClient`; una llamada colgada puede bloquear el hilo del request indefinidamente. | Alta |
-| 13 | `build.gradle` | 76 | `springdoc-openapi` está en el classpath; `/swagger-ui/**` y `/v3/api-docs/**` no están restringidos en `SecurityConfig`. | Media |
+| # | File(s) | Line(s) | Issue | Severity |
+|---|---------|---------|-------|----------|
+| 1 | `src/main/resources/application.yml` | 45 | `JWT_SECRET` has a predictable, public default value. If someone deploys without changing it, tokens can be signed/validated by anyone. | Critical |
+| 2 | `config/SecurityConfig.java` | 45-50 | `/actuator/**` is public (`anyRequest().permitAll()`), and `management.endpoint.health.show-details: always` exposes DB, storage, disk, SSL details, etc. | High |
+| 3 | `security/JwtUtil.java` | 53-63 | `extractEmail`/`extractUserId` call `parseToken` without try/catch; a malformed payload can throw an uncaught exception. | Medium |
+| 4 | `security/JwtAuthenticationFilter.java` | 35-46 | Doesn't verify the user still exists in the DB; a token for a deleted user stays valid until it expires. | Medium |
+| 5 | `service/impl/AuthServiceImpl.java` | 29 | `"Email already registered"` enables account enumeration; it should return the same generic message as login. | Medium |
+| 6 | `config/SecurityConfig.java` | 64-73 | CORS: `allowedHeaders(List.of("*"))` + `allowCredentials(true)` is permissive; it also applies to `/**` including `/actuator`. | Medium |
+| 7 | `config/GlobalExceptionHandler.java` | 95-99 | The `RuntimeException` handler returns `ex.getMessage()` to the client, which can leak paths, bucket names, internal classes, etc. | High |
+| 8 | `service/impl/SessionContextBuilder.java` / `ai/*` / `conversation/capability/*` | various | PDF content, `User.systemPrompt`, `ProfileMaster.systemPrompt` and user messages are concatenated directly into prompts with no delimiters or defensive instructions. Allows prompt injection. | High |
+| 9 | `conversation/capability/CapabilityRegistry.java` | 80-95 | JSON routing (`{"capability":"..."}`) depends on the model; a user message could induce the model to emit that JSON and trigger a capability unintentionally. | Medium |
+| 10 | `service/impl/DocumentServiceImpl.java` | 47-86 | Doesn't validate that the uploaded file is a PDF before handing it to PDFBox; a 50 MB non-PDF file consumes memory/CPU. | Medium |
+| 11 | `voice/OpenAiSpeechToTextProvider.java` | 55 | Accepts the browser's MIME type without validating against an allowlist. | Low |
+| 12 | `ai/OpenAiCompatibleProvider.java` / `ClaudeProvider.java` / `voice/*` | various | No explicit timeouts/retries on the `WebClient`s; a hung call can block the request thread indefinitely. | High |
+| 13 | `build.gradle` | 76 | `springdoc-openapi` is on the classpath; `/swagger-ui/**` and `/v3/api-docs/**` are not restricted in `SecurityConfig`. | Medium |
 
-### 2.3 Pruebas
+### 2.3 Tests
 
-- Solo hay 5 archivos de test para todo el backend:
-  - `BackendApplicationTests.java` (solo carga contexto).
-  - `ConversationEngineTest.java` y `ConversationEngineStreamingTest.java` (bien cubiertos).
+- Only 5 test files for the whole backend:
+  - `BackendApplicationTests.java` (context load only).
+  - `ConversationEngineTest.java` and `ConversationEngineStreamingTest.java` (well covered).
   - `CapabilityRegistryTest.java`.
   - `VoiceConversationServiceTest.java`.
-- **No hay:** tests de controllers, tests de seguridad, tests de repositorios (`@DataJpaTest`), tests de servicios (`DocumentServiceImpl`, `QuizServiceImpl`, `ReportServiceImpl`, etc.), tests de providers de IA ni tests de storage.
-- El `Dockerfile` ejecuta `-x test`, lo cual es aceptable si CI los corre primero, pero riesgoso si alguien buildea directo para producción.
+- **Missing:** controller tests, security tests, repository tests (`@DataJpaTest`), service tests (`DocumentServiceImpl`, `QuizServiceImpl`, `ReportServiceImpl`, etc.), AI provider tests, storage tests.
+- The `Dockerfile` runs `-x test`, which is acceptable if CI runs them first, but risky if someone builds straight for production.
 
-### 2.4 Configuración, build y despliegue
+### 2.4 Config, build and deployment
 
-- `application.yml` está bien estructurado con perfiles `dev`/`local`/`test`.
-- `build.gradle` carga `.env` del repo-root en `bootRun`/`bootRunLocal`, útil para desarrollo local.
-- `Dockerfile` es multi-stage con usuario no-root; buena práctica.
-- `.github/workflows/ci.yml` ejecuta `./gradlew test` y `npm ci && npm run build`.
-- `.github/workflows/deploy.yml` despliega backend en Cloud Run y frontend en Firebase Hosting.
-- `docker-compose.yml` levanta PostgreSQL 16 y MinIO con credenciales déviles documentadas (`booki`/`bookibooki`), solo para local.
+- `application.yml` is well structured with `dev`/`local`/`test` profiles.
+- `build.gradle` loads the repo-root `.env` in `bootRun`/`bootRunLocal`, useful for local development.
+- The `Dockerfile` is multi-stage with a non-root user; good practice.
+- `.github/workflows/ci.yml` runs `./gradlew test` and `npm ci && npm run build`.
+- `.github/workflows/deploy.yml` deploys the backend to Cloud Run and the frontend to Firebase Hosting.
+- `docker-compose.yml` brings up PostgreSQL 16 and MinIO with weak documented credentials (`booki`/`bookibooki`), local only.
 
-**Problemas:**
+**Issues:**
 
-- `spring.profiles.active: dev` por defecto (`application.yml:5`) podría activar credenciales de desarrollo en producción si no se sobreescribe.
-- `Dockerfile:18` usa `-x test`.
-- `deploy.yml:55` usa `--allow-unauthenticated`; esto es correcto para la API pública pero debe ir acompañado de autenticación JWT.
-- `max-instances: 2` en Cloud Run limita costos, pero `min-instances: 0` implica cold starts.
+- `spring.profiles.active: dev` by default (`application.yml:5`) could activate dev credentials in production if not overridden.
+- `Dockerfile:18` uses `-x test`.
+- `deploy.yml:55` uses `--allow-unauthenticated`; this is correct for a public API but must be paired with JWT authentication.
+- `max-instances: 2` in Cloud Run caps cost, but `min-instances: 0` implies cold starts.
 
 ---
 
 ## 3. Frontend
 
-### 3.1 Arquitectura y calidad de código
+### 3.1 Architecture and code quality
 
-**Lo que está bien:**
+**What's good:**
 
-- Vite + React 18 + TypeScript con `strict`, `noUnusedLocals`, `noUnusedParameters`.
-- Separación clara: `pages` → `components` → `api` → `hooks`, como documenta `docs/frontend.md`.
-- `src/api/client.ts` centraliza Axios, añade el Bearer token y redirige a `/login` en 401.
-- `src/lib/errors.ts` normaliza el manejo de errores de Axios.
-- `src/config/endpoints.ts` es la única fuente de verdad para rutas del backend.
-- `ProtectedRoute` y `AuthContext` gestionan la autenticación de forma centralizada.
-- `tsc --noEmit` pasa.
+- Vite + React 18 + TypeScript with `strict`, `noUnusedLocals`, `noUnusedParameters`.
+- Clear separation: `pages` → `components` → `api` → `hooks`, as documented in `docs/frontend.md`.
+- `src/api/client.ts` centralizes Axios, adds the Bearer token and redirects to `/login` on 401.
+- `src/lib/errors.ts` normalizes Axios error handling.
+- `src/config/endpoints.ts` is the single source of truth for backend routes.
+- `ProtectedRoute` and `AuthContext` handle authentication centrally.
+- `tsc --noEmit` passes.
 
-**Problemas concretos:**
+**Concrete issues:**
 
-| # | Archivo(s) | Línea(s) | Problema | Severidad |
-|---|------------|----------|----------|-----------|
-| 1 | `package.json` | 10 | El script `lint` llama a ESLint, pero **no existe ninguna configuración de ESLint** en el repo. `npm run lint` falla inmediatamente. | Alta |
-| 2 | `src/pages/LoginPage.tsx` | 11-12, 45-50, 101-102 | Credenciales demo (`demo@booki.app` / `password`) embebidas en el código fuente. Si la cuenta existe en producción, cualquiera puede entrar. | Alta |
-| 3 | `src/pages/HomePage.tsx` | — | Componente muy grande que mezcla subida, búsqueda, ordenamiento, tags, modales y eliminación. Difícil de mantener. | Media |
-| 4 | `src/components/DocumentCard.tsx` | 24-67 | Anida `<span role="button">` dentro de un `<button>`, generando HTML inválido y comportamiento de teclado poco fiable. | Media |
-| 5 | `src/components/Layout.tsx` | 46-97 | Menú de usuario no se cierra con click fuera ni Escape; falta `aria-expanded`. | Media |
-| 6 | `src/components/NotificationsBell.tsx` / `ContextInfoButton.tsx` | — | Popovers sin cierre fuera/Escape. | Baja |
-| 7 | `src/pages/LoginPage.tsx` | 18 | `location.state as { from?: Location }` usa el tipo `Location` del DOM en lugar del de `react-router-dom`; funciona por casualidad. | Baja |
-| 8 | `src/App.tsx` | 16 | Usa `"/"` hardcodeado mientras existe `ROUTES.home`; inconsistente. | Baja |
-| 9 | `index.html` | 11 | Carga Google Fonts sin `&display=swap`, bloqueando first paint. | Baja |
-| 10 | `src/index.css` | 5-14 | Variables CSS duplicadas en `tailwind.config.js`; doble fuente de verdad. | Baja |
-| 11 | `src/pages/MastersPage.tsx` | — | Página también muy grande; podría dividirse en subcomponentes. | Baja |
+| # | File(s) | Line(s) | Issue | Severity |
+|---|---------|---------|-------|----------|
+| 1 | `package.json` | 10 | The `lint` script calls ESLint, but **there is no ESLint config** in the repo. `npm run lint` fails immediately. | High |
+| 2 | `src/pages/LoginPage.tsx` | 11-12, 45-50, 101-102 | Demo credentials (`demo@booki.app` / `password`) embedded in source. If the account exists in production, anyone can get in. | High |
+| 3 | `src/pages/HomePage.tsx` | — | Very large component mixing upload, search, sorting, tags, modals and deletion. Hard to maintain. | Medium |
+| 4 | `src/components/DocumentCard.tsx` | 24-67 | Nests `<span role="button">` inside a `<button>`, producing invalid HTML and unreliable keyboard behavior. | Medium |
+| 5 | `src/components/Layout.tsx` | 46-97 | User menu doesn't close on outside click or Escape; missing `aria-expanded`. | Medium |
+| 6 | `src/components/NotificationsBell.tsx` / `ContextInfoButton.tsx` | — | Popovers with no outside/Escape close. | Low |
+| 7 | `src/pages/LoginPage.tsx` | 18 | `location.state as { from?: Location }` uses the DOM `Location` type instead of `react-router-dom`'s; works by accident. | Low |
+| 8 | `src/App.tsx` | 16 | Uses hardcoded `"/"` while `ROUTES.home` exists; inconsistent. | Low |
+| 9 | `index.html` | 11 | Loads Google Fonts without `&display=swap`, blocking first paint. | Low |
+| 10 | `src/index.css` | 5-14 | CSS variables duplicated in `tailwind.config.js`; two sources of truth. | Low |
+| 11 | `src/pages/MastersPage.tsx` | — | Also a very large page; could be split into subcomponents. | Low |
 
-### 3.2 Seguridad
+### 3.2 Security
 
-**Lo que está bien:**
+**What's good:**
 
-- No se usa `dangerouslySetInnerHTML` ni `eval` en el código fuente.
-- `react-markdown` no permite HTML raw por defecto.
-- El token no se loguea en desarrollo (`client.ts:26-54`).
-- Vite solo expone variables `VITE_*` al bundle; secretos en otras variables no se filtran.
+- No `dangerouslySetInnerHTML` or `eval` in source.
+- `react-markdown` disallows raw HTML by default.
+- The token is not logged in development (`client.ts:26-54`).
+- Vite only exposes `VITE_*` variables to the bundle; secrets in other variables don't leak.
 
-**Riesgos y vulnerabilidades:**
+**Risks and vulnerabilities:**
 
-| # | Archivo(s) | Línea(s) | Problema | Severidad |
-|---|------------|----------|----------|-----------|
-| 1 | `src/context/AuthContext.tsx` | 15, 28, 42, 55 | JWT almacenado en `localStorage`. Cualquier XSS en el origen puede exfiltrarlo. | Alta |
-| 2 | `src/api/client.ts` | 11-24 | Lee `localStorage` en cada request en lugar de usar una referencia en memoria. | Media |
-| 3 | `src/context/AuthContext.tsx` | 27-39 | Valida JSON.parse pero no la forma del objeto guardado. | Baja |
-| 4 | `src/components/ChatPanel.tsx` | 198-209 | `react-markdown` + `remark-gfm` genera links sin `rel="noopener noreferrer"` ni `target="_blank"`, permitiendo tabnabbing. | Media |
-| 5 | `src/config/endpoints.ts` / `vite.config.ts` | — | `API_BASE` usa `VITE_API_BASE_URL` en producción o `/api` (proxy) en desarrollo. No hay validación de HTTPS en producción. | Media |
-| 6 | `src/pages/LoginPage.tsx` | 11-12, 45-50 | Credenciales demo en el bundle de producción. | Alta |
-| 7 | `src/components/CreateSessionModal.tsx` | 48-72, 139, 160 | Valida `startPage` y `endPage` por separado; permite `startPage > endPage`. También hace `as SessionLanguage`/`as AiProvider` sin validar contra whitelist. | Media |
-| 8 | `src/pages/ProfilePage.tsx` / `src/pages/MastersPage.tsx` | 59-66 / 137-145 | No hay límites de longitud en `systemPrompt`, `bio`, etc., antes de enviar al backend. | Baja |
-| 9 | `src/pages/HomePage.tsx` / `src/api/documents.ts` | 26-37 / 7-13 | La subida no valida tamaño ni MIME real; confía en `accept="application/pdf"` que es trivial de saltar. | Media |
-| 10 | `src/components/PdfViewer.tsx` | 63-65 | Envía el Bearer token en `httpHeaders` del PDF; si `API_BASE` fuese HTTP, el token viajaría sin cifrar. | Media |
-| 11 | `firebase.json` | 1-7 | No configura headers de seguridad (CSP, X-Frame-Options, X-Content-Type-Options, HSTS). | Alta |
-| 12 | `vite.config.ts` | 24-25 | `registerType: 'autoUpdate'` y `devOptions: { enabled: true }`. En producción autoUpdate puede empujar código sin confirmación del usuario; verificar que `devOptions` no afecte builds de producción. | Baja |
-| 13 | `package.json` | — | Dependencias como `axios ^1.7.4`, `react-pdf ^9.1.0`, `vite ^5.4.1` y `vite-plugin-pwa ^0.20.1` tienen más de un año. Revisar con `npm audit`. | Media |
+| # | File(s) | Line(s) | Issue | Severity |
+|---|---------|---------|-------|----------|
+| 1 | `src/context/AuthContext.tsx` | 15, 28, 42, 55 | JWT stored in `localStorage`. Any XSS on the origin can exfiltrate it. | High |
+| 2 | `src/api/client.ts` | 11-24 | Reads `localStorage` on every request instead of using an in-memory reference. | Medium |
+| 3 | `src/context/AuthContext.tsx` | 27-39 | Validates `JSON.parse` but not the shape of the stored object. | Low |
+| 4 | `src/components/ChatPanel.tsx` | 198-209 | `react-markdown` + `remark-gfm` renders links without `rel="noopener noreferrer"` or `target="_blank"`, allowing tabnabbing. | Medium |
+| 5 | `src/config/endpoints.ts` / `vite.config.ts` | — | `API_BASE` uses `VITE_API_BASE_URL` in production or `/api` (proxy) in dev. No HTTPS validation in production. | Medium |
+| 6 | `src/pages/LoginPage.tsx` | 11-12, 45-50 | Demo credentials in the production bundle. | High |
+| 7 | `src/components/CreateSessionModal.tsx` | 48-72, 139, 160 | Validates `startPage` and `endPage` separately; allows `startPage > endPage`. Also casts `as SessionLanguage`/`as AiProvider` without validating against a whitelist. | Medium |
+| 8 | `src/pages/ProfilePage.tsx` / `src/pages/MastersPage.tsx` | 59-66 / 137-145 | No length limits on `systemPrompt`, `bio`, etc., before sending to the backend. | Low |
+| 9 | `src/pages/HomePage.tsx` / `src/api/documents.ts` | 26-37 / 7-13 | Upload doesn't validate real size or MIME; relies on `accept="application/pdf"`, which is trivial to bypass. | Medium |
+| 10 | `src/components/PdfViewer.tsx` | 63-65 | Sends the Bearer token in the PDF's `httpHeaders`; if `API_BASE` were HTTP, the token would travel unencrypted. | Medium |
+| 11 | `firebase.json` | 1-7 | No security headers configured (CSP, X-Frame-Options, X-Content-Type-Options, HSTS). | High |
+| 12 | `vite.config.ts` | 24-25 | `registerType: 'autoUpdate'` and `devOptions: { enabled: true }`. In production, autoUpdate can push code without user confirmation; verify `devOptions` doesn't affect production builds. | Low |
+| 13 | `package.json` | — | Dependencies like `axios ^1.7.4`, `react-pdf ^9.1.0`, `vite ^5.4.1` and `vite-plugin-pwa ^0.20.1` are over a year old. Review with `npm audit`. | Medium |
 
-### 3.3 Datos y hooks
+### 3.3 Data and hooks
 
-- No hay librería de caching/SWR. Varios componentes llaman `useSession(sessionId)` independientemente, generando requests duplicados (`ChatPanel.tsx:88`, `PdfViewer.tsx:20`).
-- `useSessionContext.ts` no devuelve `error` ni `loading`; fallos quedan en silencio.
-- `useDocuments.ts` `remove()` no gestiona error ni loading.
-- `api/voice.ts:34-38` envía `wantsAudioReply` como campo de formulario, pero ese campo **no está documentado en `docs/openapi.yaml`** para `POST /sessions/{id}/voice`.
-- `types/index.ts` tiene discrepancias menores con OpenAPI: `Message` no incluye `sessionId`, `Tag` no incluye `createdAt`.
+- No caching/SWR library. Several components call `useSession(sessionId)` independently, producing duplicate requests (`ChatPanel.tsx:88`, `PdfViewer.tsx:20`).
+- `useSessionContext.ts` doesn't return `error` or `loading`; failures are silent.
+- `useDocuments.ts` `remove()` doesn't handle error or loading.
+- `api/voice.ts:34-38` sends `wantsAudioReply` as a form field, but that field is **not documented in `docs/openapi.yaml`** for `POST /sessions/{id}/voice`.
+- `types/index.ts` has minor discrepancies with OpenAPI: `Message` doesn't include `sessionId`, `Tag` doesn't include `createdAt`.
 
-### 3.4 Voz
+### 3.4 Voice
 
-- `useVoiceRecorder.ts` limpia correctamente el `MediaStream`.
-- `useVoice.ts` sigue el idioma de la sesión.
-- Problemas:
-  - `useVoiceRecorder.ts:61-79` `stop()` no maneja el evento `onerror` del `MediaRecorder`.
-  - `useVoice.ts:30-59` `onerror` resuelve `null` sin feedback al usuario.
-  - `ChatPanel.tsx:121-144` no maneja explícitamente denegación de permisos de micrófono.
-  - `ChatPanel.tsx:115-119` crea un nuevo `Audio` cada turno sin pausar el anterior; pueden solaparse.
-
----
-
-## 4. Errores y riesgos críticos resumidos
-
-1. **JWT inseguro por defecto** (`application.yml:45`). Si se despliega sin `JWT_SECRET`, la app es trivialmente vulnerable.
-2. **Almacenamiento de token en `localStorage`**. Riesgo de XSS → robo de sesión.
-3. **Actuator público con detalles**. Exposición de información interna sin autenticación.
-4. **Sin transacciones** en servicios que hacen múltiples escrituras. Riesgo de datos inconsistentes.
-5. **Sin timeouts en WebClient**. Llamadas a proveedores de IA/voz pueden colgar.
-6. **Inyección de prompts**. El contenido del usuario/PDF se concatena directamente en prompts.
-7. **Credenciales demo en el frontend**. Cuenta fácilmente explotable si existe en producción.
-8. **Falta ESLint**. El script de lint falla, y no hay gate de calidad de código en CI.
-9. **Cobertura de tests muy baja**. 5 archivos de test para todo el backend; ningún test de controllers/security/storage/providers.
-10. **Headers de seguridad ausentes en Firebase Hosting**.
+- `useVoiceRecorder.ts` cleans up the `MediaStream` correctly.
+- `useVoice.ts` follows the session language.
+- Issues:
+  - `useVoiceRecorder.ts:61-79` `stop()` doesn't handle the `MediaRecorder` `onerror` event.
+  - `useVoice.ts:30-59` `onerror` resolves `null` with no user feedback.
+  - `ChatPanel.tsx:121-144` doesn't explicitly handle microphone permission denial.
+  - `ChatPanel.tsx:115-119` creates a new `Audio` each turn without pausing the previous one; they can overlap.
 
 ---
 
-## 5. Recomendaciones priorizadas
+## 4. Critical errors and risks, summarized
 
-### Inmediatas (antes de cualquier despliegue público)
-
-1. **Exigir `JWT_SECRET` seguro:** eliminar el default en `application.yml` y fallar al arrancar si no está configurado (o generar uno aleatorio y advertir). Mínimo 256 bits.
-2. **Mover token a cookie `HttpOnly` + `Secure` + `SameSite=Strict`:** el backend debe setearla y el frontend leer el estado de autenticación vía `/users/me` o un endpoint similar, eliminando `localStorage`.
-3. **Proteger `/actuator`:** requerir autenticación o restringir por red; reducir `show-details` a `when-authorized`/`never`.
-4. **Eliminar credenciales demo del frontend** o protegerlas bajo `import.meta.env.DEV`.
-5. **Añadir configuración ESLint** y hacer que CI falle si `npm run lint` falla.
-6. **Añadir `@Transactional`** a servicios con múltiples pasos y a lecturas que recorren asociaciones LAZY.
-7. **Añadir timeouts** a todos los `WebClient` de proveedores IA/voz.
-8. **Sanear el handler de `RuntimeException`** en `GlobalExceptionHandler.java` para no devolver `ex.getMessage()` al cliente.
-
-### Corto plazo (1-2 sprints)
-
-9. **Mitigar inyección de prompts:** delimitar bloques de contexto/documento/usuario en `SessionContextBuilder`, añadir instrucciones defensivas, y validar/escapar contenido de usuario antes de incluirlo.
-10. **Rate-limiting** en endpoints de autenticación (Bucket4j / Spring Cloud Gateway / reverse proxy).
-11. **Validar `@Valid`** en todos los endpoints de escritura y añadir `@Size`/`@Pattern` a DTOs de texto libre.
-12. **Validar uploads:** rechazar archivos cuyo content-type no sea `application/pdf` y añadir límite de páginas/tamaño de texto extraído.
-13. **Mejorar CORS:** lista blanca explícita de headers y validar que no se use `*` con credenciales.
-14. **Añadir headers de seguridad** en `firebase.json`: CSP, X-Frame-Options, X-Content-Type-Options, HSTS.
-15. **Ampliar cobertura de tests:** tests de controllers (`@WebMvcTest`), tests de repositorios (`@DataJpaTest`), tests de servicios con Mockito, y tests de seguridad (JWT, CORS, ownership).
-16. **Agregar `HttpOnly` cookie auth** en backend y adaptar el interceptor de Axios para no enviar `Authorization` manualmente.
-
-### Medio plazo
-
-17. Implementar revocación de tokens o refresh tokens.
-18. Añadir retry/backoff en llamadas a proveedores de IA.
-19. Considerar reemplazar el enrutamiento por JSON del modelo por un enfoque más determinista (solo `capabilityHint` explícito del cliente).
-20. Introducir SWR/React Query para deduplicar requests y mejorar UX.
-21. Revisar y actualizar dependencias (`npm audit`, `npm outdated`).
+1. **Insecure JWT by default** (`application.yml:45`). Deployed without `JWT_SECRET`, the app is trivially vulnerable.
+2. **Token storage in `localStorage`**. XSS → session theft.
+3. **Public Actuator with details**. Internal information exposed without authentication.
+4. **No transactions** in services that do multiple writes. Risk of inconsistent data.
+5. **No WebClient timeouts**. Calls to AI/voice providers can hang.
+6. **Prompt injection**. User/PDF content is concatenated directly into prompts.
+7. **Demo credentials in the frontend**. Easily exploitable account if it exists in production.
+8. **No ESLint**. The lint script fails, and there's no code-quality gate in CI.
+9. **Very low test coverage**. 5 test files for the whole backend; no controller/security/storage/provider tests.
+10. **Missing security headers on Firebase Hosting**.
 
 ---
 
-## 6. Métricas cualitativas
+## 5. Prioritized recommendations
 
-| Área | Backend | Frontend | Notas |
+### Immediate (before any public deployment)
+
+1. **Require a secure `JWT_SECRET`:** remove the default in `application.yml` and fail on startup if it isn't configured (or generate a random one and warn). Minimum 256 bits.
+2. **Move the token to an `HttpOnly` + `Secure` + `SameSite=Strict` cookie:** the backend sets it and the frontend reads auth state via `/users/me` or a similar endpoint, eliminating `localStorage`.
+3. **Protect `/actuator`:** require authentication or restrict by network; reduce `show-details` to `when-authorized`/`never`.
+4. **Remove demo credentials from the frontend** or gate them behind `import.meta.env.DEV`.
+5. **Add an ESLint config** and make CI fail if `npm run lint` fails.
+6. **Add `@Transactional`** to multi-step services and to reads that walk LAZY associations.
+7. **Add timeouts** to all AI/voice provider `WebClient`s.
+8. **Sanitize the `RuntimeException` handler** in `GlobalExceptionHandler.java` so it doesn't return `ex.getMessage()` to the client.
+
+### Short term (1-2 sprints)
+
+9. **Mitigate prompt injection:** delimit context/document/user blocks in `SessionContextBuilder`, add defensive instructions, and validate/escape user content before including it.
+10. **Rate-limiting** on auth endpoints (Bucket4j / Spring Cloud Gateway / reverse proxy).
+11. **`@Valid`** on all write endpoints and add `@Size`/`@Pattern` to free-text DTOs.
+12. **Validate uploads:** reject files whose content-type isn't `application/pdf` and add a page / extracted-text-size limit.
+13. **Improve CORS:** an explicit header allowlist, and validate that `*` isn't used with credentials.
+14. **Add security headers** in `firebase.json`: CSP, X-Frame-Options, X-Content-Type-Options, HSTS.
+15. **Expand test coverage:** controller tests (`@WebMvcTest`), repository tests (`@DataJpaTest`), service tests with Mockito, and security tests (JWT, CORS, ownership).
+16. **Add `HttpOnly` cookie auth** in the backend and adapt the Axios interceptor to not send `Authorization` manually.
+
+### Medium term
+
+17. Implement token revocation or refresh tokens.
+18. Add retry/backoff on AI provider calls.
+19. Consider replacing model-JSON routing with a more deterministic approach (explicit client `capabilityHint` only).
+20. Introduce SWR/React Query to deduplicate requests and improve UX.
+21. Review and update dependencies (`npm audit`, `npm outdated`).
+
+---
+
+## 6. Qualitative metrics
+
+| Area | Backend | Frontend | Notes |
 |------|---------|----------|-------|
-| Arquitectura | 8/10 | 7/10 | Backend muy bien estructurado; frontend claro pero con componentes grandes. |
-| Calidad de código | 6/10 | 6/10 | Código limpio, pero falta transacciones, tipado laxo en algunos endpoints, y ESLint. |
-| Seguridad | 5/10 | 5/10 | Autenticación básica funcional, pero múltiples riesgos críticos por hardening. |
-| Tests | 3/10 | 2/10 | Muy pocos tests; sin ESLint y sin tests de UI en el frontend. |
-| Buenas prácticas | 6/10 | 6/10 | Docker, CI, Flyway, perfiles; pero faltan gates de calidad y headers de seguridad. |
-| Documentación | 9/10 | 8/10 | Documentación extensa y útil; OpenAPI y ADRs en buen estado (salvo typo del título). |
+| Architecture | 8/10 | 7/10 | Backend very well structured; frontend clear but with large components. |
+| Code quality | 6/10 | 6/10 | Clean code, but missing transactions, loose typing on some endpoints, and ESLint. |
+| Security | 5/10 | 5/10 | Basic auth works, but multiple critical hardening risks. |
+| Tests | 3/10 | 2/10 | Very few tests; no ESLint and no UI tests in the frontend. |
+| Best practices | 6/10 | 6/10 | Docker, CI, Flyway, profiles; but missing quality gates and security headers. |
+| Documentation | 9/10 | 8/10 | Extensive, useful docs; OpenAPI and ADRs in good shape (aside from the title typo). |
 
-**Veredicto general:** BooKI es un MVP sólido y bien concebido, con arquitectura extensible y documentación clara. Para pasar a producción pública o escalar, el trabajo prioritario es **endurecimiento de seguridad, transacciones, tests y eliminación de deuda técnica** (ESLint, credenciales demo, tipado). Las recomendaciones están ordenadas por impacto y esfuerzo.
+**Overall verdict:** BooKI is a solid, well-conceived MVP with an extensible architecture and clear documentation. To go to public production or scale, the priority work is **security hardening, transactions, tests and removing technical debt** (ESLint, demo credentials, typing). The recommendations are ordered by impact and effort.

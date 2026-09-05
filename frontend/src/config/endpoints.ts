@@ -8,6 +8,13 @@
  */
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
+/**
+ * False only when a production build points at a plaintext http:// backend — in
+ * that case callers must not attach the bearer token (it would travel
+ * unencrypted). Always true in dev (same-origin `/api` proxy) and for https.
+ */
+export const API_BASE_IS_SECURE = !(import.meta.env.PROD && /^http:\/\//i.test(API_BASE));
+
 export const ENDPOINTS = {
   auth: {
     login: '/auth/login',

@@ -9,17 +9,17 @@ PWA for Android/Windows/Linux.
 
 ## Fixed stack
 
-- Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, PostgreSQL (dev/deployed), H2 in PostgreSQL mode (tests/no-Docker), Spring Security + JWT, WebClient.
+- Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, PostgreSQL (dev/deployed), H2 in PostgreSQL mode (tests/no-Docker), Spring Security + JWT, WebClient (shared timeouts via `config/OutboundHttp`).
 - Frontend: React + TypeScript + Vite + Tailwind + PWA + react-pdf.
 - AI: `AiProvider` interface, 4 providers (`openai` default, `claude`, `kimi`, `ollama`), per-session choice. `openai` default because the same key also covers cloud voice.
 - Voice: server-side `SpeechToTextProvider` / `TextToSpeechProvider` (OpenAI impl); browser `SpeechRecognition` only as a fallback.
 
 ## Conventions
 
-- Code in English: `Document`, `Session`, `ProfileMaster`, `Message`.
+- Code in English: `Document`, `Session`, `AiProfile`, `Message` (`ProfileMaster` is gone — ADR-015).
 - Base package: `com.booki`.
-- Backend: Controller → Service (interface) → ServiceImpl → Repository.
-- Frontend: `pages/` → `components/` → `api/` → `hooks/`.
+- Backend: Controller → Service (interface) → ServiceImpl → Repository. Write DTOs carry `@Valid` constraints; multi-write services are `@Transactional`; uncaught errors are sanitized. Security posture: ADR-016.
+- Frontend: `pages/` → `components/` → `api/` → `hooks/`. `npm run lint` + `tsc --noEmit` + `build` are the CI gate.
 
 ## What NOT to do without asking
 

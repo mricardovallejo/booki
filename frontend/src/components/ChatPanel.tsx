@@ -221,6 +221,11 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
                         <div className="overflow-x-auto">
                           <table {...props} />
                         </div>
+                      ),
+                      // Model output can contain links — open them in a new tab
+                      // and cut the opener reference (tabnabbing).
+                      a: ({ ...props }) => (
+                        <a {...props} target="_blank" rel="noopener noreferrer nofollow" />
                       )
                     }}
                   >

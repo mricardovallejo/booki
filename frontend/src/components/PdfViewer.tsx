@@ -3,6 +3,7 @@ import { Document as PdfDoc, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { getDocumentFileUrl } from '../api/documents';
+import { API_BASE_IS_SECURE } from '../config/endpoints';
 import { useAuth } from '../context/AuthContext';
 import { useSession } from '../hooks/useSession';
 
@@ -62,7 +63,8 @@ export default function PdfViewer({ sessionId }: Props) {
       documentId
         ? {
             url: getDocumentFileUrl(documentId),
-            httpHeaders: token ? { Authorization: `Bearer ${token}` } : undefined
+            httpHeaders:
+              token && API_BASE_IS_SECURE ? { Authorization: `Bearer ${token}` } : undefined
           }
         : null,
     [documentId, token]

@@ -2,9 +2,10 @@
 
 ## Technologies
 
-- React 18 + TypeScript
+- React 18 + TypeScript (`strict`, `noUnusedLocals`, `noUnusedParameters`)
 - Vite (dev server + build)
-- Tailwind CSS
+- ESLint — `.eslintrc.cjs` (`@typescript-eslint` + `react-hooks` + `react-refresh`); `npm run lint` is a CI gate (see `.github/workflows/ci.yml`)
+- Tailwind CSS — the palette lives once as RGB channels in `src/index.css` (`:root`), referenced from `tailwind.config.js` via `rgb(var(--color-*) / <alpha-value>)`
 - react-pdf for PDF rendering
 - react-markdown + remark-gfm for rendering BooKI's chat replies (real AI output routinely comes back with `**bold**`, lists, headings, and tables — `ChatPanel` renders it through `ReactMarkdown` with a small Tailwind class set (`MARKDOWN_CLASSES`), not plain `<p>`; user-typed messages stay plain text). Base markdown (CommonMark, what `react-markdown` supports out of the box) has no table syntax at all — tables are a GitHub-specific extension (GFM), hence the separate `remark-gfm` plugin; without it a table comes back as literal `|` characters, not a parse error.
 - `getUserMedia` + `MediaRecorder` for voice capture (STT/TTS run on the backend — see "Voice flow")
@@ -12,7 +13,7 @@
 
 ## Screens (`src/pages`)
 
-- **LoginPage**: sign in / sign up (email, password, optional name); also offers a "use demo account" shortcut.
+- **LoginPage**: sign in / sign up (email, password, optional name). The "use demo account" shortcut is gated behind `import.meta.env.DEV`, so it (and the demo credentials) are stripped from production builds.
 - **HomePage**: list of the user's PDFs, tag filtering, and the upload flow.
 - **SessionPage**: PDF reader + chat, quiz, progress, and notifications for one session.
 - **AiProfilesPage** (`/ai-profiles`, `/ai-profiles/:id`): the AI Profile editor — profile selector + Duplicate / Restore to original / Delete, and inline the per-slot prompt editor. See `docs/prompts.md`.
@@ -25,7 +26,8 @@ All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `
 - `Layout`: top bar and route container for authenticated pages.
 - `PdfViewer`: renders the PDF and lets the reader move between pages.
 - `ChatPanel`: the conversation with BooKI — message history, text input, voice, and the quick-action row. A quick action is hidden when its capability isn't in `session.enabledCapabilities` (`docs/prompts.md`). It owns the voice state and picks the cloud path or the browser fallback.
-- `ContextInfoButton`: the ℹ popup — the assembled prompt layers (`docs/prompts.md`).
+- `ContextInfoButton`: the ℹ popup — the assembled prompt layers (`docs/prompts.md`). Uses `useOutsideDismiss` (below).
+- `DocumentCard`: a library card. The whole card is a full-bleed `<button>` for "open"; the corner tag/delete actions are real sibling `<button>`s stacked above it (no nested interactive elements).
 - `VoiceButton`: presentational mic button (supported / recording / busy) — all voice logic lives in `ChatPanel`.
 - `QuizPanel`: quiz setup, the question flow, and the full correction report (stats + per-attempt history + email-a-copy) all in one place — Also supports an opt-in checkbox that auto-emails the report the moment the last question in a round gets graded.
 - `ProgressPanel`: reading progress for the current session.
@@ -38,8 +40,8 @@ All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `
 
 ## Data layer
 
-- `src/api/*.ts`: one file per backend resource (`auth`, `documents`, `aiProfiles`, `reports`, `sessions`, `tags`, `users`, `voice`), all going through the shared Axios instance in `api/client.ts` (adds the JWT header, redirects to `/login` on a 401). Base URL is `API_BASE` from `config/endpoints.ts` — `VITE_API_BASE_URL` if set (deployed build, separate origin), otherwise `/api` (local dev, via the Vite proxy).
-- `src/hooks/*.ts`: data-fetching hooks built on top of `src/api` (`useDocuments`, `useSession`, `useChat`, `useQuiz`, `useProgress`, `useNotifications`, `useSessionReports`, `useSummary`, `useTags`, `useAiProfiles`, `useUserProfile`, plus UI hooks `useVoiceRecorder` (cloud audio capture), `useVoice` (browser fallback), and `useScrollToHash`). `useChat` exposes both `send` (text / quick-action, with an optional `capabilityHint`) and `sendVoice` (uploads a clip, returns the persisted messages + optional spoken reply). `useQuiz` owns the quiz report too (`report`/`loadReport`, refetched after every graded answer).
+- `src/api/*.ts`: one file per backend resource (`auth`, `documents`, `aiProfiles`, `reports`, `sessions`, `tags`, `users`, `voice`), all going through the shared Axios instance in `api/client.ts`. The client reads the token from an **in-memory holder** (`src/lib/authToken.ts`) that `AuthContext` keeps in sync — not `localStorage` on every request — and redirects to `/login` on a 401. Base URL is `API_BASE` from `config/endpoints.ts` — `VITE_API_BASE_URL` if set (deployed build, separate origin), otherwise `/api` (local dev, via the Vite proxy). `API_BASE_IS_SECURE` is false only when a *production* build points at a plaintext `http://` backend; when it's false the bearer token is not attached (client.ts and `PdfViewer`).
+- `src/hooks/*.ts`: data-fetching hooks built on top of `src/api` (`useDocuments`, `useSession`, `useSessionContext` → `{context, loading, error}`, `useChat`, `useQuiz`, `useProgress`, `useNotifications`, `useSessionReports`, `useSummary`, `useTags`, `useAiProfiles`, `useUserProfile`, plus UI hooks `useVoiceRecorder` (cloud audio capture), `useVoice` (browser fallback), `useScrollToHash`, and `useOutsideDismiss(open, onClose)` — closes a popover/menu on outside-click or `Escape`, used by `Layout`, `NotificationsBell`, `ContextInfoButton`). `useChat` exposes both `send` (text / quick-action, with an optional `capabilityHint`) and `sendVoice` (uploads a clip, returns the persisted messages + optional spoken reply). `useQuiz` owns the quiz report too (`report`/`loadReport`, refetched after every graded answer).
 - `src/config/endpoints.ts`: the single source of truth for backend route paths used by the frontend.
 - `src/lib/errors.ts`: `getErrorMessage(err, fallback?)` — the one place that knows how to pull `{error: string}` out of a failed Axios call (see `docs/backend.md`'s note on the backend's unified error shape). Every data-fetching hook and every `onSubmit`/action handler goes through this helper and exposes an `error` string, instead of swallowing a rejected promise silently or leaving a panel stuck on its loading spinner forever. This is applied consistently across the whole app now: every `use*` hook in `src/hooks/` that calls the API returns `error` alongside its data (`useDocuments`, `useTags`, `useAiProfiles`, `useSession`, `useChat`, `useQuiz`, `useProgress`, `useNotifications`, `useSessionReports`, `useSummary`, `useUserProfile`), and the page/component consuming it renders a red `<p>` near the relevant button/field (see `LoginPage`, `HomePage`, `ProfilePage`, `AiProfilesPage`, `CreateSessionModal`, `TagsBar`, `TagPickerModal`, `ChatPanel`, `QuizPanel`, `PdfViewer`, `ProgressPanel`, `NotificationsBell` for examples of each shape).
 
@@ -66,6 +68,14 @@ is gone.
 
 Streaming voice (incremental STT / TTS) is not built — see `docs/ai-voice.md`
 "Streaming".
+
+## Security notes
+
+- **Token storage**: the JWT is in `localStorage` (`booki-auth`), mirrored into the in-memory holder above. `AuthContext` validates the stored object's shape on load and discards a malformed entry. Moving to an `HttpOnly` cookie is a known follow-up (it complicates local dev, so it's deferred while the product isn't public).
+- **Markdown links** in chat replies render with `target="_blank" rel="noopener noreferrer nofollow"` (model output can contain links — tabnabbing guard).
+- **Uploads** are checked client-side for `application/pdf` type and a 40 MB size cap before the request; the backend re-checks (`%PDF-` magic bytes).
+- **Deployed headers** (`frontend/firebase.json`): CSP (`script-src 'self'`, no inline scripts in the built `index.html`), `Strict-Transport-Security`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`. Verify against the real deploy — a too-strict CSP fails silently; `Content-Security-Policy-Report-Only` is the safe way to iterate.
+- `<select>` values are narrowed through guards (`toSessionLanguage`) rather than `as` casts.
 
 ## Dev proxy vs. deployed origin
 

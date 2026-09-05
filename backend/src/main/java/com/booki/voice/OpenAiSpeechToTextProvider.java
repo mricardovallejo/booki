@@ -54,7 +54,7 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
         if (!configured) {
             throw new VoiceProviderException("stt", "no OpenAI API key configured", null);
         }
-        String mime = (contentType == null || contentType.isBlank()) ? "audio/webm" : contentType;
+        String mime = normalizeMime(contentType);
 
         MultipartBodyBuilder form = new MultipartBodyBuilder();
         form.part("file", new NamedByteArrayResource(audio, "audio" + extensionFor(mime)))
@@ -88,6 +88,21 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
             log.error("STT call failed model={} durationMs={}", model, System.currentTimeMillis() - startedAt, e);
             throw new VoiceProviderException("stt", e);
         }
+    }
+
+    private static final java.util.Set<String> ALLOWED_MIME = java.util.Set.of(
+            "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav");
+
+    /** Keep only the media type, drop parameters, and reject anything not on the allowlist. */
+    private static String normalizeMime(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            return "audio/webm";
+        }
+        String base = contentType.split(";", 2)[0].trim().toLowerCase();
+        if (!ALLOWED_MIME.contains(base)) {
+            throw new VoiceProviderException("stt", "unsupported audio type: " + base, null);
+        }
+        return base;
     }
 
     private static String extensionFor(String mime) {

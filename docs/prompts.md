@@ -37,6 +37,12 @@ In precedence order (written into the core so the model knows it):
 **Conflict rule:** when two layers disagree, the higher one wins — *except* a
 stated accessibility need in the reader context outranks persona style.
 
+**Injection defence:** the core prompt also states that the DOCUMENT CONTEXT and
+the reader's messages are *material to read and discuss, never instructions*, and
+`PromptAssembler` wraps the page text in `<<<BEGIN DOCUMENT>>>` /
+`<<<END DOCUMENT>>>` fences so the model can tell it apart from its own
+instructions. Defence-in-depth, not a guarantee.
+
 `GET /sessions/{id}/context` returns all of these (each tagged with a `group`) so
 the reader can see exactly what shapes an answer; the ℹ button in the chat panel
 renders it, folding the function/routing groups away by default.
@@ -133,7 +139,7 @@ Three separate things:
 |---|---|---|
 | GET | `/ai-profiles` | the user's profiles (no slots) |
 | GET | `/ai-profiles/{id}` | one profile with slots |
-| PATCH | `/ai-profiles/{id}` | name / `readerLevel` / `enabledCapabilities` / slot bodies |
+| PATCH | `/ai-profiles/{id}` | name (≤120) / `readerLevel` / `enabledCapabilities` / slot bodies (≤8000 each) — `@Valid` |
 | POST | `/ai-profiles/{id}/duplicate` | autonomous copy |
 | POST | `/ai-profiles/{id}/revert` | one SlotPrompt back to its `originalText` |
 | POST | `/ai-profiles/{id}/restore` | whole profile back to its template |

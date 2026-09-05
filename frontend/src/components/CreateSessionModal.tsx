@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createSession } from '../api/sessions';
 import { useAiProfiles } from '../hooks/useAiProfiles';
-import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage } from '../lib/preferences';
+import { LANGUAGE_LABELS, getDefaultLanguage, setDefaultLanguage, toSessionLanguage } from '../lib/preferences';
 import { ROUTES } from '../config/routes';
 import { getErrorMessage } from '../lib/errors';
 import Button from './ui/Button';
@@ -173,7 +173,7 @@ export default function CreateSessionModal({ document, onClose }: Props) {
           </Field>
 
           <Field label="BooKI's interaction language">
-            <Select value={language} onChange={(e) => setLanguage(e.target.value as SessionLanguage)}>
+            <Select value={language} onChange={(e) => setLanguage(toSessionLanguage(e.target.value))}>
               {(Object.keys(LANGUAGE_LABELS) as SessionLanguage[]).map((lang) => (
                 <option key={lang} value={lang}>
                   {LANGUAGE_LABELS[lang]}

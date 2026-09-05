@@ -18,7 +18,7 @@ booki/
 
 | Layer | Technology |
 |------|------------|
-| Backend | Spring Boot 4.1, Spring Security, JWT Bearer, JPA, Flyway, WebClient |
+| Backend | Spring Boot 4.1, Spring Security, JWT Bearer, JPA, Flyway, WebClient (with shared connect/read timeouts on every outbound provider call) |
 | Database | PostgreSQL (dev / deployed), H2 in PostgreSQL mode (tests / no-Docker local) |
 | PDFs | Apache PDFBox for per-page text extraction; files stored via the `StorageAdapter` seam (local disk today) |
 | Frontend | React 18, TypeScript, Tailwind CSS, Vite, PWA, react-pdf |
@@ -75,15 +75,15 @@ and `docs/ai-voice.md` for the detail.
 - `voice` → `SpeechToTextProvider` / `TextToSpeechProvider`, their OpenAI impls, `VoiceConversationService`
 - `domain` → JPA entities
 - `repository` → Spring Data JPA
-- `security` → JWT util and filter
+- `security` → JWT util + filter (the filter also checks the token's user still exists)
 - `ai` → `AiProvider` + `AiProviderRegistry` + `StreamingAiProvider`
-- `dto` → request/response
-- `config` → Spring Security config and the global exception handler
+- `dto` → request/response (write DTOs carry Bean Validation constraints; see `docs/backend.md` "Request validation")
+- `config` → Spring Security config, the global exception handler (sanitizes uncaught errors), `OutboundHttp` (provider timeouts), actuator/OpenAPI config
 - `util` → cross-cutting helpers (e.g. `SecurityUtil` for the current user id)
 
 ## Frontend layers
 
-- `src/pages` → screens (Login, Home, Session, Masters, Profile)
+- `src/pages` → screens (Login, Home, Session, AiProfiles, Profile)
 - `src/components` → reusable components (Layout, PdfViewer, ChatPanel, VoiceButton, QuizPanel, …) — see `docs/frontend.md`
 - `src/api` → backend calls, one file per resource (incl. `voice.ts`)
 - `src/hooks` → custom hooks on `src/api` (`useChat` with `send` + `sendVoice`, `useSession`, `useQuiz`, `useVoiceRecorder` for cloud capture, `useVoice` for the browser fallback, …)

@@ -92,10 +92,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error("Resource not found"));
     }
 
+    /**
+     * Anything not handled above. The real exception (which can carry internal
+     * detail — bucket names, class names, file paths) is logged server-side; the
+     * client only ever sees a fixed, neutral message.
+     */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntime(RuntimeException ex) {
         log.error("Unexpected error", ex);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(error("Something went wrong on our side. Please try again."));
     }
 
     private Map<String, String> error(String message) {

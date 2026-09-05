@@ -39,11 +39,15 @@ use this same builder.
   falls back to `booki.ai.default-provider` — `openai` by default (`dev`/`test`),
   `ollama` on `local` (`AI_PROVIDER` overrides either). `openai` is the default
   because the same key also powers cloud voice.
-- **Provider failures are real errors.** A network failure, upstream 4xx/5xx, or
-  an empty/unparseable payload raises `AiProviderException`; `ConversationEngine`
-  turns it into `ConversationFailedException` and `GlobalExceptionHandler`
-  returns **HTTP 502** with `{"error": "..."}`. Provider failure text is never
-  persisted as a BooKI answer.
+- **Provider failures are real errors.** A network failure, upstream 4xx/5xx,
+  an empty/unparseable payload, or a **timeout** raises `AiProviderException`;
+  `ConversationEngine` turns it into `ConversationFailedException` and
+  `GlobalExceptionHandler` returns **HTTP 502** with `{"error": "..."}`. Provider
+  failure text is never persisted as a BooKI answer.
+- **Timeouts** (`config/OutboundHttp`, shared by every AI and voice `WebClient`):
+  10 s connect, 60 s idle read (reset on each chunk, so streaming is fine), 120 s
+  whole-call ceiling. Without them a hung upstream parked the request thread
+  forever.
 
 | Provider | Env vars | Default model |
 |----------|----------|---------------|
@@ -111,7 +115,9 @@ call, with `InputType.VOICE`.
 - **Session language drives STT/TTS.** No hardcoded `es-ES` anywhere.
 - **Raw audio is never persisted** — it lives only for the request. Upload capped
   at `booki.voice.max-audio-bytes` (10 MB); TTS input capped at
-  `tts-max-input-chars` (1200).
+  `tts-max-input-chars` (1200). The STT provider only accepts audio MIME types on
+  a small allowlist (`audio/webm|ogg|mp4|mpeg|mp3|wav`), rejecting anything else
+  before the upstream call.
 - The frontend captures audio with `getUserMedia` + `MediaRecorder` (universal
   browser support). `SpeechRecognition` (`useVoice`) is kept **only** as a
   fallback for browsers without `MediaRecorder` or deployments with no STT

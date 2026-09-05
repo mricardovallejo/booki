@@ -27,10 +27,14 @@ Practical guide: what runs on which port, the different ways to start each piece
 
 ```bash
 cd frontend
-npm run dev
+npm run dev          # dev server (HMR)
+npm run lint         # ESLint — same gate CI runs; must pass clean
+npx tsc --noEmit     # type-check without emitting
+npm run build        # production build
 ```
 
-- Keep this terminal open: it shows compile errors/HMR output.
+- Keep the `npm run dev` terminal open: it shows compile errors/HMR output.
+- `npm run lint` / `tsc --noEmit` / `build` are what `.github/workflows/ci.yml` runs on every PR — run them before pushing.
 - Opens at `https://localhost:5173` if `frontend/.certs/*.pem` exist (see "HTTPS for
   mobile testing" below), otherwise plain `http://localhost:5173` — **always use
   `localhost`, not `127.0.0.1`** (the backend only allows CORS from whatever's in
@@ -99,6 +103,13 @@ in **PostgreSQL compatibility mode** so the SQL it parses matches the real
 database. A session that doesn't explicitly pick an AI model defaults to
 **Ollama** here (see §4 below) — free, but needs Ollama actually installed and
 running, or chat/quiz/summary just get the offline fallback message.
+
+On startup you'll see a **warning that `booki.jwt.secret` is unset** and the
+backend is signing with a random ephemeral key. That's expected for local dev —
+tokens just won't survive a restart (re-login). Set `JWT_SECRET` in `.env` only
+if you want them to persist. Swagger UI (`/swagger-ui.html`, `/v3/api-docs`) is
+available **only** on this `local` profile; the `dev` profile (and deploys)
+don't expose it.
 
 **b) `dev` profile (requires PostgreSQL via Docker):**
 

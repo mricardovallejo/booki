@@ -13,9 +13,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The full editable set of prompts a reading session runs on — persona, reader
- * context, difficulty levels, per-function instructions, capability routing —
- * plus the structured {@link ReaderLevel} and enabled {@link Capability} set.
+ * The "master" a reading session runs on — persona, difficulty rubrics,
+ * per-function instructions, capability routing — plus the enabled
+ * {@link Capability} set. Who is reading is a separate {@code ReaderProfile}.
  *
  * <p>Every account is seeded at registration with one copy of each shipped
  * template ({@code SlotPromptCatalog}). A profile is autonomous: it holds its own
@@ -46,10 +46,6 @@ public class AiProfile {
     /** Exactly one of a user's profiles is the create-session default. */
     @Column(nullable = false, name = "is_default")
     private boolean defaultProfile = false;
-
-    @Enumerated(EnumType.STRING)
-    @Column(length = 20, name = "reader_level")
-    private ReaderLevel readerLevel;
 
     @Convert(converter = CapabilitySetConverter.class)
     @Column(nullable = false, length = 120, name = "enabled_capabilities")

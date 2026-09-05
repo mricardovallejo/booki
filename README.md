@@ -66,7 +66,7 @@ environment. See [docs/deployment.md](docs/deployment.md).
 1. Open `http://localhost:5173`.
 2. Sign up or log in from the login page.
 3. Upload a PDF from the home screen.
-4. Click a book to create a session (choose page range, difficulty, and an AI Profile).
+4. Click a book to create a session (choose page range, difficulty, an AI Profile and a reader profile).
 5. Open the session and chat with BooKI by text or voice.
 
 ## AI configuration
@@ -93,7 +93,7 @@ key covers chat and voice. Model and voice options: see
 - `docs/architecture.md` — stack and structure.
 - `docs/backend.md` — backend details.
 - `docs/frontend.md` — frontend details.
-- `docs/prompts.md` — prompts and AI Profiles (persona, reader context, difficulty, per-function behaviour).
+- `docs/prompts.md` — prompts, AI Profiles (the "master": persona, difficulty, per-function) and reader profiles.
 - `docs/ai-voice.md` — AI and voice strategy.
 - `docs/decisions.md` — architecture decisions.
 - `docs/agent-memory.md` — compact summary.
@@ -103,14 +103,13 @@ key covers chat and voice. Model and voice options: see
 ## Status
 
 Core product in place: authentication, PDF library and per-page extraction,
-page-range sessions, AI Profiles (the per-session prompt set — `docs/prompts.md`),
-the unified conversation engine (text + voice + capabilities), per-session AI
-provider, quiz, progress, reports, and cloud STT/TTS. A post-review hardening
-pass (ADR-016) added `/actuator` auth, security headers/CSP, request validation,
-provider timeouts, transactions, an ESLint gate and a deploy-time test gate.
-Voice streaming (incremental STT/TTS) is architected but not wired — see
-[docs/ai-voice.md](docs/ai-voice.md) "Streaming".
+page-range sessions, AI Profiles + reader profiles (the per-session prompt set —
+`docs/prompts.md`), the unified conversation engine (text + voice + capabilities),
+per-session AI provider, quiz, progress, reports, and cloud STT/TTS. A post-review
+hardening pass (ADR-016) added `/actuator` auth, security headers/CSP, request
+validation, provider timeouts, transactions, an ESLint gate and a deploy-time
+test gate. Voice streaming (incremental STT/TTS) is architected but not wired —
+see [docs/ai-voice.md](docs/ai-voice.md) "Streaming".
 
-**Next:** separating "reader profiles" from AI Profiles into their own
-named, reusable entity (backend + frontend), then a backend test suite and DB
-schema cleanup.
+**Next:** broader backend test coverage (controller / repository / security),
+then the smaller ADR-016 leftovers.

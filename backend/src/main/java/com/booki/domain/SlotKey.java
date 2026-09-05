@@ -7,8 +7,7 @@ package com.booki.domain;
  */
 public enum SlotKey {
 
-    PERSONA("Persona", Group.PERSONA, null, null),
-    READER_CONTEXT("Reader context", Group.READER, null, null),
+    PERSONA("Master persona", Group.PERSONA, null, null),
 
     RUBRIC_EASY("Difficulty — Easy", Group.DIFFICULTY, null, null),
     RUBRIC_MEDIUM("Difficulty — Medium", Group.DIFFICULTY, null, null),
@@ -29,7 +28,7 @@ public enum SlotKey {
                     + "respond with only {\"capability\":\"<name>\"}. Otherwise answer normally.", null);
 
     public enum Group {
-        PERSONA, READER, DIFFICULTY, FUNCTIONS, ROUTING;
+        PERSONA, DIFFICULTY, FUNCTIONS, ROUTING;
 
         public String wire() {
             return name().toLowerCase();

@@ -5,12 +5,8 @@ answer, who owns which part, and how the pieces combine.
 
 This is the single reference for the topic. `docs/backend.md` and
 `docs/frontend.md` only point here; the decision record is `ADR-015` (and
-`ADR-017` for the reader-profile split) in `docs/decisions.md`.
-
-> **Status:** the reader-profile split (below) is implemented in the **frontend
-> and the Node mock**; the Spring backend still carries `reader_context` as a
-> per-profile slot and gets the split in a follow-up. Everything else matches
-> across all three.
+`ADR-017` for the reader-profile split) in `docs/decisions.md`. Frontend, Node
+mock and Spring backend all implement this.
 
 ## The model
 
@@ -84,8 +80,8 @@ that the user can't touch. A `null` frame means the whole SlotPrompt is free tex
 | `fn_mnemonic` | Function — Mnemonic | functions | — |
 | `capability_routing` | Capability routing | routing | the `{"capability":"<name>"}` contract |
 
-(`reader_context` used to be a slot here; it's now the separate Reader profile.
-The Spring backend still has the slot until the follow-up — see Status above.)
+(`reader_context` used to be a slot here — ADR-017 moved it out into the separate
+Reader profile.)
 
 ### Structured fields (not SlotPrompts)
 
@@ -179,8 +175,7 @@ Three separate things:
 | GET | `/sessions/{id}/context` | the assembled layers + `aiProfileName` + `readerProfileName` |
 
 Full schemas: `docs/openapi.yaml` (`AiProfile`, `AiProfileSlot`, `ReaderProfile`,
-`SessionContext`). *Reader-profile endpoints: frontend + mock; Spring backend
-follow-up.*
+`SessionContext`).
 
 ## Frontend
 
@@ -194,8 +189,7 @@ follow-up.*
   flat, no Advanced fold); and a standalone **Reader profiles** section (pick
   which to edit / rename / set level / edit the shared context / save / duplicate
   / delete — the built-in one is read-only). `?slot=` deep link, unsaved-changes
-  guard covering both
-  the AI Profile and the reader profile).
+  guard covering both.
 - `src/components/ContextInfoButton.tsx` — the ℹ layers popup.
 - `src/components/CreateSessionModal.tsx` — an **AI Profile picker and a reader
   profile picker** (both default to `isDefault`); difficulty suggested from the
@@ -207,21 +201,17 @@ follow-up.*
 
 ## Backend
 
-> The reader-profile split is **not yet in the Spring backend**. Today it still
-> has `reader_context` as a slot and `reader_level` on `ai_profiles`. The
-> follow-up: a `reader_profiles` table, `sessions.reader_profile_id` (+ a
-> read-only factory reader), drop the `reader_context` slot + `reader_level`
-> column, and resolve the reader context in `PromptAssembler` from the session's
-> reader profile. See `ADR-017`.
-
-Two tables (current):
+Tables:
 
 - `ai_profiles` — `user_id`, `name`, `based_on_template` (a template key, not an
-  FK), `is_default`, `reader_level` (nullable → moving to `reader_profiles`),
-  `enabled_capabilities` (csv via `CapabilitySetConverter`).
+  FK), `is_default`, `enabled_capabilities` (csv via `CapabilitySetConverter`).
 - `ai_profile_slot_prompts` — `profile_id`, `slot` (`SlotKey` enum), `text`,
   `original_text`. `ON DELETE CASCADE`; sessions/quiz_attempts FK to
   `ai_profiles` is `ON DELETE SET NULL`.
+- `reader_profiles` — `user_id` (**NULL = the built-in read-only "General
+  reader"**, seeded in `V1__init.sql`), `name`, `context`, `reader_level`,
+  `is_default`, `read_only`. `sessions.reader_profile_id` FK is `ON DELETE SET
+  NULL` (a deleted reader profile falls back to the default at read time).
 
 Templates and the fixed core live in code: **`SlotPromptCatalog`** (mirror of
 `mock-backend/src/aiProfiles.js`). `SlotKey` carries each prompt's label, group
@@ -230,16 +220,21 @@ keep their own rows and are never touched.
 
 **`PromptAssembler`** owns the layering + precedence: `forChat(session, docText)`,
 `forFunction(session, SlotKey, difficulty, docText)`, and `describe(session)` for
-`GET /sessions/{id}/context`. `ConversationEngine` appends the capability router,
-filtered to the profile's `enabledCapabilities`; a routed directive or explicit
-`capabilityHint` for a disabled capability is rejected. Quiz / summary / explain /
-mnemonic ask the assembler for their `fn_*` SlotPrompt; their remaining inline
-text is only the per-call dynamic bits.
+`GET /sessions/{id}/context`. It resolves the reader context via
+`ReaderProfileService.resolveFor(session)` (the session's reader profile, else
+the user's default, else the built-in). `ConversationEngine` appends the
+capability router, filtered to the profile's `enabledCapabilities`; a routed
+directive or explicit `capabilityHint` for a disabled capability is rejected.
+Quiz / summary / explain / mnemonic ask the assembler for their `fn_*` SlotPrompt.
 
-Registration seeds one profile per template (`SlotPromptCatalog.seedFor(user)`);
-`AiProfileBackfill` does the same on startup for any user with none. The schema
-change is folded into `V1__init.sql` (no prod data) — **wipe the target DB before
-deploying it** so Flyway re-runs clean.
+**`ReaderProfileServiceImpl`** — `list` (built-in + own), `create` (optional
+`fromId` copy), `update` / `delete` (404 on the built-in), `resolveFor(session)`
+and `forNewSession(userId, requestedId)`.
+
+Registration seeds one AI Profile per template (`SlotPromptCatalog.seedFor(user)`,
+`AiProfileBackfill` backfills on startup). Reader profiles need no per-user seed —
+the built-in one is shared. The schema is a single `V1__init.sql` — **wipe the
+target DB before deploying a change to it** so Flyway re-runs clean.
 
 ## Design principles
 

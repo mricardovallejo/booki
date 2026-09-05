@@ -8,7 +8,6 @@ public record AiProfileResponse(
         Long id,
         String name,
         boolean isDefault,
-        String readerLevel,
         List<String> enabledCapabilities,
         Instant updatedAt,
         List<AiProfileSlotResponse> slots) {

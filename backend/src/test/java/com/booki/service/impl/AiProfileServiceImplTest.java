@@ -2,7 +2,6 @@ package com.booki.service.impl;
 
 import com.booki.domain.AiProfile;
 import com.booki.domain.Capability;
-import com.booki.domain.ReaderLevel;
 import com.booki.domain.SlotKey;
 import com.booki.domain.User;
 import com.booki.dto.AiProfileResponse;
@@ -68,10 +67,9 @@ class AiProfileServiceImplTest {
     }
 
     @Test
-    void updateAppliesName_level_capabilities_andSlotText() {
+    void updateAppliesName_capabilities_andSlotText() {
         UpdateAiProfileRequest request = new UpdateAiProfileRequest();
         request.setName("  My Tutor  ");
-        request.setReaderLevel("advanced");
         request.setEnabledCapabilities(List.of("quiz", "explain", "translate")); // translate ignored
         UpdateAiProfileRequest.SlotPatch patch = new UpdateAiProfileRequest.SlotPatch();
         patch.setKey("persona");
@@ -81,18 +79,9 @@ class AiProfileServiceImplTest {
         AiProfileResponse response = service.update(USER_ID, PROFILE_ID, request);
 
         assertThat(response.name()).isEqualTo("My Tutor");
-        assertThat(response.readerLevel()).isEqualTo("advanced");
         assertThat(response.enabledCapabilities()).containsExactlyInAnyOrder("quiz", "explain");
         assertThat(profile.text(SlotKey.PERSONA)).isEqualTo("A brand new persona.");
         assertThat(profile.slot(SlotKey.PERSONA).isModified()).isTrue();
-    }
-
-    @Test
-    void updateClearsReaderLevelOnEmptyString() {
-        profile.setReaderLevel(ReaderLevel.BEGINNER);
-        UpdateAiProfileRequest request = new UpdateAiProfileRequest();
-        request.setReaderLevel("");
-        assertThat(service.update(USER_ID, PROFILE_ID, request).readerLevel()).isNull();
     }
 
     @Test
@@ -107,14 +96,12 @@ class AiProfileServiceImplTest {
 
     @Test
     void duplicateCopiesFieldsAndSlotsAndClearsDefault() {
-        profile.setReaderLevel(ReaderLevel.INTERMEDIATE);
         profile.slot(SlotKey.PERSONA).setText("edited persona");
 
         AiProfileResponse copy = service.duplicate(USER_ID, PROFILE_ID, null);
 
         assertThat(copy.name()).isEqualTo("Patient Tutor (copy)");
         assertThat(copy.isDefault()).isFalse();
-        assertThat(copy.readerLevel()).isEqualTo("intermediate");
         var persona = copy.slots().stream().filter(s -> s.key().equals("persona")).findFirst().orElseThrow();
         assertThat(persona.text()).isEqualTo("edited persona");
         assertThat(persona.originalText()).isNotEqualTo("edited persona"); // baseline carried over

@@ -11,7 +11,9 @@
 > **(1)** frontend quality/architecture (ESLint, `useOutsideDismiss`, valid HTML in cards, error states in hooks, deduplicated palette, voice robustness);
 > **(2)** backend quality (`@Transactional`, `WebClient` timeouts, typed DTOs + `@Valid`/`@Size`/`@Pattern`, `count` queries, `kobi`→`booki` typo);
 > **(3)** security + details (JWT with no predictable default, `/actuator` behind auth, `GlobalExceptionHandler` no longer leaks `ex.getMessage()`, CORS with an explicit header list, filter rejects tokens for deleted users, prompt-injection fences, `%PDF-` upload validation, STT MIME allowlist; frontend: demo credentials dev-only, security headers in `firebase.json`, in-memory token, markdown links with `rel`, upload validation; CI: `lint`+`tsc` in `ci.yml`, `verify` gate in `deploy.yml`).
-> **Accepted / deferred:** JWT in `localStorage` (no `HttpOnly` cookie), account enumeration on `register`, model-JSON routing, a real `prod` profile, rate-limiting, `react-router` 6→7, `generateSummary: Object`, schema cleanup, and the **backend test suite** (these go with the "reader profiles" refactor and the testing stage).
+> The **reader-profiles refactor** (ADR-017) then split the reader context into its own entity across frontend + mock + Spring backend, and dropped the dead `sessions` columns.
+>
+> **Accepted / deferred:** JWT in `localStorage` (no `HttpOnly` cookie), account enumeration on `register`, model-JSON routing, a real `prod` profile, rate-limiting, `react-router` 6→7, `generateSummary: Object`, enum `CHECK` constraints, and broader backend test coverage (controller `@WebMvcTest`, repository `@DataJpaTest`, security).
 
 ---
 

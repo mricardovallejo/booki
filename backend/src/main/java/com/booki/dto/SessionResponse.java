@@ -15,6 +15,7 @@ public class SessionResponse {
     private Integer currentPage;
     private String difficulty;
     private Long aiProfileId;
+    private Long readerProfileId;
 
     /** Resolved from the session's AI Profile — drives which quick-action buttons show. */
     private List<String> enabledCapabilities;

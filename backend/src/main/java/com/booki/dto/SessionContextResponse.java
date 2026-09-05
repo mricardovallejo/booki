@@ -10,6 +10,8 @@ import java.util.List;
 public record SessionContextResponse(
         Long aiProfileId,
         String aiProfileName,
+        Long readerProfileId,
+        String readerProfileName,
         String language,
         String difficulty,
         List<String> enabledCapabilities,

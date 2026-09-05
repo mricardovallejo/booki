@@ -23,6 +23,8 @@ public class SessionRequest {
 
     private Long aiProfileId;
 
+    private Long readerProfileId;
+
     @NotNull
     private String difficulty;
 

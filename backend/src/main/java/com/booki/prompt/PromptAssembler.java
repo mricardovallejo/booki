@@ -2,9 +2,12 @@ package com.booki.prompt;
 
 import com.booki.domain.AiProfile;
 import com.booki.domain.Capability;
+import com.booki.domain.ReaderProfile;
 import com.booki.domain.Session;
 import com.booki.domain.SlotKey;
 import com.booki.dto.SessionContextResponse;
+import com.booki.service.ReaderProfileService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -17,16 +20,20 @@ import java.util.stream.Stream;
 /**
  * Builds the system prompt for every AI call in a session by layering, in
  * precedence order: BooKI core, the difficulty rubric for the active level, the
- * function's locked frame + editable body (capability calls only), the persona,
- * the reader context, then the session facts and the reading text. Also produces
- * the {@link SessionContextResponse} breakdown for {@code GET /sessions/{id}/context}.
+ * function's locked frame + editable body (capability calls only), the master
+ * persona (AI Profile), the reader context (reader profile), then the session
+ * facts and the reading text. Also produces the {@link SessionContextResponse}
+ * breakdown for {@code GET /sessions/{id}/context}.
  *
  * <p>Capability routing is appended by {@code ConversationEngine} (it owns the
  * registry); this class stays capability-agnostic apart from reading the
  * profile's enabled set.
  */
 @Component
+@RequiredArgsConstructor
 public class PromptAssembler {
+
+    private final ReaderProfileService readerProfiles;
 
     private static final Set<String> SUPPORTED_LANGUAGES = Set.of("en", "es", "fr");
     private static final Map<String, String> LANGUAGE_NAMES =
@@ -87,8 +94,8 @@ public class PromptAssembler {
         if (functionSlot != null) {
             appendSection(sb, "What to do this turn", framed(functionSlot, profile));
         }
-        appendSection(sb, "Persona", text(profile, SlotKey.PERSONA));
-        appendSection(sb, "Reader", text(profile, SlotKey.READER_CONTEXT));
+        appendSection(sb, "Master persona", text(profile, SlotKey.PERSONA));
+        appendSection(sb, "Reader", readerContextText(session));
         appendSection(sb, "This session", sessionFacts(session));
 
         // Fenced so the model can tell the page text apart from its instructions
@@ -113,9 +120,12 @@ public class PromptAssembler {
         layers.add(layer("core", "core", "BooKI core", false, "App", SlotPromptCatalog.CORE_PROMPT));
         layers.add(layer("rubric", "difficulty", "Difficulty — " + LEVEL_LABEL.get(difficulty),
                 true, source, blankToNull(text(profile, RUBRIC.get(difficulty)))));
-        layers.add(layer("persona", "persona", "Persona", true, source, blankToNull(text(profile, SlotKey.PERSONA))));
-        layers.add(layer("reader_context", "reader", "Reader context", true, source,
-                blankToNull(text(profile, SlotKey.READER_CONTEXT))));
+        layers.add(layer("persona", "persona", "Master persona", true, source,
+                blankToNull(text(profile, SlotKey.PERSONA))));
+        ReaderProfile reader = readerProfiles.resolveFor(session);
+        layers.add(layer("reader_context", "reader", "Reader profile", true,
+                reader != null ? "Reader profile \"" + reader.getName() + "\"" : "Reader profile",
+                blankToNull(readerContextText(session))));
         for (SlotKey fn : FUNCTION_SLOTS) {
             layers.add(layer(fn.wire(), "functions", FUNCTION_LAYER_LABEL.get(fn), true, source,
                     blankToNull(framed(fn, profile))));
@@ -127,6 +137,8 @@ public class PromptAssembler {
         return new SessionContextResponse(
                 profile != null ? profile.getId() : null,
                 profile != null ? profile.getName() : null,
+                reader != null ? reader.getId() : null,
+                reader != null ? reader.getName() : null,
                 language, difficulty,
                 enabled.stream().sorted().map(Capability::wire).toList(),
                 layers);
@@ -174,6 +186,22 @@ public class PromptAssembler {
 
     private static String text(AiProfile profile, SlotKey key) {
         return profile != null ? profile.text(key) : "";
+    }
+
+    /** The reader-context text the model reads: the level line (if set) + the free-text context. */
+    private String readerContextText(Session session) {
+        ReaderProfile reader = readerProfiles.resolveFor(session);
+        if (reader == null) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (reader.getReaderLevel() != null) {
+            parts.add("Reader level: " + reader.getReaderLevel().wire() + ".");
+        }
+        if (reader.getContext() != null && !reader.getContext().isBlank()) {
+            parts.add(reader.getContext().strip());
+        }
+        return String.join("\n", parts);
     }
 
     private static SessionContextResponse.Layer layer(

@@ -40,6 +40,11 @@ public class Session {
     @JoinColumn(name = "ai_profile_id")
     private AiProfile aiProfile;
 
+    /** Null → resolve the user's default (or the built-in) at read time. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reader_profile_id")
+    private ReaderProfile readerProfile;
+
     @Column(nullable = false, length = 20)
     private String difficulty;
 
@@ -50,13 +55,7 @@ public class Session {
     @Column(length = 20, name = "ai_provider")
     private String aiProvider;
 
-    @Column(nullable = false, columnDefinition = "TEXT", name = "config_json")
-    private String configJson;
-
     @CreationTimestamp
     @Column(nullable = false, updatable = false, name = "created_at")
     private Instant createdAt;
-
-    @Column(name = "completed_at")
-    private Instant completedAt;
 }

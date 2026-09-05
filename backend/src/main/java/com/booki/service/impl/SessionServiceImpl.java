@@ -21,6 +21,7 @@ import com.booki.repository.AiProfileRepository;
 import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
+import com.booki.service.ReaderProfileService;
 import com.booki.service.SessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ public class SessionServiceImpl implements SessionService {
     private final PromptAssembler promptAssembler;
     private final SessionProgressCalculator progressCalculator;
     private final ConversationEngine conversationEngine;
+    private final ReaderProfileService readerProfileService;
 
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
 
@@ -95,7 +97,7 @@ public class SessionServiceImpl implements SessionService {
         session.setLanguage(promptAssembler.resolveLanguage(request.getLanguage()));
         session.setAiProvider(request.getAiProvider());
         session.setAiProfile(resolveAiProfile(userId, request.getAiProfileId()));
-        session.setConfigJson("{}");
+        session.setReaderProfile(readerProfileService.forNewSession(userId, request.getReaderProfileId()));
 
         sessionRepository.save(session);
         return toResponse(session);
@@ -215,6 +217,7 @@ public class SessionServiceImpl implements SessionService {
         response.setCurrentPage(session.getCurrentPage());
         response.setDifficulty(session.getDifficulty());
         response.setAiProfileId(session.getAiProfile() != null ? session.getAiProfile().getId() : null);
+        response.setReaderProfileId(session.getReaderProfile() != null ? session.getReaderProfile().getId() : null);
         response.setEnabledCapabilities(promptAssembler.enabledCapabilities(session).stream()
                 .sorted().map(Capability::wire).toList());
         response.setLanguage(session.getLanguage());

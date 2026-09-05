@@ -41,19 +41,21 @@ tags:
     description: User-defined labels for organizing the library. A document can belong to any number of tags.
   - name: AI Profiles
     description: >
-      The full set of prompts a session runs on — persona, reader context,
-      difficulty levels, per-function prompts, capability routing — plus the
-      structured `readerLevel` and `enabledCapabilities`. Every account is seeded
-      with an editable copy of each shipped template; sessions always run on one
-      of the user's own profiles. The BooKI core is fixed and never part of a
-      profile.
-
-      NOTE: the frontend + Node mock have moved the reader context out into a
-      separate **Reader Profile** entity (`/reader-profiles`; the session picks
-      one via `session.readerProfileId`; `readerLevel` lives on the reader
-      profile) — see `docs/prompts.md` and ADR-017. This spec still describes the
-      current Spring contract (reader_context slot, readerLevel on the AI
-      Profile); it is updated when the backend split lands.
+      The "master" a session runs on — persona, the difficulty rubrics, the
+      per-function prompts, capability routing — plus `enabledCapabilities`.
+      Every account is seeded with an editable copy of each shipped template
+      (one flagged `isDefault`). The BooKI core is fixed and never part of a
+      profile. Who is reading is a separate **Reader Profile** (see that tag);
+      a session picks one of each. Full model: `docs/prompts.md`, ADR-015 + ADR-017.
+  - name: Reader Profiles
+    description: >
+      Who is reading, in one study context ("Languages", "Sciences",
+      "Philosophy"): their goal, prior knowledge, how they like to learn, any
+      accessibility need. Not tied to any AI Profile — a session picks one via
+      `readerProfileId`. Every user sees a built-in **read-only** default
+      ("General reader", a fill-in scaffold) plus their own; you duplicate the
+      built-in to make an editable one. Editing a reader profile changes it for
+      every session that uses it.
   - name: Sessions
     description: A reading session over a page range of one document — the core unit of the product.
   - name: Quiz
@@ -160,8 +162,8 @@ paths:
       summary: Update the current user's profile
       operationId: updateCurrentUser
       description: >
-        Account details only. The reader's learning context now lives per
-        AI Profile (its `reader_context` slot and `readerLevel`), not on the user.
+        Account details only (the display name). The reader's learning context
+        lives in reader profiles (see the Reader Profiles tag), not on the user.
       requestBody:
         content:
           application/json:
@@ -422,9 +424,8 @@ paths:
       summary: Update one of my AI Profiles
       operationId: updateAiProfile
       description: >
-        Edits the profile name, `readerLevel`, `enabledCapabilities`, and/or slot
-        bodies. Only the editable `content` of a slot can change — the locked
-        frame is fixed.
+        Edits the profile name, `enabledCapabilities`, and/or slot bodies. Only
+        the editable `content` of a slot can change — the locked frame is fixed.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
       requestBody:
@@ -433,11 +434,7 @@ paths:
             schema:
               type: object
               properties:
-                name: { type: string }
-                readerLevel:
-                  type: string
-                  enum: [beginner, intermediate, advanced, ""]
-                  description: A level, or "" to clear it. Omit the field to leave it unchanged.
+                name: { type: string, maxLength: 120 }
                 enabledCapabilities:
                   type: array
                   items: { $ref: "#/components/schemas/CapabilityHint" }
@@ -539,9 +536,8 @@ paths:
       summary: Restore the whole profile to its original template
       operationId: restoreAiProfile
       description: >
-        Resets every SlotPrompt's `text`, plus `readerLevel` and
-        `enabledCapabilities`, to the shipped template this profile is a copy of.
-        The profile name is kept.
+        Resets every SlotPrompt's `text` and `enabledCapabilities` to the
+        shipped template this profile is a copy of. The profile name is kept.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
       responses:
@@ -552,6 +548,106 @@ paths:
               schema: { $ref: "#/components/schemas/AiProfile" }
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /reader-profiles:
+    get:
+      tags: [Reader Profiles]
+      summary: List reader profiles
+      operationId: listReaderProfiles
+      description: The built-in read-only default plus the current user's own.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ReaderProfile" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Reader Profiles]
+      summary: Create a reader profile
+      operationId: createReaderProfile
+      description: >
+        Creates one owned by the current user. `fromId` copies an existing
+        profile's `context` / `readerLevel` (defaults to the built-in scaffold).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 120 }
+                context: { type: string, maxLength: 4000 }
+                readerLevel:
+                  allOf: [{ $ref: "#/components/schemas/ReaderLevel" }]
+                  nullable: true
+                fromId: { type: integer, description: "Copy context/level from this profile" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReaderProfile" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /reader-profiles/{id}:
+    patch:
+      tags: [Reader Profiles]
+      summary: Update one of my reader profiles
+      operationId: updateReaderProfile
+      description: >
+        The built-in default is read-only (`404` here). `isDefault: true` makes
+        this the user's default; it can't be unset directly (set another one).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 120 }
+                context: { type: string, maxLength: 4000 }
+                readerLevel:
+                  type: string
+                  enum: [beginner, intermediate, advanced, ""]
+                  description: A level, or "" to clear it. Omit to leave unchanged.
+                isDefault: { type: boolean, enum: [true] }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReaderProfile" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Reader Profiles]
+      summary: Delete one of my reader profiles
+      operationId: deleteReaderProfile
+      description: >
+        The built-in default cannot be deleted (`404`). Sessions that used the
+        deleted profile fall back to the user's default at read time.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -576,9 +672,14 @@ paths:
                   type: integer
                   nullable: true
                   description: >
-                    The AI Profile this session runs on. Omit to use the user's
-                    default profile (`isDefault: true`). The session keeps
-                    whichever profile it was created with.
+                    The AI Profile (persona) this session runs on. Omit to use
+                    the user's default profile. Kept for the session's life.
+                readerProfileId:
+                  type: integer
+                  nullable: true
+                  description: >
+                    The reader profile this session runs on. Omit to use the
+                    user's default. Kept for the session's life.
                 difficulty: { $ref: "#/components/schemas/Difficulty" }
                 language: { $ref: "#/components/schemas/SessionLanguage" }
       responses:
@@ -615,9 +716,11 @@ paths:
       operationId: getSessionContext
       description: >
         Transparency endpoint: the ordered layers that shape BooKI's answers for
-        this session — the fixed BooKI core, then the session's AI Profile
-        contributions (difficulty rubric for the active level, persona, reader
-        context). Surfaced in the frontend's "Context" info button.
+        this session — the fixed BooKI core, the session's AI Profile
+        contributions (difficulty rubric for the active level, master persona,
+        per-function, routing) and the reader profile's context. Also returns
+        `aiProfileName` and `readerProfileName`. Surfaced in the "Context" info
+        button.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
@@ -1190,6 +1293,24 @@ components:
       type: string
       enum: [beginner, intermediate, advanced]
 
+    ReaderProfile:
+      type: object
+      description: >
+        Who is reading, in one study context. `readOnly` is true only for the
+        built-in "General reader". `readerLevel` also drives the create-session
+        difficulty suggestion and is written into the assembled reader-context.
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        isDefault: { type: boolean }
+        readOnly: { type: boolean }
+        readerLevel:
+          allOf: [{ $ref: "#/components/schemas/ReaderLevel" }]
+          nullable: true
+        context: { type: string }
+        updatedAt: { type: string, format: date-time }
+      required: [id, name, isDefault, readOnly, readerLevel, context, updatedAt]
+
     AiProfileSummary:
       type: object
       description: An AI Profile without its SlotPrompts (list view).
@@ -1199,15 +1320,12 @@ components:
         isDefault:
           type: boolean
           description: True for the one profile pre-selected when creating a session.
-        readerLevel:
-          allOf: [{ $ref: "#/components/schemas/ReaderLevel" }]
-          nullable: true
         enabledCapabilities:
           type: array
           items: { $ref: "#/components/schemas/CapabilityHint" }
           description: The capabilities this profile allows (subset of the four).
         updatedAt: { type: string, format: date-time }
-      required: [id, name, isDefault, readerLevel, enabledCapabilities, updatedAt]
+      required: [id, name, isDefault, enabledCapabilities, updatedAt]
 
     AiProfile:
       allOf:
@@ -1231,7 +1349,6 @@ components:
           type: string
           enum:
             - persona
-            - reader_context
             - rubric_easy
             - rubric_medium
             - rubric_hard
@@ -1244,7 +1361,7 @@ components:
         label: { type: string }
         group:
           type: string
-          enum: [persona, reader, difficulty, functions, routing]
+          enum: [persona, difficulty, functions, routing]
         lockedPreamble: { type: string, nullable: true }
         lockedPostamble: { type: string, nullable: true }
         text: { type: string }
@@ -1265,6 +1382,7 @@ components:
         currentPage: { type: integer }
         difficulty: { $ref: "#/components/schemas/Difficulty" }
         aiProfileId: { type: integer, nullable: true }
+        readerProfileId: { type: integer, nullable: true }
         enabledCapabilities:
           type: array
           items: { $ref: "#/components/schemas/CapabilityHint" }
@@ -1286,6 +1404,8 @@ components:
       properties:
         aiProfileId: { type: integer, nullable: true }
         aiProfileName: { type: string, nullable: true }
+        readerProfileId: { type: integer, nullable: true }
+        readerProfileName: { type: string, nullable: true }
         language: { $ref: "#/components/schemas/SessionLanguage" }
         difficulty: { $ref: "#/components/schemas/Difficulty" }
         enabledCapabilities:

@@ -7,19 +7,14 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * Partial update. A missing field is left unchanged; {@code readerLevel} is the
- * exception — send {@code ""} to clear it (missing/null leaves it as is). Only
- * the editable {@code text} of a slot can change.
+ * Partial update. A missing field is left unchanged. Only the editable
+ * {@code text} of a slot can change — the locked frame is fixed.
  */
 @Data
 public class UpdateAiProfileRequest {
 
     @Size(max = 120)
     private String name;
-
-    /** "beginner" | "intermediate" | "advanced" | "" (clear); null = leave unchanged. */
-    @Size(max = 20)
-    private String readerLevel;
 
     private List<String> enabledCapabilities;
 

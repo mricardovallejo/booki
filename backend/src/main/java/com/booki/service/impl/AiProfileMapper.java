@@ -18,7 +18,7 @@ final class AiProfileMapper {
 
     static AiProfileSummaryResponse summary(AiProfile p) {
         return new AiProfileSummaryResponse(
-                p.getId(), p.getName(), p.isDefaultProfile(), wireLevel(p), wireCapabilities(p), p.getUpdatedAt());
+                p.getId(), p.getName(), p.isDefaultProfile(), wireCapabilities(p), p.getUpdatedAt());
     }
 
     static AiProfileResponse full(AiProfile p) {
@@ -27,7 +27,7 @@ final class AiProfileMapper {
                 .map(AiProfileMapper::slot)
                 .toList();
         return new AiProfileResponse(
-                p.getId(), p.getName(), p.isDefaultProfile(), wireLevel(p), wireCapabilities(p), p.getUpdatedAt(), slots);
+                p.getId(), p.getName(), p.isDefaultProfile(), wireCapabilities(p), p.getUpdatedAt(), slots);
     }
 
     private static AiProfileSlotResponse slot(SlotPrompt sp) {
@@ -36,10 +36,6 @@ final class AiProfileMapper {
                 k.wire(), k.label(), k.group().wire(),
                 k.lockedPreamble(), k.lockedPostamble(),
                 sp.getText(), sp.getOriginalText(), sp.isModified());
-    }
-
-    private static String wireLevel(AiProfile p) {
-        return p.getReaderLevel() != null ? p.getReaderLevel().wire() : null;
     }
 
     private static List<String> wireCapabilities(AiProfile p) {

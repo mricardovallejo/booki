@@ -2,7 +2,6 @@ package com.booki.service.impl;
 
 import com.booki.domain.AiProfile;
 import com.booki.domain.Capability;
-import com.booki.domain.ReaderLevel;
 import com.booki.domain.SlotKey;
 import com.booki.domain.SlotPrompt;
 import com.booki.dto.AiProfileResponse;
@@ -45,9 +44,6 @@ public class AiProfileServiceImpl implements AiProfileService {
         if (request.getName() != null && !request.getName().isBlank()) {
             profile.setName(request.getName().trim());
         }
-        if (request.getReaderLevel() != null) {
-            profile.setReaderLevel(ReaderLevel.ofWire(request.getReaderLevel()));
-        }
         if (request.getEnabledCapabilities() != null) {
             profile.setEnabledCapabilities(parseCapabilities(request.getEnabledCapabilities()));
         }
@@ -81,7 +77,6 @@ public class AiProfileServiceImpl implements AiProfileService {
         copy.setName((name != null && !name.isBlank()) ? name.trim() : source.getName() + " (copy)");
         copy.setBasedOnTemplate(source.getBasedOnTemplate());
         copy.setDefaultProfile(false);
-        copy.setReaderLevel(source.getReaderLevel());
         copy.setEnabledCapabilities(copyOf(source.getEnabledCapabilities()));
         for (SlotPrompt slot : source.getSlots()) {
             SlotPrompt copied = new SlotPrompt(slot.getSlot(), slot.getText());

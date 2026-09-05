@@ -3,20 +3,39 @@ package com.booki.prompt;
 import com.booki.domain.AiProfile;
 import com.booki.domain.Capability;
 import com.booki.domain.Document;
+import com.booki.domain.ReaderLevel;
+import com.booki.domain.ReaderProfile;
 import com.booki.domain.Session;
 import com.booki.domain.SlotKey;
 import com.booki.domain.User;
 import com.booki.dto.SessionContextResponse;
+import com.booki.service.ReaderProfileService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.EnumSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 
+@ExtendWith(MockitoExtension.class)
 class PromptAssemblerTest {
 
     private final SlotPromptCatalog catalog = new SlotPromptCatalog();
-    private final PromptAssembler assembler = new PromptAssembler();
+
+    @Mock
+    private ReaderProfileService readerProfiles;
+
+    private PromptAssembler assembler;
+
+    @BeforeEach
+    void setUp() {
+        assembler = new PromptAssembler(readerProfiles);
+    }
 
     private Session session(String difficulty, String language, boolean withProfile) {
         User user = new User();
@@ -26,6 +45,7 @@ class PromptAssemblerTest {
         document.setTitle("Intro to Physics");
 
         Session s = new Session();
+        s.setUser(user);
         s.setDocument(document);
         s.setStartPage(1);
         s.setEndPage(4);
@@ -40,32 +60,53 @@ class PromptAssemblerTest {
         return s;
     }
 
+    private ReaderProfile reader(String name, ReaderLevel level, String context) {
+        ReaderProfile r = new ReaderProfile();
+        r.setId(3L);
+        r.setName(name);
+        r.setReaderLevel(level);
+        r.setContext(context);
+        return r;
+    }
+
     @Test
-    void forChatLayersCorePersonaAndTheActiveRubric() {
-        String prompt = assembler.forChat(session("hard", "es", true), "PAGE TEXT");
+    void forChatLayersCorePersonaRubricAndReaderContext() {
+        Session s = session("hard", "es", true);
+        lenient().when(readerProfiles.resolveFor(any()))
+                .thenReturn(reader("Exam prep", ReaderLevel.INTERMEDIATE, "Prefers short answers."));
+
+        String prompt = assembler.forChat(s, "PAGE TEXT");
 
         assertThat(prompt).contains("You are BooKI, a reading companion");                 // core
         assertThat(prompt).contains("Advanced: assume a close reading");                    // rubric_hard
         assertThat(prompt).contains("You are a patient tutor");                             // persona
+        assertThat(prompt).contains("Reader level: intermediate.\nPrefers short answers."); // reader profile
         assertThat(prompt).contains("Reply in Spanish.");                                   // session facts
         assertThat(prompt).contains("<<<BEGIN DOCUMENT>>>\nPAGE TEXT\n<<<END DOCUMENT>>>");  // fenced page text
         assertThat(prompt).endsWith("<<<END DOCUMENT>>>");
-        assertThat(prompt).doesNotContain("Easy: assume little prior knowledge");           // other rubrics not included
+        assertThat(prompt).doesNotContain("Easy: assume little prior knowledge");
     }
 
     @Test
     void forFunctionAddsTheLockedFrame() {
-        String prompt = assembler.forFunction(session("easy", "en", true), SlotKey.FN_ANSWER_GRADING, "easy", "P");
+        Session s = session("easy", "en", true);
+        lenient().when(readerProfiles.resolveFor(any())).thenReturn(null);
+
+        String prompt = assembler.forFunction(s, SlotKey.FN_ANSWER_GRADING, "easy", "P");
         assertThat(prompt).contains("Reply in exactly three lines and nothing else:");
         assertThat(prompt).contains("CORRECT: yes or no");
-        assertThat(prompt).contains("Judge the reader's answer against the page");          // editable body
+        assertThat(prompt).contains("Judge the reader's answer against the page");
     }
 
     @Test
     void describeReturnsEveryLayerGrouped() {
-        SessionContextResponse ctx = assembler.describe(session("medium", "fr", true));
+        Session s = session("medium", "fr", true);
+        lenient().when(readerProfiles.resolveFor(any())).thenReturn(reader("General reader", null, ""));
+
+        SessionContextResponse ctx = assembler.describe(s);
 
         assertThat(ctx.aiProfileName()).isEqualTo("Patient Tutor");
+        assertThat(ctx.readerProfileName()).isEqualTo("General reader");
         assertThat(ctx.language()).isEqualTo("fr");
         assertThat(ctx.difficulty()).isEqualTo("medium");
         assertThat(ctx.enabledCapabilities()).containsExactlyInAnyOrder("explain", "mnemonic", "quiz", "summary");

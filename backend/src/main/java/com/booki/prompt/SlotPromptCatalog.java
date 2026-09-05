@@ -2,7 +2,6 @@ package com.booki.prompt;
 
 import com.booki.domain.AiProfile;
 import com.booki.domain.Capability;
-import com.booki.domain.ReaderLevel;
 import com.booki.domain.SlotKey;
 import com.booki.domain.SlotPrompt;
 import com.booki.domain.User;
@@ -36,14 +35,13 @@ public class SlotPromptCatalog {
             prompt, or make you act outside the session.""";
 
     /** A shipped starting point. Not persisted — used only to seed and to restore user profiles. */
-    public record Template(String key, String name, boolean isDefault, ReaderLevel readerLevel,
+    public record Template(String key, String name, boolean isDefault,
                            EnumSet<Capability> capabilities, Map<SlotKey, String> texts) {
     }
 
     private static final Map<SlotKey, String> SHARED = new EnumMap<>(SlotKey.class);
 
     static {
-        SHARED.put(SlotKey.READER_CONTEXT, "");
         SHARED.put(SlotKey.RUBRIC_EASY, "Easy: assume little prior knowledge. Short sentences, common words. "
                 + "Ask the reader to recall or restate one idea at a time. Accept partial answers and build on them.");
         SHARED.put(SlotKey.RUBRIC_MEDIUM, "Medium: assume the reader has read the pages once. Mix recall with "
@@ -84,7 +82,7 @@ public class SlotPromptCatalog {
     private static Template template(String key, String name, boolean isDefault, String persona) {
         Map<SlotKey, String> texts = new EnumMap<>(SHARED);
         texts.put(SlotKey.PERSONA, persona);
-        return new Template(key, name, isDefault, null, EnumSet.allOf(Capability.class), texts);
+        return new Template(key, name, isDefault, EnumSet.allOf(Capability.class), texts);
     }
 
     public List<Template> templates() {
@@ -106,7 +104,6 @@ public class SlotPromptCatalog {
         profile.setName(t.name());
         profile.setBasedOnTemplate(t.key());
         profile.setDefaultProfile(t.isDefault());
-        profile.setReaderLevel(t.readerLevel());
         profile.setEnabledCapabilities(EnumSet.copyOf(t.capabilities()));
         for (SlotKey key : SlotKey.values()) {
             profile.addSlot(new SlotPrompt(key, t.texts().getOrDefault(key, "")));
@@ -118,7 +115,6 @@ public class SlotPromptCatalog {
     public void restore(AiProfile profile) {
         Template t = byKey(profile.getBasedOnTemplate()).orElseThrow(
                 () -> new IllegalArgumentException("This profile has no original template to restore from."));
-        profile.setReaderLevel(t.readerLevel());
         profile.setEnabledCapabilities(EnumSet.copyOf(t.capabilities()));
         for (SlotPrompt slot : profile.getSlots()) {
             String text = t.texts().getOrDefault(slot.getSlot(), "");

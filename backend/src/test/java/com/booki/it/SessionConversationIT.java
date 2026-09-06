@@ -51,7 +51,7 @@ class SessionConversationIT extends IntegrationTestBase {
         assertThat(session.getTitle()).contains("(pages 1-3)");
         assertThat(session.getAiProvider()).isEqualTo("fake");
         assertThat(session.getEnabledCapabilities()).containsExactlyInAnyOrder("explain", "mnemonic", "quiz", "summary");
-        assertThat(session.getReaderProfileId()).isNull();
+        assertThat(session.getReaderProfileId()).isNotNull();
     }
 
     @Test

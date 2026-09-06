@@ -23,10 +23,7 @@ import java.util.Objects;
 public class ReaderProfileServiceImpl implements ReaderProfileService {
 
     static final String GENERIC_CONTEXT =
-            "My goal for this reading: \n"
-                    + "What I already know about the topic: \n"
-                    + "How I like to learn (examples, definitions, pace): \n"
-                    + "Anything that helps me (short paragraphs, dyslexia-friendly formatting, ...): ";
+            ReaderProfileProvisioner.FALLBACK_CONTEXT;
 
     private final ReaderProfileRepository repository;
     private final UserRepository userRepository;
@@ -49,7 +46,7 @@ public class ReaderProfileServiceImpl implements ReaderProfileService {
 
         ReaderProfile from = request.getFromId() != null
                 ? visible.stream().filter(r -> r.getId().equals(request.getFromId())).findFirst().orElse(null)
-                : null;
+                : visible.stream().filter(r -> r.getUser() == null && r.isDefaultProfile()).findFirst().orElse(null);
 
         ReaderProfile profile = new ReaderProfile();
         profile.setUser(user);
@@ -64,9 +61,9 @@ public class ReaderProfileServiceImpl implements ReaderProfileService {
         profile.setReadOnly(false);
         ReaderProfile saved = repository.save(profile);
 
-        // The user's first own reader profile becomes their default — until then
-        // sessions run on the built-in "General reader". Later profiles don't
-        // take the slot; the user re-points it explicitly (update isDefault).
+        // Registration provisions the first owned default. Keep this guard for
+        // creation after the last owned profile was deleted. Later profiles never
+        // steal an established default.
         if (!hadOwnProfile && user.getDefaultReaderProfile() == null) {
             user.setDefaultReaderProfile(saved);
             userRepository.save(user);

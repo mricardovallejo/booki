@@ -24,6 +24,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtUtil jwtUtil;
     private final AiProfileRepository aiProfileRepository;
     private final SlotPromptCatalog slotPromptCatalog;
+    private final ReaderProfileProvisioner readerProfileProvisioner;
 
     @Override
     @Transactional
@@ -38,6 +39,7 @@ public class AuthServiceImpl implements AuthService {
         user.setName(resolveName(request, email));
         userRepository.save(user);
         aiProfileRepository.saveAll(slotPromptCatalog.seedFor(user));
+        readerProfileProvisioner.provisionFor(user);
         return toAuthResponse(user);
     }
 

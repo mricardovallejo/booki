@@ -2,6 +2,7 @@ package com.booki.it;
 
 import com.booki.dto.AiProfileSummaryResponse;
 import com.booki.dto.AuthResponse;
+import com.booki.dto.ReaderProfileResponse;
 import com.booki.dto.UpdateUserRequest;
 import com.booki.dto.UserResponse;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,25 @@ class AuthSecurityIT extends IntegrationTestBase {
                         "Dyslexia-Friendly Guide");
         assertThat(profiles).filteredOn(AiProfileSummaryResponse::isDefault)
                 .singleElement().extracting(AiProfileSummaryResponse::name).isEqualTo("Patient Tutor");
+    }
+
+    @Test
+    void registerSeedsAnEditableDefaultReaderProfile() {
+        AuthData user = register();
+
+        ResponseEntity<List<ReaderProfileResponse>> response = rest.exchange(
+                "/api/reader-profiles", HttpMethod.GET, new HttpEntity<>(auth(user.token())),
+                new ParameterizedTypeReference<>() {
+                });
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).filteredOn(profile -> !profile.readOnly())
+                .singleElement()
+                .satisfies(profile -> {
+                    assertThat(profile.name()).isEqualTo("My reader profile");
+                    assertThat(profile.isDefault()).isTrue();
+                    assertThat(profile.context()).contains("My goal for this reading");
+                });
     }
 
     @Test

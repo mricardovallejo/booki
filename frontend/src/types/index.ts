@@ -26,7 +26,7 @@ export interface ReaderProfile {
   id: number;
   name: string;
   isDefault: boolean;
-  /** The built-in default is read-only — duplicate it to make your own. */
+  /** Shipped templates are read-only; user-owned profiles are editable. */
   readOnly: boolean;
   readerLevel: ReaderLevel | null;
   context: string;

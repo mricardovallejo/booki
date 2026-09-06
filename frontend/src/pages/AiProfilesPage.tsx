@@ -76,12 +76,8 @@ export default function AiProfilesPage() {
     restore
   } = editor;
 
-  // Reader profiles are edited here too, but they belong to no tutor profile — a
-  // session picks one. This picks which one you're editing (default: the user's
-  // default).
-  // Land on one of the user's OWN reader profiles when they have any (their
-  // default, else the first editable one) — not the built-in read-only template,
-  // which has no Save / Delete and reads as a dead end.
+  // Reader profiles are independent from tutor profiles. Registration provisions
+  // an editable default; fallback data still lands on the best visible profile.
   const defaultReaderId =
     (readers.profiles.find((r) => r.isDefault && !r.readOnly) ??
       readers.profiles.find((r) => !r.readOnly) ??
@@ -560,8 +556,8 @@ export default function AiProfilesPage() {
                   <p className="mt-1 text-xs text-white/50">
                     Renaming, the starting level, the context and Delete only work on your own reader
                     profiles. Use <span className="font-semibold text-white">New</span> or{' '}
-                    <span className="font-semibold text-white">Duplicate</span> above to make one — it
-                    becomes your default, and Save / Delete show up here.
+                    <span className="font-semibold text-white">Duplicate</span> above to make an editable
+                    profile. You can then make it your default; Save and Delete will be available here.
                   </p>
                 </div>
               )}

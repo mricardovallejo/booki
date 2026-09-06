@@ -217,3 +217,20 @@ will use SSE, which every browser supports.
   pre-production rule: wipe the target database so V1 runs again. The catalog
   location can be overridden with `BOOKI_PROMPT_CATALOG` for a controlled test,
   but prompt bodies are not placed in environment variables.
+
+## ADR-020: provision an editable default reader profile
+
+- **Context**: a newly registered account had only the shared, read-only reader
+  templates. The Reader profile tab therefore opened on "General reader" with a
+  callout instead of an editable form; the user had to press `New` before the
+  intended generic reader setup existed. The UI already preferred an owned
+  profile, so this was a lifecycle omission rather than a selector bug.
+- **Decision**: registration provisions one owned `My reader profile`, copying
+  `context` and `readerLevel` from the shipped "General reader", and stores it as
+  the account default. Creation without an explicit `fromId` also copies the
+  current General reader scaffold instead of a divergent hard-coded copy, with a
+  small fallback used only when migrations are disabled in tests.
+- **Consequence**: the Reader profile editor has a usable editable form on first
+  visit, and a new session resolves to an owned reader profile by default. The
+  shipped General and dyslexia-friendly profiles remain shared and read-only.
+  No schema or `V1__init.sql` change is required.

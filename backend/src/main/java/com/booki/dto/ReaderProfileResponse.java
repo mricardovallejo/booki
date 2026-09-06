@@ -2,7 +2,7 @@ package com.booki.dto;
 
 import java.time.Instant;
 
-/** A reader profile. {@code readOnly} is true only for the built-in "General reader". */
+/** A reader profile. {@code readOnly} is true for shipped, shared templates. */
 public record ReaderProfileResponse(
         Long id,
         String name,

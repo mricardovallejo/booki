@@ -52,7 +52,9 @@ tags:
       Who is reading, in one study context ("Languages", "Sciences",
       "Philosophy"): their goal, prior knowledge, how they like to learn, any
       accessibility need. Not tied to any AI Profile — a session picks one via
-      `readerProfileId`. Every user sees shipped **read-only** reader templates
+      `readerProfileId`. Registration provisions an editable `My reader profile`
+      copied from the General reader scaffold and makes it the account default.
+      Every user also sees shipped **read-only** reader templates
       (the default "General reader" scaffold and "Dyslexia-friendly reader")
       plus their own; duplicate a shipped template to customize it. Editing a reader profile changes it for
       every session that uses it.

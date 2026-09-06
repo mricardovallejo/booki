@@ -49,6 +49,7 @@ class ReaderProfileServiceImplTest {
         builtIn = new ReaderProfile();
         builtIn.setId(1L);
         builtIn.setName("General reader");
+        builtIn.setContext(ReaderProfileServiceImpl.GENERIC_CONTEXT);
         builtIn.setDefaultProfile(true);
         builtIn.setReadOnly(true);
 

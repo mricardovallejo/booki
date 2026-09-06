@@ -132,7 +132,8 @@ Reader profile.)
   name).
 - **Duplicate** makes another autonomous copy.
 - **Reader profiles**: shipped read-only templates (`user_id IS NULL`) plus
-  whatever the user has made. "General reader" is the fallback default;
+  an editable `My reader profile` provisioned for every account. "General reader"
+  is the source scaffold and fallback default;
   "Dyslexia-friendly reader" supplies accessibility guidance without assuming
   a lower difficulty or intellectual level. `POST /reader-profiles` can copy one
   with `fromId`; shipped templates are not editable/deletable. Deleting a
@@ -258,21 +259,21 @@ backend keeps its own deliberately simplified UI fixture.
 and `describe(session)` for `GET /sessions/{id}/context`. It resolves the reader
 context via `ReaderProfileService.resolveFor(session)` (the session's reader
 profile, else the user's default, else the built-in). For a chat turn
-`ConversationEngine` composes `forChat` + `chatRoutingSection` (the
-`capability_routing` locked frame + the profile's editable body) +
-`CapabilityRegistry.routerInstructions(enabled)` (just the dynamic list of enabled
-capabilities); a routed directive or explicit `capabilityHint` for a disabled
-capability is rejected. Quiz / summary / explain / mnemonic ask the assembler for
-their `fn_*` SlotPrompt.
+`ConversationEngine` gives the assembler the live enabled-capability descriptions;
+the assembler combines them with the profile's `capability_routing` frame before
+the final untrusted document block. A routed directive or explicit
+`capabilityHint` for a disabled capability is rejected. Quiz / summary / explain /
+mnemonic ask the assembler for their `fn_*` SlotPrompt.
 
 **`ReaderProfileServiceImpl`** — `list` (built-in + own), `create` (optional
 `fromId` copy), `update` / `delete` (404 on the built-in), `resolveFor(session)`
 and `forNewSession(userId, requestedId)`.
 
-Registration seeds one AI Profile per template (`SlotPromptCatalog.seedFor(user)`).
+Registration seeds one AI Profile per template (`SlotPromptCatalog.seedFor(user)`)
+and provisions an editable default reader profile copied from "General reader".
 `AiProfileBackfill` adds only newly shipped template keys to existing accounts;
-it never rewrites their prompts. Reader templates need no per-user seed. The
-schema is a single `V1__init.sql` — **wipe the
+it never rewrites their prompts. Shipped reader templates remain shared and
+read-only. The schema is a single `V1__init.sql` — **wipe the
 target DB before deploying a change to it** so Flyway re-runs clean.
 
 ## Design principles

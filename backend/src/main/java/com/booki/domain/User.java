@@ -33,9 +33,9 @@ public class User {
     private Instant createdAt;
 
     /**
-     * The reader profile new sessions default to. Null until the user makes their
-     * first own reader profile (or explicitly picks one) — sessions fall back to
-     * the built-in "General reader" while it is null.
+     * The owned reader profile new sessions default to. Registration provisions
+     * one; null remains valid after deletion, in which case sessions fall back
+     * to the shipped "General reader" template.
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "default_reader_profile_id")

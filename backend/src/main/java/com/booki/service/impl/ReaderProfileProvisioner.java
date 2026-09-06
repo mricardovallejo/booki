@@ -15,10 +15,18 @@ public class ReaderProfileProvisioner {
 
     static final String DEFAULT_NAME = "My reader profile";
     static final String FALLBACK_CONTEXT =
-            "My goal for this reading: \n"
-                    + "What I already know about the topic: \n"
-                    + "How I like to learn (examples, definitions, pace): \n"
-                    + "Anything that helps me (short paragraphs, dyslexia-friendly formatting, ...): ";
+            "I use this general profile when I have not specified a subject-specific goal or learning preference.\n"
+                    + "Calibrate your support from evidence in the conversation: what I ask, understand, or find "
+                    + "difficult. Do not infer my age, education, intelligence, or reading ability.\n"
+                    + "Help me build a clear mental model of the text. Start with the central idea and only the "
+                    + "background needed to understand it. Define unfamiliar terms in context, make connections "
+                    + "between ideas explicit, and use a concrete example or analogy when it adds real clarity.\n"
+                    + "Begin concisely and in plain language. Increase detail, technical depth, or challenge as my "
+                    + "questions and answers show that it would help. If I seem confused, change the explanation "
+                    + "or example instead of merely repeating it.\n"
+                    + "When checking understanding, ask one focused question at a time and use my answer to choose "
+                    + "the next step. Ask a brief clarifying question only when my goal or preferred approach would "
+                    + "materially change the help; otherwise start helping immediately.";
 
     private final ReaderProfileRepository readerProfiles;
     private final UserRepository users;

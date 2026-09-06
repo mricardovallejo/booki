@@ -551,24 +551,23 @@ export default function AiProfilesPage() {
               {selectedReader && selectedReader.readOnly && (
                 <div className="rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/10">
                   <p className="text-sm font-semibold text-white">
-                    "{selectedReader.name}" is the built-in template — read-only
+                    "{selectedReader.name}" is a shipped template — read-only
                   </p>
                   <p className="mt-1 text-xs text-white/50">
-                    Renaming, the starting level, the context and Delete only work on your own reader
-                    profiles. Use <span className="font-semibold text-white">New</span> or{' '}
-                    <span className="font-semibold text-white">Duplicate</span> above to make an editable
-                    profile. You can then make it your default; Save and Delete will be available here.
+                    Its complete context is shown below. Use{' '}
+                    <span className="font-semibold text-white">Duplicate</span> to make an editable copy.
                   </p>
                 </div>
               )}
 
-              {selectedReader && !selectedReader.readOnly && (
+              {selectedReader && (
                 <>
                   <div className="sm:max-w-sm">
                     <Field label="Name">
                       <Input
                         value={readerDraft.name}
                         maxLength={120}
+                        readOnly={selectedReader.readOnly}
                         onChange={(e) => setReaderDraft((d) => ({ ...d, name: e.target.value }))}
                       />
                     </Field>
@@ -578,6 +577,7 @@ export default function AiProfilesPage() {
                     <Field label="Starting level">
                       <Select
                         value={readerDraft.readerLevel}
+                        disabled={selectedReader.readOnly}
                         onChange={(e) =>
                           setReaderDraft((d) => ({ ...d, readerLevel: e.target.value as ReaderLevel | '' }))
                         }
@@ -597,23 +597,28 @@ export default function AiProfilesPage() {
                     in the tutor profile's <span className="text-white/60">Difficulty levels</span>.
                   </Explainer>
 
-                  <TextArea
-                    value={readerDraft.context}
-                    maxLength={4000}
-                    onChange={(e) => setReaderDraft((d) => ({ ...d, context: e.target.value }))}
-                    rows={9}
-                    className="font-mono text-[13px] leading-relaxed"
-                    placeholder={
-                      'Describe yourself for this reading: what you want out of it, how familiar you ' +
-                      'already are with the topic, how you learn best (worked examples, plain definitions, ' +
-                      'analogies, a slower pace), and anything that helps you follow along (short paragraphs, ' +
-                      'no jargon, dyslexia-friendly formatting).'
-                    }
-                  />
+                  <Field label="Reader context">
+                    <TextArea
+                      value={readerDraft.context}
+                      maxLength={4000}
+                      readOnly={selectedReader.readOnly}
+                      onChange={(e) => setReaderDraft((d) => ({ ...d, context: e.target.value }))}
+                      rows={12}
+                      className="font-mono text-[13px] leading-relaxed"
+                      placeholder={
+                        'Describe yourself for this reading: what you want out of it, how familiar you ' +
+                        'already are with the topic, how you learn best (worked examples, plain definitions, ' +
+                        'analogies, a slower pace), and anything that helps you follow along (short paragraphs, ' +
+                        'one question at a time, key words, sentence starters, or a clear visual structure).'
+                      }
+                    />
+                  </Field>
 
-                  <Button onClick={onSaveReader} disabled={!readerDirty || readerSaving}>
-                    {readerSaving ? 'Saving…' : readerDirty ? 'Save changes' : 'Saved'}
-                  </Button>
+                  {!selectedReader.readOnly && (
+                    <Button onClick={onSaveReader} disabled={!readerDirty || readerSaving}>
+                      {readerSaving ? 'Saving…' : readerDirty ? 'Save changes' : 'Saved'}
+                    </Button>
+                  )}
                 </>
               )}
             </>

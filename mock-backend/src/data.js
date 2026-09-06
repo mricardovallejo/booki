@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { buildFactoryAiProfiles, seedUserAiProfiles } = require('./aiProfiles');
-const { FACTORY_READER } = require('./readerProfiles');
+const { FACTORY_READER, LANGUAGE_SUPPORT_READER } = require('./readerProfiles');
 
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -20,13 +20,13 @@ let users = [
   }
 ];
 
-// Hidden originals (ids 1-4, userId null) + one editable set of copies per user.
+// Hidden originals (userId null) + one editable set of copies per user.
 const factoryTemplates = buildFactoryAiProfiles();
 let aiProfiles = [...factoryTemplates];
 
 // Reader profiles: who is reading, per study context. Every list starts with the
-// read-only FACTORY_READER (id 1); users duplicate it into their own.
-let readerProfiles = [{ ...FACTORY_READER }];
+// read-only shipped readers; users duplicate one into their own.
+let readerProfiles = [{ ...FACTORY_READER }, { ...LANGUAGE_SUPPORT_READER }];
 
 function nextReaderProfileId() {
   return readerProfiles.length ? Math.max(...readerProfiles.map((r) => r.id)) + 1 : 1;
@@ -40,7 +40,7 @@ function seedProfilesForUser(userId) {
   return { copies };
 }
 
-// Demo user: the 4 AI copies + one custom reader profile. Its seed sessions
+// Demo user: the AI template copies + one custom reader profile. Its seed sessions
 // (below) pick a reader profile each.
 let demoExamPrepReaderId = null;
 (() => {

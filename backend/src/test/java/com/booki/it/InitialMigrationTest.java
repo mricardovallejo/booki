@@ -24,14 +24,20 @@ class InitialMigrationTest {
         try (var connection = DriverManager.getConnection(url, "sa", "");
              var statement = connection.createStatement();
              var rows = statement.executeQuery(
-                     "select name, is_default, read_only from reader_profiles order by id")) {
+                     "select name, context, is_default, read_only from reader_profiles order by id")) {
             assertThat(rows.next()).isTrue();
             assertThat(rows.getString("name")).isEqualTo("General reader");
+            assertThat(rows.getString("context"))
+                    .contains("Calibrate your support from evidence in the conversation")
+                    .contains("ask one focused question at a time");
             assertThat(rows.getBoolean("is_default")).isTrue();
             assertThat(rows.getBoolean("read_only")).isTrue();
 
             assertThat(rows.next()).isTrue();
-            assertThat(rows.getString("name")).isEqualTo("Dyslexia-friendly reader");
+            assertThat(rows.getString("name")).isEqualTo("Language-support reader");
+            assertThat(rows.getString("context"))
+                    .contains("support understanding or expressing spoken or written language")
+                    .contains("not a diagnosis or a measure of intelligence");
             assertThat(rows.getBoolean("is_default")).isFalse();
             assertThat(rows.getBoolean("read_only")).isTrue();
             assertThat(rows.next()).isFalse();

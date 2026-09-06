@@ -163,7 +163,7 @@ will use SSE, which every browser supports.
 
 - **Context**: ADR-015 folded the reader's own context into each AI Profile as a `reader_context` slot — "the profile is already per study-context". In use that was wrong: the reader is the same person across personas, but their context differs by *subject* (learning a language vs. reading philosophy vs. studying science), not by which tutor persona they pick. Every seeded AI Profile shipped with an empty `reader_context`, and the editor offered "copy reader context from another profile" — a control that only makes sense if reader context varied by persona. `reader_level` (a property of the reader) also sat on the AI Profile.
 - **Decision**: split the reader context back out into a **Reader Profile** — a named, reusable entity ("Languages", "Sciences", "Philosophy") holding `context` + `readerLevel`, with **no association to any AI Profile**. The **session** picks one AI Profile *and* one reader profile at creation (`session.aiProfileId`, `session.readerProfileId`); the reader profile is resolved from the session at turn time. A reader profile is **shared** — editing it changes it for every session that uses it. (A first pass paired the reader profile to the AI Profile via `AiProfile.readerProfileId`; the user rejected that — the master and the reader are orthogonal, so the choice belongs to the session.)
-  - There is one built-in **read-only** reader profile ("General reader", a fill-in scaffold, `readOnly`, `isDefault` until the user sets their own). You don't edit it — you **duplicate** it (like the AI Profile factory templates). `readerLevel` lives here and is also written into the assembled reader-context layer (`Reader level: intermediate.`), not just used as a difficulty hint.
+  - There is one built-in **read-only** reader profile ("General reader", an adaptive general-purpose scaffold, `readOnly`, `isDefault` until the user sets their own). You don't edit it — you **duplicate** it (like the AI Profile factory templates). `readerLevel` lives here and is also written into the assembled reader-context layer (`Reader level: intermediate.`), not just used as a difficulty hint.
   - Editing both kinds happens on the AI Profiles screen: the AI Profile editor plus a standalone "Reader profiles" section (pick which to edit / rename / set level / edit the shared context / save / duplicate / delete). The `reader_context` slot and the "copy from another profile" control are gone. `readerLevel` and `readerProfileId` are gone from the AI Profile entirely.
   - "Persona" is relabelled **"Master persona"** (the label didn't convey that it's the assistant's character — name/gender, tone, pedagogy). *(Reverted to plain "Persona" by ADR-018.)* The AI Profiles editor drops the "Advanced" fold — all slot groups (persona, difficulty, function prompts, capability routing) are always visible.
   - `CreateSessionModal` gains a reader-profile picker; `SessionSidebar` and the ℹ context panel show both the AI Profile and the reader profile, differentiated.
@@ -175,23 +175,26 @@ will use SSE, which every browser supports.
 - **Context**: the AI Profiles screen tested confusingly. "AI Profile" / "master" / "Master persona" were three names for one thing; the page was titled "Profiles" but also edited reader profiles, nested under the tutor editor's sidebar; "difficulty" appeared in three places with two vocabularies (`beginner/intermediate/advanced` vs `Easy/Medium/Advanced`); the reader Save/Delete were invisible whenever the read-only built-in reader was selected (which was the default).
 - **Decision** — **labels and layout in the frontend only. No backend, API, route, entity, or prompt-assembly change.** The code keeps `AiProfile` / `SlotKey` / `/ai-profiles`.
   - "AI Profile" → **"tutor profile"** in all UI copy; "Master persona" → just **"persona"** (reverting that part of ADR-017); the page → **"Reading setup"**; `ProfilePage` and its menu link → **"Account details"**.
-  - The page becomes **two peer tabs** ("Tutor profile" / "Reader profile"), each: selector + `New` / `Duplicate` / `Delete` + editor + a bottom `Save changes`. Tutor `New` copies the user's default (there is no blank template endpoint); reader `New` is a blank editable copy of the scaffold. The reader tab lands on one of the user's own profiles; the read-only built-in shows an explanatory callout, not a dead form.
+  - The page becomes **two peer tabs** ("Tutor profile" / "Reader profile"), each: selector + `New` / `Duplicate` / `Delete` + editor + a bottom `Save changes`. Tutor `New` copies the user's default (there is no blank template endpoint); reader `New` is a blank editable copy of the scaffold. The reader tab lands on one of the user's own profiles; shipped read-only profiles display their full content in read-only mode with a duplication callout.
   - Difficulty: one vocabulary in the UI — the reader's stored `readerLevel` (`beginner|intermediate|advanced`, unchanged) is shown as `Easy|Medium|Advanced`; "Reader level" field → "Starting level"; short copy in each of the three places states its role (reader = preset, session = active level, tutor profile = the definition).
   - Session sidebar shows `Tutor: <name>` / `Reader: <name>` chips. Long help text is a small "?" disclosure, kept to two.
 - **Consequence**: `docs/frontend.md`, `docs/prompts.md` (a "UI terminology" note draws the line between code/API names and UI labels). Nothing to migrate or redeploy.
 
-## ADR-019: versioned prompt catalog and dyslexia-friendly shipped profiles
+## ADR-019: versioned prompt catalog and language-support shipped profiles
 
 - **Context**: the production core, shared SlotPrompt defaults and shipped tutor
   personas were long Java string literals in `SlotPromptCatalog`; locked frames
   were mixed into `SlotKey`; and the Node mock duplicated the same prose. This
   made prompt review awkward and encouraged the UI-only mock to look like a
-  second production source. A dyslexia-friendly setup was also needed without
-  equating a decoding/accessibility need with low intellectual difficulty.
+  second production source. A language-aware setup was also needed for readers
+  who may need help understanding or expressing spoken or written language,
+  without assigning a diagnosis or equating communication difficulty with low
+  intellectual ability.
 - **Decision**:
   - The authoritative production wording moves to the versioned
     `backend/src/main/resources/prompts/catalog.yml`. It holds the fixed core,
-    shared editable starting texts and shipped tutor personas.
+    shared editable starting texts, shipped tutor personas, and optional
+    per-template prompt overrides.
   - `SlotPromptCatalog` loads and validates the catalog at startup. Unknown or
     missing slots, duplicate template keys, blank required text, or anything
     other than exactly one default tutor template fail startup.
@@ -205,11 +208,14 @@ will use SSE, which every browser supports.
     and places all trusted routing instructions before session facts and the
     final fenced document block. The untrusted document stays last, improving
     inspectability and keeping the reusable instruction prefix stable.
-  - A `Dyslexia-Friendly Guide` tutor template is shipped. `V1__init.sql` also
-    seeds a read-only `Dyslexia-friendly reader` template. Its context prioritizes
-    meaning over spelling/decoding, uses small chunks and one question at a time,
-    and explicitly avoids infantilizing or inferring ability. It has no
-    `readerLevel`: accessibility and difficulty remain orthogonal.
+  - A `Language & Learning Guide` tutor template is shipped with its own Easy,
+    Medium and Advanced rubrics. Conceptual demand increases across the three
+    levels while communication supports remain available. `V1__init.sql` also
+    seeds a read-only `Language-support reader` template for support with spoken
+    or written understanding and expression. Both separate intended meaning from
+    language form, provide graduated response supports, and explicitly avoid
+    diagnosis, infantilization, or assumptions about intelligence. The reader
+    template has no `readerLevel`: support needs and difficulty remain orthogonal.
   - New tutor template keys are backfilled for existing users as autonomous
     copies. Existing prompts and the user's chosen default are never rewritten.
 - **Consequence**: prompt changes are ordinary reviewable YAML diffs and carry a
@@ -232,5 +238,6 @@ will use SSE, which every browser supports.
   small fallback used only when migrations are disabled in tests.
 - **Consequence**: the Reader profile editor has a usable editable form on first
   visit, and a new session resolves to an owned reader profile by default. The
-  shipped General and dyslexia-friendly profiles remain shared and read-only.
-  No schema or `V1__init.sql` change is required.
+  shipped General and language-support profiles remain shared and read-only.
+  The General reader seed in `V1__init.sql` is the canonical scaffold copied at
+  registration.

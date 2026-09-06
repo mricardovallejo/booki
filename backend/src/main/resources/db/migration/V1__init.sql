@@ -74,21 +74,35 @@ CREATE TABLE reader_profiles (
 INSERT INTO reader_profiles (user_id, name, context, is_default, read_only) VALUES (
     NULL,
     'General reader',
-    'What I want to get out of this reading: ' || CHR(10)
-        || 'How familiar I already am with the topic: ' || CHR(10)
-        || 'How I learn best (worked examples, plain definitions, analogies, a slower pace...): ' || CHR(10)
-        || 'Anything that helps me follow along (short paragraphs, no jargon, dyslexia-friendly formatting...): ',
+    'I use this general profile when I have not specified a subject-specific goal or learning preference.' || CHR(10)
+        || 'Calibrate your support from evidence in the conversation: what I ask, understand, or find difficult. '
+        || 'Do not infer my age, education, intelligence, or reading ability.' || CHR(10)
+        || 'Help me build a clear mental model of the text. Start with the central idea and only the background '
+        || 'needed to understand it. Define unfamiliar terms in context, make connections between ideas explicit, '
+        || 'and use a concrete example or analogy when it adds real clarity.' || CHR(10)
+        || 'Begin concisely and in plain language. Increase detail, technical depth, or challenge as my questions '
+        || 'and answers show that it would help. If I seem confused, change the explanation or example instead of '
+        || 'merely repeating it.' || CHR(10)
+        || 'When checking understanding, ask one focused question at a time and use my answer to choose the next '
+        || 'step. Ask a brief clarifying question only when my goal or preferred approach would materially change '
+        || 'the help; otherwise start helping immediately.',
     TRUE,
     TRUE
 ), (
     NULL,
-    'Dyslexia-friendly reader',
-    'This reader benefits from dyslexia-friendly support.' || CHR(10)
-        || 'Prioritize meaning and comprehension over reading speed, spelling, handwriting, or exact wording.' || CHR(10)
-        || 'Use short sentences, small paragraphs, and one instruction or question at a time.' || CHR(10)
-        || 'Keep the intellectual content intact; do not infantilize or infer ability from decoding difficulty.' || CHR(10)
-        || 'Accept brief, approximate, or spoken answers. Respond to the idea first and offer only one correction or next step at a time.' || CHR(10)
-        || 'Explain or split a difficult word when it is important or requested, and rephrase patiently when something does not land.',
+    'Language-support reader',
+    'This reader may need support understanding or expressing spoken or written language. This is a support '
+        || 'need, not a diagnosis or a measure of intelligence.' || CHR(10)
+        || 'Preserve the full meaning and conceptual challenge while reducing avoidable language load. State the '
+        || 'purpose and main idea before details, activate relevant prior knowledge, and preview a few essential words.' || CHR(10)
+        || 'Use short, direct sentences and small chunks. Make sequence, cause, comparison, and references between '
+        || 'ideas explicit. Give one instruction or ask one question at a time.' || CHR(10)
+        || 'Offer flexible ways to respond: speech, writing, keywords, a choice, a sentence starter, or a fuller '
+        || 'explanation. Assess the intended idea before grammar, word-finding, pronunciation, spelling, or sentence form.' || CHR(10)
+        || 'If understanding is unclear, rephrase instead of merely repeating, add a concrete example or cue, and '
+        || 'increase support gradually. Acknowledge the idea before modeling one clearer formulation.' || CHR(10)
+        || 'Never diagnose, label, infantilize, or lower intellectual expectations. Provide educational support '
+        || 'without claiming to deliver or replace professional therapy.',
     FALSE,
     TRUE
 );

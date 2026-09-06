@@ -42,7 +42,7 @@ class AiProfileBackfillTest {
 
         assertThat(added).extracting(AiProfile::getBasedOnTemplate)
                 .containsExactly("study_buddy", "subject_expert", "accessible_pace",
-                        "dyslexia_friendly_guide");
+                        "language_learning_guide");
         assertThat(added).noneMatch(AiProfile::isDefaultProfile);
         assertThat(existing.isDefaultProfile()).isTrue();
     }

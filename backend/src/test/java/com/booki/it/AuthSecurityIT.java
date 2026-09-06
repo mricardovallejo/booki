@@ -58,7 +58,7 @@ class AuthSecurityIT extends IntegrationTestBase {
         assertThat(profiles).hasSize(5);
         assertThat(profiles).extracting(AiProfileSummaryResponse::name)
                 .containsExactlyInAnyOrder("Patient Tutor", "Study Buddy", "Subject Expert", "Accessible Pace",
-                        "Dyslexia-Friendly Guide");
+                        "Language & Learning Guide");
         assertThat(profiles).filteredOn(AiProfileSummaryResponse::isDefault)
                 .singleElement().extracting(AiProfileSummaryResponse::name).isEqualTo("Patient Tutor");
     }
@@ -78,7 +78,7 @@ class AuthSecurityIT extends IntegrationTestBase {
                 .satisfies(profile -> {
                     assertThat(profile.name()).isEqualTo("My reader profile");
                     assertThat(profile.isDefault()).isTrue();
-                    assertThat(profile.context()).contains("My goal for this reading");
+                    assertThat(profile.context()).contains("Calibrate your support from evidence in the conversation");
                 });
     }
 

@@ -22,7 +22,7 @@ Every conversational turn assembles one system prompt. Three owners:
   "Sciences", "Philosophy"): their goal, prior knowledge, how they like to learn,
   any accessibility need. Its own named, reusable entity, with **no association
   to any AI Profile**. Shipped read-only reader templates include the default
-  "General reader" scaffold and "Dyslexia-friendly reader"; the user may use or
+  "General reader" scaffold and "Language-support reader"; the user may use or
   duplicate either to make an editable profile.
   **Shared** — editing a reader profile changes it for every session that uses
   it. `readerLevel` (beginner/intermediate/advanced) lives here, drives the
@@ -68,11 +68,14 @@ the reader profile is a separate tab in that editor.
 
 The authoritative shipped wording lives in
 `backend/src/main/resources/prompts/catalog.yml`, currently catalog version
-`1.0.0`. It contains the fixed core, shared SlotPrompt defaults and tutor
-personas. `SlotPromptCatalog` loads and validates it at startup: every key must
-be known, every template must define all slots, template keys must be unique,
-and exactly one tutor template must be the default. A malformed catalog fails
-startup rather than silently producing an incomplete system prompt.
+`1.1.0`. It contains the fixed core, shared SlotPrompt defaults, tutor personas,
+and optional per-template prompt overrides. Overrides are layered on the shared
+defaults before a profile is seeded; the `Language & Learning Guide` uses them
+for distinct Easy, Medium and Advanced rubrics. `SlotPromptCatalog` loads and
+validates the catalog at startup: every key must be known, every template must
+define all slots, template keys must be unique, and exactly one tutor template
+must be the default. A malformed catalog fails startup rather than silently
+producing an incomplete system prompt.
 
 `SlotKey` remains Java code because its labels and locked output contracts are
 part of the typed application/parser boundary. `application.yml` contains only
@@ -134,10 +137,15 @@ Reader profile.)
 - **Reader profiles**: shipped read-only templates (`user_id IS NULL`) plus
   an editable `My reader profile` provisioned for every account. "General reader"
   is the source scaffold and fallback default;
-  "Dyslexia-friendly reader" supplies accessibility guidance without assuming
-  a lower difficulty or intellectual level. `POST /reader-profiles` can copy one
+  "Language-support reader" supports spoken or written understanding and
+  expression without assuming a diagnosis, lower difficulty, or lower
+  intellectual level. `POST /reader-profiles` can copy one
   with `fromId`; shipped templates are not editable/deletable. Deleting a
   reader profile: sessions that used it fall back to the default at read time.
+- **Language-support setup**: select the `Language & Learning Guide` tutor and
+  the `Language-support reader` independently when creating a session. The tutor
+  supplies the language-aware persona and three specialized difficulty rubrics;
+  the reader profile supplies the learner's stable communication supports.
 - **When a shipped template's text is later improved: only the hidden template
   changes. Existing user profiles are never touched** — edited or not. A user who
   wants the new text does "Restore to original" or redoes that prompt by hand.
@@ -221,8 +229,8 @@ the dropdown shows it as `Easy|Medium|Advanced` to match the session/quiz words.
   Restore; `New` copies the user's default (no blank template), `Duplicate`
   copies the selected one; selection lives in the route. *Reader profile* tab:
   name / starting level / shared context; it lands on one of the user's own
-  profiles, and the read-only built-in shows a callout instead of a form (`New`
-  = blank, `Duplicate` = copy). `?slot=` deep link forces the tutor tab and
+  profiles. Shipped read-only profiles show their complete form in read-only
+  mode plus a callout; `Duplicate` creates an editable copy. `?slot=` deep link forces the tutor tab and
   preselects the slot; one unsaved-changes guard covers both drafts (switching
   tabs keeps both in memory, so it is not guarded). Long help is a small "?"
   disclosure (`Explainer`), used twice.

@@ -55,7 +55,7 @@ tags:
       `readerProfileId`. Registration provisions an editable `My reader profile`
       copied from the General reader scaffold and makes it the account default.
       Every user also sees shipped **read-only** reader templates
-      (the default "General reader" scaffold and "Dyslexia-friendly reader")
+      (the default "General reader" scaffold and "Language-support reader")
       plus their own; duplicate a shipped template to customize it. Editing a reader profile changes it for
       every session that uses it.
   - name: Sessions
@@ -1298,9 +1298,9 @@ components:
     ReaderProfile:
       type: object
       description: >
-        Who is reading, in one study context. `readOnly` is true only for the
-        default built-in "General reader". Other shipped reader templates may
-        supply accessibility-oriented context. `readerLevel` also drives the create-session
+        Who is reading, in one study context. `readOnly` is true for shipped
+        reader templates. Some templates provide language and communication
+        support without assigning a diagnosis. `readerLevel` also drives the create-session
         difficulty suggestion and is written into the assembled reader-context.
       properties:
         id: { type: integer }

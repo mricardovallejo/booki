@@ -21,7 +21,7 @@ This starts the backend on `http://localhost:8080` without needing PostgreSQL or
 - `Document`: metadata for a PDF uploaded by the user (title, file path, page count).
 - `DocumentPage`: text extracted per page of a document.
 - `AiProfile` + `SlotPrompt`: the "master" a session runs on — persona, difficulty rubrics, per-function prompts, capability routing — plus `enabledCapabilities`. Per-user; seeded from code templates at registration. **`docs/prompts.md`** (ADR-015; the old `ProfileMaster` entity is gone).
-- `ReaderProfile`: who is reading, in one study context — `name`, free-text `context`, `readerLevel`, `isDefault`, `readOnly`. A `user` of `null` marks a shipped read-only template (`General reader` or `Dyslexia-friendly reader`, seeded in `V1__init.sql`) everyone sees. Not tied to any AI Profile — a `Session` picks one. ADR-017/ADR-019.
+- `ReaderProfile`: who is reading, in one study context — `name`, free-text `context`, `readerLevel`, `isDefault`, `readOnly`. A `user` of `null` marks a shipped read-only template (`General reader` or `Language-support reader`, seeded in `V1__init.sql`) everyone sees. Not tied to any AI Profile — a `Session` picks one. ADR-017/ADR-019.
 - `ReaderProfileProvisioner`: registration creates one editable `My reader profile` from the General reader scaffold and makes it the user's default. ADR-020.
 - `Tag`: a per-user label a document can be filed under (many-to-many with `Document`); exposed via the `/api/collections` endpoints for historical reasons — see note below.
 - `Session`: a page range (`startPage`/`endPage`) of a document, with `currentPage`, chosen `difficulty`, `language`, `aiProvider` (nullable), an optional `AiProfile` and an optional `ReaderProfile` (both FKs `ON DELETE SET NULL`; null → resolved to the user's default at read time).
@@ -165,9 +165,10 @@ Every write endpoint has `@Valid` on its `@RequestBody`. Free-text fields carry 
 
 ### Prompt catalog
 
-The authoritative fixed core, editable starting texts and shipped tutor
-personas are in `src/main/resources/prompts/catalog.yml`, not Java or environment
-variables. `SlotPromptCatalog` validates the versioned catalog at startup.
+The authoritative fixed core, editable starting texts, shipped tutor personas,
+and optional per-template prompt overrides are in
+`src/main/resources/prompts/catalog.yml`, not Java or environment variables.
+`SlotPromptCatalog` validates the versioned catalog at startup.
 `SlotKey` keeps machine-dependent output contracts typed in Java. The optional
 `BOOKI_PROMPT_CATALOG` variable changes only the resource location for controlled
 experiments. See `docs/prompts.md` and ADR-019.

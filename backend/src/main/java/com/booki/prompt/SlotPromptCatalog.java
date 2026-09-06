@@ -71,6 +71,7 @@ public class SlotPromptCatalog {
             String persona = required(source.getPersona(), "template persona for " + key);
             EnumSet<Capability> capabilities = parseCapabilities(source.getCapabilities(), key);
             Map<SlotKey, String> texts = new EnumMap<>(shared);
+            texts.putAll(parseOverrides(source.getOverrides(), key));
             texts.put(SlotKey.PERSONA, persona);
             requireEverySlot(texts, key);
             loaded.add(new Template(key, name, source.isDefaultProfile(), capabilities, Map.copyOf(texts)));
@@ -174,6 +175,24 @@ public class SlotPromptCatalog {
         return result;
     }
 
+    private static Map<SlotKey, String> parseOverrides(Map<String, String> raw, String templateKey) {
+        Map<SlotKey, String> result = new EnumMap<>(SlotKey.class);
+        for (Map.Entry<String, String> entry : raw.entrySet()) {
+            SlotKey key;
+            try {
+                key = SlotKey.ofWire(entry.getKey());
+            } catch (IllegalArgumentException e) {
+                throw invalid("Unknown prompt override '" + entry.getKey() + "' in template " + templateKey, e);
+            }
+            if (key == SlotKey.PERSONA) {
+                throw invalid("Template " + templateKey + " must define persona through its persona field");
+            }
+            result.put(key, required(entry.getValue(),
+                    "prompt override " + entry.getKey() + " in template " + templateKey));
+        }
+        return result;
+    }
+
     private static void requireEverySlot(Map<SlotKey, String> texts, String templateKey) {
         for (SlotKey key : SlotKey.values()) {
             if (!texts.containsKey(key) || texts.get(key).isBlank()) {
@@ -220,6 +239,7 @@ public class SlotPromptCatalog {
         private boolean defaultProfile;
         private List<String> capabilities = new ArrayList<>();
         private String persona;
+        private Map<String, String> overrides = new LinkedHashMap<>();
 
         public String getKey() { return key; }
         public void setKey(String key) { this.key = key; }
@@ -231,5 +251,7 @@ public class SlotPromptCatalog {
         public void setCapabilities(List<String> capabilities) { this.capabilities = capabilities; }
         public String getPersona() { return persona; }
         public void setPersona(String persona) { this.persona = persona; }
+        public Map<String, String> getOverrides() { return overrides; }
+        public void setOverrides(Map<String, String> overrides) { this.overrides = overrides; }
     }
 }

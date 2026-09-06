@@ -12,10 +12,22 @@
 const READER_LEVELS = ['beginner', 'intermediate', 'advanced'];
 
 const GENERIC_CONTEXT =
-  'What I want to get out of this reading: \n' +
-  'How familiar I already am with the topic: \n' +
-  'How I learn best (worked examples, plain definitions, analogies, a slower pace…): \n' +
-  'Anything that helps me follow along (short paragraphs, no jargon, dyslexia-friendly formatting…): ';
+  'I use this general profile when I have not specified a subject-specific goal or learning preference.\n' +
+  'Calibrate your support from evidence in the conversation: what I ask, understand, or find difficult. ' +
+  'Do not infer my age, education, intelligence, or reading ability.\n' +
+  'Help me build a clear mental model of the text. Start with the central idea and only the background ' +
+  'needed to understand it. Define unfamiliar terms in context, make connections between ideas explicit, ' +
+  'and use a concrete example or analogy when it adds real clarity.';
+
+const LANGUAGE_SUPPORT_CONTEXT =
+  'This reader may need support understanding or expressing spoken or written language. This is a support ' +
+  'need, not a diagnosis or a measure of intelligence.\n' +
+  'Preserve the conceptual challenge while reducing avoidable language load. State the purpose and main ' +
+  'idea first, preview essential words, use short direct sentences, and make relationships explicit.\n' +
+  'Give one instruction or ask one question at a time. Offer speech, writing, keywords, choices, sentence ' +
+  'starters, or a fuller explanation as ways to respond. Assess the idea before language form.\n' +
+  'If understanding is unclear, rephrase, add a concrete example or cue, and increase support gradually. ' +
+  'Never diagnose, label, infantilize, or lower intellectual expectations.';
 
 const FACTORY_READER = {
   id: 1,
@@ -25,6 +37,17 @@ const FACTORY_READER = {
   readOnly: true,
   readerLevel: null,
   context: GENERIC_CONTEXT,
+  updatedAt: new Date().toISOString()
+};
+
+const LANGUAGE_SUPPORT_READER = {
+  id: 2,
+  userId: null,
+  name: 'Language-support reader',
+  isDefault: false,
+  readOnly: true,
+  readerLevel: null,
+  context: LANGUAGE_SUPPORT_CONTEXT,
   updatedAt: new Date().toISOString()
 };
 
@@ -44,5 +67,6 @@ module.exports = {
   READER_LEVELS,
   GENERIC_CONTEXT,
   FACTORY_READER,
+  LANGUAGE_SUPPORT_READER,
   readerProfileResponse
 };

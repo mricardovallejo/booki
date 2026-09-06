@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +35,7 @@ class ReaderProfileServiceImplTest {
     @Mock private UserRepository userRepository;
 
     private ReaderProfileServiceImpl service;
+    private User user;
     private ReaderProfile builtIn;
     private ReaderProfile mine;
 
@@ -41,7 +43,7 @@ class ReaderProfileServiceImplTest {
     void setUp() {
         service = new ReaderProfileServiceImpl(repository, userRepository);
 
-        User user = new User();
+        user = new User();
         user.setId(USER_ID);
 
         builtIn = new ReaderProfile();
@@ -71,6 +73,21 @@ class ReaderProfileServiceImplTest {
     }
 
     @Test
+    void listMarksTheUsersExplicitDefault() {
+        user.setDefaultReaderProfile(mine);
+        List<ReaderProfileResponse> list = service.list(USER_ID);
+        assertThat(list).filteredOn(ReaderProfileResponse::isDefault)
+                .extracting(ReaderProfileResponse::name).containsExactly("Sciences");
+    }
+
+    @Test
+    void listFallsBackToTheBuiltInAsDefault() {
+        List<ReaderProfileResponse> list = service.list(USER_ID);
+        assertThat(list).filteredOn(ReaderProfileResponse::isDefault)
+                .extracting(ReaderProfileResponse::name).containsExactly("General reader");
+    }
+
+    @Test
     void createCopiesContextFromFromId() {
         CreateReaderProfileRequest req = new CreateReaderProfileRequest();
         req.setName("Sciences copy");
@@ -82,7 +99,6 @@ class ReaderProfileServiceImplTest {
         assertThat(created.context()).isEqualTo("PhD, terse answers.");
         assertThat(created.readerLevel()).isEqualTo("advanced");
         assertThat(created.readOnly()).isFalse();
-        assertThat(created.isDefault()).isFalse();
     }
 
     @Test
@@ -90,6 +106,29 @@ class ReaderProfileServiceImplTest {
         CreateReaderProfileRequest req = new CreateReaderProfileRequest();
         req.setName("Blank");
         assertThat(service.create(USER_ID, req).context()).isEqualTo(ReaderProfileServiceImpl.GENERIC_CONTEXT);
+    }
+
+    @Test
+    void firstOwnReaderProfileBecomesTheUsersDefault() {
+        when(repository.visibleTo(USER_ID)).thenReturn(List.of(builtIn)); // no own profile yet
+
+        CreateReaderProfileRequest req = new CreateReaderProfileRequest();
+        req.setName("Sciences");
+        service.create(USER_ID, req);
+
+        assertThat(user.getDefaultReaderProfile()).isNotNull();
+        assertThat(user.getDefaultReaderProfile().getName()).isEqualTo("Sciences");
+    }
+
+    @Test
+    void laterReaderProfilesDoNotStealTheDefault() {
+        user.setDefaultReaderProfile(mine); // user already has one, set as default
+
+        CreateReaderProfileRequest req = new CreateReaderProfileRequest();
+        req.setName("Second");
+        service.create(USER_ID, req);
+
+        assertThat(user.getDefaultReaderProfile()).isSameAs(mine);
     }
 
     @Test
@@ -108,10 +147,30 @@ class ReaderProfileServiceImplTest {
     }
 
     @Test
-    void resolveForUsesTheSessionsProfileThenTheDefault() {
-        User user = new User();
-        user.setId(USER_ID);
+    void updateCanPromoteAProfileToDefault() {
+        when(repository.findByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(mine));
 
+        UpdateReaderProfileRequest req = new UpdateReaderProfileRequest();
+        req.setIsDefault(true);
+        ReaderProfileResponse res = service.update(USER_ID, 5L, req);
+
+        assertThat(user.getDefaultReaderProfile()).isSameAs(mine);
+        assertThat(res.isDefault()).isTrue();
+    }
+
+    @Test
+    void deleteClearsTheUsersDefaultWhenItPointedAtThatProfile() {
+        user.setDefaultReaderProfile(mine);
+        when(repository.findByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(mine));
+
+        service.delete(USER_ID, 5L);
+
+        assertThat(user.getDefaultReaderProfile()).isNull();
+        verify(repository).delete(mine);
+    }
+
+    @Test
+    void resolveForUsesTheSessionsProfileThenTheDefault() {
         Session withReader = new Session();
         withReader.setUser(user);
         withReader.setReaderProfile(mine);
@@ -119,13 +178,19 @@ class ReaderProfileServiceImplTest {
 
         Session withoutReader = new Session();
         withoutReader.setUser(user);
-        assertThat(service.resolveFor(withoutReader).getName()).isEqualTo("General reader"); // the default
+        assertThat(service.resolveFor(withoutReader).getName()).isEqualTo("General reader"); // the built-in
+    }
+
+    @Test
+    void resolveForPrefersTheOwnersExplicitDefault() {
+        user.setDefaultReaderProfile(mine);
+        Session session = new Session();
+        session.setUser(user);
+        assertThat(service.resolveFor(session).getName()).isEqualTo("Sciences");
     }
 
     @Test
     void forNewSessionFallsBackToTheDefaultForAnUnknownId() {
-        User user = new User();
-        user.setId(USER_ID);
         assertThat(service.forNewSession(USER_ID, 999L).getName()).isEqualTo("General reader");
     }
 }

@@ -15,6 +15,4 @@ public interface ReaderProfileRepository extends JpaRepository<ReaderProfile, Lo
     List<ReaderProfile> visibleTo(@Param("userId") Long userId);
 
     Optional<ReaderProfile> findByIdAndUserId(Long id, Long userId);
-
-    Optional<ReaderProfile> findFirstByUserIsNull();
 }

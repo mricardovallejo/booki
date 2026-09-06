@@ -282,6 +282,18 @@ export default function AiProfilesPage() {
     }
   };
 
+  // Re-point the "new session" default at this reader profile. The first one you
+  // make is already your default; this is for switching between several.
+  const onMakeReaderDefault = async () => {
+    if (!selectedReader || selectedReader.readOnly || selectedReader.isDefault) return;
+    setActionError(null);
+    try {
+      await readers.update(selectedReader.id, { isDefault: true });
+    } catch (err) {
+      setActionError(getErrorMessage(err, 'Could not set the default reader profile.'));
+    }
+  };
+
   const dirtyOrModified = isDirty || (profile?.slots.some((s) => s.modified) ?? false);
 
   const TABS: { id: Tab; label: string; dirty: boolean }[] = [
@@ -528,6 +540,11 @@ export default function AiProfilesPage() {
                 >
                   Duplicate
                 </Button>
+                {selectedReader && !selectedReader.readOnly && !selectedReader.isDefault && (
+                  <Button variant="ghost" size="sm" onClick={onMakeReaderDefault}>
+                    Make default
+                  </Button>
+                )}
                 {selectedReader && !selectedReader.readOnly && (
                   <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteReader(true)}>
                     Delete

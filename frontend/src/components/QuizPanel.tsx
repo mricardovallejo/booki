@@ -21,6 +21,10 @@ const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
   { value: 'hard', label: 'Advanced' }
 ];
 
+// Ceiling for a single round — mirrors GenerateQuizRequest's @Max on the backend.
+// The effective limit is usually lower: one question per page in the range.
+const QUESTION_HARD_MAX = 20;
+
 export default function QuizPanel({ sessionId, onActivity }: Props) {
   const { session } = useSession(sessionId);
   const profileSlots = useAiProfileSlots(session?.aiProfileId ?? undefined);
@@ -111,16 +115,50 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
             })()}
           </Field>
 
-          <Field label={`Number of questions: ${config.questionCount}`}>
-            <input
-              type="range"
-              min={1}
-              max={5}
-              value={config.questionCount}
-              onChange={(e) => setConfig((prev) => ({ ...prev, questionCount: Number(e.target.value) }))}
-              className="w-full accent-booki-accent"
-            />
-          </Field>
+          {(() => {
+            const pageSpan = session ? session.endPage - session.startPage + 1 : QUESTION_HARD_MAX;
+            const maxQuestions = Math.max(1, Math.min(QUESTION_HARD_MAX, pageSpan));
+            const setCount = (n: number) =>
+              setConfig((prev) => ({
+                ...prev,
+                questionCount: Math.max(1, Math.min(maxQuestions, Math.round(n) || 1))
+              }));
+            return (
+              <Field label="Number of questions">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="One fewer question"
+                    onClick={() => setCount(config.questionCount - 1)}
+                    disabled={config.questionCount <= 1}
+                    className="h-9 w-9 rounded-lg bg-booki-bg/60 text-lg font-bold text-white/80 transition hover:bg-booki-card-hover disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={maxQuestions}
+                    value={config.questionCount}
+                    onChange={(e) => setCount(Number(e.target.value))}
+                    className="h-9 w-16 rounded-lg bg-booki-card text-center text-sm font-bold text-white outline-none ring-1 ring-white/10 focus:ring-booki-accent [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  <button
+                    type="button"
+                    aria-label="One more question"
+                    onClick={() => setCount(config.questionCount + 1)}
+                    disabled={config.questionCount >= maxQuestions}
+                    className="h-9 w-9 rounded-lg bg-booki-bg/60 text-lg font-bold text-white/80 transition hover:bg-booki-card-hover disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-white/50">
+                  One question per page — this range has {pageSpan} page{pageSpan === 1 ? '' : 's'}.
+                </p>
+              </Field>
+            );
+          })()}
 
           <div className="rounded-lg bg-booki-bg/60 p-3">
             <label className="flex items-center gap-2 text-xs text-white/80">

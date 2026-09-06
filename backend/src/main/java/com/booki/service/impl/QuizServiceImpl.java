@@ -64,7 +64,9 @@ public class QuizServiceImpl implements QuizService {
                 : session.getAiProfile() != null ? session.getAiProfile().getId() : null;
         String resolvedDifficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
-        int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 10);
+        // Upper bound matches GenerateQuizRequest's @Max; the real cap is one
+        // question per page, applied by the .limit() below.
+        int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 20);
 
         AiProfile profile = resolvedProfileId != null
                 ? aiProfileRepository.findByIdAndUserId(resolvedProfileId, userId).orElse(null) : null;

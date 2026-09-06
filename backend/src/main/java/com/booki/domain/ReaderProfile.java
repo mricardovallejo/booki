@@ -40,7 +40,11 @@ public class ReaderProfile {
     @Column(length = 20, name = "reader_level")
     private ReaderLevel readerLevel;
 
-    /** The user's create-session default (the built-in one until they set their own). */
+    /**
+     * Marks the built-in "General reader" as the fallback default. A per-user
+     * default is stored on {@link User#getDefaultReaderProfile()}, not here, so
+     * this stays false on every user-owned profile.
+     */
     @Column(nullable = false, name = "is_default")
     private boolean defaultProfile = false;
 

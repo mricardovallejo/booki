@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -33,16 +34,21 @@ public class ReaderProfileServiceImpl implements ReaderProfileService {
     @Override
     @Transactional(readOnly = true)
     public List<ReaderProfileResponse> list(Long userId) {
-        return repository.visibleTo(userId).stream().map(ReaderProfileServiceImpl::toResponse).toList();
+        User user = userRepository.findById(userId).orElseThrow();
+        List<ReaderProfile> visible = repository.visibleTo(userId);
+        Long defaultId = idOf(effectiveDefault(user, visible));
+        return visible.stream().map(r -> toResponse(r, defaultId)).toList();
     }
 
     @Override
     @Transactional
     public ReaderProfileResponse create(Long userId, CreateReaderProfileRequest request) {
         User user = userRepository.findById(userId).orElseThrow();
+        List<ReaderProfile> visible = repository.visibleTo(userId);
+        boolean hadOwnProfile = visible.stream().anyMatch(r -> r.getUser() != null);
+
         ReaderProfile from = request.getFromId() != null
-                ? repository.visibleTo(userId).stream()
-                        .filter(r -> r.getId().equals(request.getFromId())).findFirst().orElse(null)
+                ? visible.stream().filter(r -> r.getId().equals(request.getFromId())).findFirst().orElse(null)
                 : null;
 
         ReaderProfile profile = new ReaderProfile();
@@ -56,12 +62,22 @@ public class ReaderProfileServiceImpl implements ReaderProfileService {
                 : from != null ? from.getReaderLevel() : null);
         profile.setDefaultProfile(false);
         profile.setReadOnly(false);
-        return toResponse(repository.save(profile));
+        ReaderProfile saved = repository.save(profile);
+
+        // The user's first own reader profile becomes their default — until then
+        // sessions run on the built-in "General reader". Later profiles don't
+        // take the slot; the user re-points it explicitly (update isDefault).
+        if (!hadOwnProfile && user.getDefaultReaderProfile() == null) {
+            user.setDefaultReaderProfile(saved);
+            userRepository.save(user);
+        }
+        return toResponse(saved, idOf(effectiveDefault(user, repository.visibleTo(userId))));
     }
 
     @Override
     @Transactional
     public ReaderProfileResponse update(Long userId, Long id, UpdateReaderProfileRequest request) {
+        User user = userRepository.findById(userId).orElseThrow();
         ReaderProfile profile = repository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Reader profile not found (the built-in default is not editable)"));
@@ -75,36 +91,37 @@ public class ReaderProfileServiceImpl implements ReaderProfileService {
         if (request.getReaderLevel() != null) {
             profile.setReaderLevel(ReaderLevel.ofWire(request.getReaderLevel()));
         }
+        ReaderProfile saved = repository.save(profile);
+
         if (Boolean.TRUE.equals(request.getIsDefault())) {
-            repository.visibleTo(userId).forEach(r -> {
-                r.setDefaultProfile(r.getId().equals(profile.getId()));
-                repository.save(r);
-            });
+            user.setDefaultReaderProfile(saved);
+            userRepository.save(user);
         }
-        return toResponse(repository.save(profile));
+        return toResponse(saved, idOf(effectiveDefault(user, repository.visibleTo(userId))));
     }
 
     @Override
     @Transactional
     public void delete(Long userId, Long id) {
+        User user = userRepository.findById(userId).orElseThrow();
         ReaderProfile profile = repository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new NoSuchElementException("Reader profile not found"));
-        boolean wasDefault = profile.isDefaultProfile();
+
+        ReaderProfile userDefault = user.getDefaultReaderProfile();
+        if (userDefault != null && userDefault.getId().equals(profile.getId())) {
+            // Drop back to the built-in "General reader" (effectiveDefault falls through to it).
+            user.setDefaultReaderProfile(null);
+            userRepository.save(user);
+        }
         // Sessions FK to reader_profiles is ON DELETE SET NULL — they fall back to the default at read time.
         repository.delete(profile);
-        if (wasDefault) {
-            repository.findFirstByUserIsNull().ifPresent(builtIn -> {
-                builtIn.setDefaultProfile(true);
-                repository.save(builtIn);
-            });
-        }
     }
 
     @Override
     @Transactional(readOnly = true)
     public ReaderProfile resolveFor(Session session) {
-        Long userId = session.getUser().getId();
-        List<ReaderProfile> visible = repository.visibleTo(userId);
+        User user = userRepository.findById(session.getUser().getId()).orElseThrow();
+        List<ReaderProfile> visible = repository.visibleTo(user.getId());
         if (session.getReaderProfile() != null) {
             ReaderProfile chosen = visible.stream()
                     .filter(r -> r.getId().equals(session.getReaderProfile().getId())).findFirst().orElse(null);
@@ -112,13 +129,13 @@ public class ReaderProfileServiceImpl implements ReaderProfileService {
                 return chosen;
             }
         }
-        return visible.stream().filter(ReaderProfile::isDefaultProfile).findFirst()
-                .orElse(visible.isEmpty() ? null : visible.get(0));
+        return effectiveDefault(user, visible);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ReaderProfile forNewSession(Long userId, Long requestedId) {
+        User user = userRepository.findById(userId).orElseThrow();
         List<ReaderProfile> visible = repository.visibleTo(userId);
         if (requestedId != null) {
             ReaderProfile requested = visible.stream()
@@ -127,15 +144,37 @@ public class ReaderProfileServiceImpl implements ReaderProfileService {
                 return requested;
             }
         }
+        return effectiveDefault(user, visible);
+    }
+
+    /**
+     * The reader profile in effect for {@code user}: their explicit default when
+     * set and still visible, else the built-in "General reader", else the first
+     * visible profile (or null when nothing is visible, e.g. in tests without the
+     * seeded built-in).
+     */
+    private ReaderProfile effectiveDefault(User user, List<ReaderProfile> visible) {
+        ReaderProfile explicit = user.getDefaultReaderProfile();
+        if (explicit != null) {
+            ReaderProfile owned = visible.stream()
+                    .filter(r -> r.getId().equals(explicit.getId())).findFirst().orElse(null);
+            if (owned != null) {
+                return owned;
+            }
+        }
         return visible.stream().filter(ReaderProfile::isDefaultProfile).findFirst()
                 .orElse(visible.isEmpty() ? null : visible.get(0));
     }
 
-    private static ReaderProfileResponse toResponse(ReaderProfile r) {
+    private static Long idOf(ReaderProfile profile) {
+        return profile != null ? profile.getId() : null;
+    }
+
+    private static ReaderProfileResponse toResponse(ReaderProfile r, Long defaultId) {
         return new ReaderProfileResponse(
                 r.getId(),
                 r.getName(),
-                r.isDefaultProfile(),
+                Objects.equals(r.getId(), defaultId),
                 r.isReadOnly(),
                 r.getReaderLevel() != null ? r.getReaderLevel().wire() : null,
                 r.getContext(),

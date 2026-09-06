@@ -52,9 +52,9 @@ tags:
       Who is reading, in one study context ("Languages", "Sciences",
       "Philosophy"): their goal, prior knowledge, how they like to learn, any
       accessibility need. Not tied to any AI Profile — a session picks one via
-      `readerProfileId`. Every user sees a built-in **read-only** default
-      ("General reader", a fill-in scaffold) plus their own; you duplicate the
-      built-in to make an editable one. Editing a reader profile changes it for
+      `readerProfileId`. Every user sees shipped **read-only** reader templates
+      (the default "General reader" scaffold and "Dyslexia-friendly reader")
+      plus their own; duplicate a shipped template to customize it. Editing a reader profile changes it for
       every session that uses it.
   - name: Sessions
     description: A reading session over a page range of one document — the core unit of the product.
@@ -556,7 +556,7 @@ paths:
       tags: [Reader Profiles]
       summary: List reader profiles
       operationId: listReaderProfiles
-      description: The built-in read-only default plus the current user's own.
+      description: Shipped read-only reader templates plus the current user's own.
       responses:
         "200":
           description: OK
@@ -573,7 +573,7 @@ paths:
       operationId: createReaderProfile
       description: >
         Creates one owned by the current user. `fromId` copies an existing
-        profile's `context` / `readerLevel` (defaults to the built-in scaffold).
+        profile's `context` / `readerLevel` (defaults to the General reader scaffold).
       requestBody:
         required: true
         content:
@@ -605,7 +605,7 @@ paths:
       summary: Update one of my reader profiles
       operationId: updateReaderProfile
       description: >
-        The built-in default is read-only (`404` here). `isDefault: true` makes
+        Shipped templates are read-only (`404` here). `isDefault: true` makes
         this the user's default; it can't be unset directly (set another one).
       parameters:
         - name: id
@@ -638,7 +638,7 @@ paths:
       summary: Delete one of my reader profiles
       operationId: deleteReaderProfile
       description: >
-        The built-in default cannot be deleted (`404`). Sessions that used the
+        Shipped templates cannot be deleted (`404`). Sessions that used the
         deleted profile fall back to the user's default at read time.
       parameters:
         - name: id
@@ -1297,7 +1297,8 @@ components:
       type: object
       description: >
         Who is reading, in one study context. `readOnly` is true only for the
-        built-in "General reader". `readerLevel` also drives the create-session
+        default built-in "General reader". Other shipped reader templates may
+        supply accessibility-oriented context. `readerLevel` also drives the create-session
         difficulty suggestion and is written into the assembled reader-context.
       properties:
         id: { type: integer }

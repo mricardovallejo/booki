@@ -179,3 +179,41 @@ will use SSE, which every browser supports.
   - Difficulty: one vocabulary in the UI — the reader's stored `readerLevel` (`beginner|intermediate|advanced`, unchanged) is shown as `Easy|Medium|Advanced`; "Reader level" field → "Starting level"; short copy in each of the three places states its role (reader = preset, session = active level, tutor profile = the definition).
   - Session sidebar shows `Tutor: <name>` / `Reader: <name>` chips. Long help text is a small "?" disclosure, kept to two.
 - **Consequence**: `docs/frontend.md`, `docs/prompts.md` (a "UI terminology" note draws the line between code/API names and UI labels). Nothing to migrate or redeploy.
+
+## ADR-019: versioned prompt catalog and dyslexia-friendly shipped profiles
+
+- **Context**: the production core, shared SlotPrompt defaults and shipped tutor
+  personas were long Java string literals in `SlotPromptCatalog`; locked frames
+  were mixed into `SlotKey`; and the Node mock duplicated the same prose. This
+  made prompt review awkward and encouraged the UI-only mock to look like a
+  second production source. A dyslexia-friendly setup was also needed without
+  equating a decoding/accessibility need with low intellectual difficulty.
+- **Decision**:
+  - The authoritative production wording moves to the versioned
+    `backend/src/main/resources/prompts/catalog.yml`. It holds the fixed core,
+    shared editable starting texts and shipped tutor personas.
+  - `SlotPromptCatalog` loads and validates the catalog at startup. Unknown or
+    missing slots, duplicate template keys, blank required text, or anything
+    other than exactly one default tutor template fail startup.
+  - Java retains `SlotKey`, labels and locked output frames because parsers and
+    API behavior depend on those contracts. `application.yml` stores only the
+    catalog resource location; prompt bodies are not environment variables.
+  - The Node mock remains an intentionally simplified UI-design fixture. It is
+    not synchronized with, tested as, or documented as the production prompt
+    source.
+  - Chat assembly now accepts the live capability description as a parameter
+    and places all trusted routing instructions before session facts and the
+    final fenced document block. The untrusted document stays last, improving
+    inspectability and keeping the reusable instruction prefix stable.
+  - A `Dyslexia-Friendly Guide` tutor template is shipped. `V1__init.sql` also
+    seeds a read-only `Dyslexia-friendly reader` template. Its context prioritizes
+    meaning over spelling/decoding, uses small chunks and one question at a time,
+    and explicitly avoids infantilizing or inferring ability. It has no
+    `readerLevel`: accessibility and difficulty remain orthogonal.
+  - New tutor template keys are backfilled for existing users as autonomous
+    copies. Existing prompts and the user's chosen default are never rewritten.
+- **Consequence**: prompt changes are ordinary reviewable YAML diffs and carry a
+  catalog version. Any `V1__init.sql` change still follows the project's current
+  pre-production rule: wipe the target database so V1 runs again. The catalog
+  location can be overridden with `BOOKI_PROMPT_CATALOG` for a controlled test,
+  but prompt bodies are not placed in environment variables.

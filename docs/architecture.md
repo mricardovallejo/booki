@@ -70,6 +70,7 @@ and `docs/ai-voice.md` for the detail.
 - `controller` → REST controllers (incl. `VoiceController`)
 - `service` → service interfaces
 - `service/impl` → implementations; the prompt assembly lives in `prompt/PromptAssembler` (`docs/prompts.md`)
+- `src/main/resources/prompts/catalog.yml` → versioned canonical core, defaults and tutor personas; loaded and validated by `SlotPromptCatalog`
 - `conversation` → `ConversationEngine`, `ConversationRequest/Result/Stream`
 - `conversation/capability` → `ConversationCapability` + registry + the 4 capabilities
 - `voice` → `SpeechToTextProvider` / `TextToSpeechProvider`, their OpenAI impls, `VoiceConversationService`

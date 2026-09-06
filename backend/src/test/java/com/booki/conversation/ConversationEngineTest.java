@@ -69,8 +69,7 @@ class ConversationEngineTest {
         when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(any(), any(), any()))
                 .thenReturn(List.of());
-        lenient().when(promptAssembler.forChat(any(), anyString())).thenReturn("system-prompt");
-        lenient().when(promptAssembler.chatRoutingSection(any())).thenReturn("");
+        lenient().when(promptAssembler.forChat(any(), anyString(), anyString())).thenReturn("system-prompt");
         lenient().when(promptAssembler.enabledCapabilities(any())).thenReturn(EnumSet.allOf(Capability.class));
         lenient().when(aiProviderRegistry.get(any())).thenReturn(aiProvider);
         lenient().when(capabilityRegistry.routerInstructions(any())).thenReturn("");

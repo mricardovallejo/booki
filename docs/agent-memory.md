@@ -20,6 +20,7 @@ PWA for Android/Windows/Linux.
 - Base package: `com.booki`.
 - Backend: Controller → Service (interface) → ServiceImpl → Repository. Write DTOs carry `@Valid` constraints; multi-write services are `@Transactional`; uncaught errors are sanitized. Security posture: ADR-016.
 - Frontend: `pages/` → `components/` → `api/` → `hooks/`. `npm run lint` + `tsc --noEmit` + `build` are the CI gate.
+- Prompt content: canonical versioned catalog at `backend/src/main/resources/prompts/catalog.yml`; Java keeps typed slot/output contracts. The Node mock is only a UI fixture and does not mirror production prompt quality.
 
 ## What NOT to do without asking
 

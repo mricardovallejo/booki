@@ -71,8 +71,7 @@ class ConversationEngineStreamingTest {
         lenient().when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
         lenient().when(documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(any(), any(), any()))
                 .thenReturn(List.of());
-        lenient().when(promptAssembler.forChat(any(), anyString())).thenReturn("system-prompt");
-        lenient().when(promptAssembler.chatRoutingSection(any())).thenReturn("");
+        lenient().when(promptAssembler.forChat(any(), anyString(), anyString())).thenReturn("system-prompt");
         lenient().when(promptAssembler.enabledCapabilities(any())).thenReturn(EnumSet.allOf(Capability.class));
         lenient().when(capabilityRegistry.routerInstructions(any())).thenReturn("");
         lenient().when(capabilityRegistry.maxDirectiveLength()).thenReturn(160);

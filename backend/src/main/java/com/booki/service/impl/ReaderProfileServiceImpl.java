@@ -80,7 +80,7 @@ public class ReaderProfileServiceImpl implements ReaderProfileService {
         User user = userRepository.findById(userId).orElseThrow();
         ReaderProfile profile = repository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new NoSuchElementException(
-                        "Reader profile not found (the built-in default is not editable)"));
+                        "Reader profile not found (shipped templates are not editable)"));
 
         if (request.getName() != null && !request.getName().isBlank()) {
             profile.setName(request.getName().trim());

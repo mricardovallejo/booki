@@ -102,7 +102,7 @@ Uses H2 in a file (`~/booki-local-db`), doesn't need PostgreSQL running. H2 runs
 in **PostgreSQL compatibility mode** so the SQL it parses matches the real
 database. A session that doesn't explicitly pick an AI model defaults to
 **Ollama** here (see §4 below) — free, but needs Ollama actually installed and
-running, or chat/quiz/summary just get the offline fallback message.
+running; otherwise chat/quiz/summary return a controlled `502` provider error.
 
 On startup you'll see a **warning that `booki.jwt.secret` is unset** and the
 backend is signing with a random ephemeral key. That's expected for local dev —
@@ -119,7 +119,7 @@ cd backend
 ./gradlew bootRun
 ```
 
-A session that doesn't explicitly pick an AI model defaults to **Claude** here — needs `ANTHROPIC_API_KEY` set, or same offline fallback as above.
+A session that doesn't explicitly pick an AI model defaults to **OpenAI** here — needs `OPENAI_API_KEY`; otherwise AI endpoints return the controlled `502` provider error.
 
 Requires Docker installed and your user in the `docker` group (`sudo usermod -aG docker $USER`, then log out/in or `newgrp docker` for just the current shell) so `docker`/`docker compose` work without `sudo`.
 

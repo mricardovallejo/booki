@@ -51,6 +51,10 @@ springdoc:
     enabled: false
 
 booki:
+  prompts:
+    # Version-controlled content lives outside Java. Override only to test an
+    # alternative catalog; prompts themselves do not belong in environment vars.
+    catalog: ${BOOKI_PROMPT_CATALOG:classpath:prompts/catalog.yml}
   jwt:
     # Leave unset for local dev / tests — JwtUtil signs with a random ephemeral
     # key and warns. MUST be a strong random 32+ byte value for any real deploy.

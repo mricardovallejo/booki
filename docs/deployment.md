@@ -410,8 +410,7 @@ deploy workflow.
 ## Phase 6 — GitHub Actions ✅
 
 - **`.github/workflows/ci.yml`** — on PRs / non-`main` pushes: `./gradlew test`
-  and `npm ci && npm run build`. (No `npm run lint` — the repo has no ESLint
-  config; wire that up if/when it matters.)
+  plus frontend install, lint, type-check and production build.
 - **`.github/workflows/deploy.yml`** — on push to `main` (or manual):
   - `backend`: `gcloud run deploy booki-backend --source backend` — Cloud Build
     builds `backend/Dockerfile`, deploys with

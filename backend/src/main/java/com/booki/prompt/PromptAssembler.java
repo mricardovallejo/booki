@@ -25,15 +25,16 @@ import java.util.stream.Stream;
  * facts and the reading text. Also produces the {@link SessionContextResponse}
  * breakdown for {@code GET /sessions/{id}/context}.
  *
- * <p>Capability routing is appended by {@code ConversationEngine} (it owns the
- * registry); this class stays capability-agnostic apart from reading the
- * profile's enabled set.
+ * <p>{@code ConversationEngine} supplies the live capability descriptions
+ * because it owns the registry; this class places them in the trusted prefix
+ * before session facts and the untrusted document block.
  */
 @Component
 @RequiredArgsConstructor
 public class PromptAssembler {
 
     private final ReaderProfileService readerProfiles;
+    private final SlotPromptCatalog catalog;
 
     private static final Set<String> SUPPORTED_LANGUAGES = Set.of("en", "es", "fr");
     private static final Map<String, String> LANGUAGE_NAMES =
@@ -76,22 +77,33 @@ public class PromptAssembler {
 
     // ---- system prompts ----------------------------------------------------
 
-    /** System prompt for a normal chat turn (routing is appended by the caller). */
+    /** System prompt for callers that do not need model-driven capability routing. */
     public String forChat(Session session, String documentText) {
-        return assemble(session, resolveDifficulty(session.getDifficulty()), null, documentText);
+        return assemble(session, resolveDifficulty(session.getDifficulty()), null, null, documentText);
+    }
+
+    /**
+     * Complete system prompt for normal chat. Routing is accepted as an input so
+     * the engine can supply its live capability list while this assembler keeps
+     * every instruction before the dynamic, untrusted document block.
+     */
+    public String forChat(Session session, String documentText, String capabilityInstructions) {
+        return assemble(session, resolveDifficulty(session.getDifficulty()), null,
+                routingBody(session, capabilityInstructions), documentText);
     }
 
     /** System prompt for a capability run — the function's frame + body are layered in. */
     public String forFunction(Session session, SlotKey functionSlot, String difficulty, String documentText) {
-        return assemble(session, resolveDifficulty(difficulty), functionSlot, documentText);
+        return assemble(session, resolveDifficulty(difficulty), functionSlot, null, documentText);
     }
 
     /**
      * The capability-routing section for a normal chat turn: the locked JSON
      * contract plus the profile's editable {@code capability_routing} body.
-     * {@code ConversationEngine} appends this after {@link #forChat} (and then the
-     * dynamic list of enabled capabilities). Empty when the session has no
-     * profile or the slot is blank.
+     * Used by the context-inspection view; {@code ConversationEngine} supplies
+     * the same content to the three-argument {@link #forChat} overload together
+     * with the dynamic enabled-capability descriptions. Empty when the session
+     * has no profile or the slot is blank.
      */
     public String chatRoutingSection(Session session) {
         if (session.getAiProfile() == null) {
@@ -101,9 +113,10 @@ public class PromptAssembler {
         return body.isBlank() ? "" : "\n\n--- When BooKI can act on its own ---\n" + body;
     }
 
-    private String assemble(Session session, String difficulty, SlotKey functionSlot, String documentText) {
+    private String assemble(Session session, String difficulty, SlotKey functionSlot,
+                            String routingInstructions, String documentText) {
         AiProfile profile = session.getAiProfile();
-        StringBuilder sb = new StringBuilder(SlotPromptCatalog.CORE_PROMPT);
+        StringBuilder sb = new StringBuilder(catalog.corePrompt());
 
         appendSection(sb, "Difficulty", text(profile, RUBRIC.get(difficulty)));
         if (functionSlot != null) {
@@ -111,6 +124,7 @@ public class PromptAssembler {
         }
         appendSection(sb, "Persona", text(profile, SlotKey.PERSONA));
         appendSection(sb, "Reader", readerContextText(session));
+        appendSection(sb, "Routing", routingInstructions);
         appendSection(sb, "This session", sessionFacts(session));
 
         // Fenced so the model can tell the page text apart from its instructions
@@ -132,7 +146,8 @@ public class PromptAssembler {
         Set<Capability> enabled = enabledCapabilities(session);
 
         List<SessionContextResponse.Layer> layers = new ArrayList<>();
-        layers.add(layer("core", "core", "BooKI core", false, "App", SlotPromptCatalog.CORE_PROMPT));
+        layers.add(layer("core", "core", "BooKI core", false,
+                "App prompt catalog v" + catalog.version(), catalog.corePrompt()));
         layers.add(layer("rubric", "difficulty", "Difficulty — " + LEVEL_LABEL.get(difficulty),
                 true, source, blankToNull(text(profile, RUBRIC.get(difficulty)))));
         layers.add(layer("persona", "persona", "Persona", true, source,
@@ -197,6 +212,17 @@ public class PromptAssembler {
                 : enabled.stream().sorted().map(Capability::wire).reduce((a, b) -> a + ", " + b).orElse("none"))
                 + ".";
         return body.isBlank() ? enabledLine : body + "\n\n" + enabledLine;
+    }
+
+    private String routingBody(Session session, String capabilityInstructions) {
+        String profileRouting = session.getAiProfile() != null
+                ? framed(SlotKey.CAPABILITY_ROUTING, session.getAiProfile())
+                : "";
+        return Stream.of(profileRouting, capabilityInstructions)
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::strip)
+                .reduce((a, b) -> a + "\n\n" + b)
+                .orElse("");
     }
 
     private static String text(AiProfile profile, SlotKey key) {

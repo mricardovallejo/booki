@@ -12,7 +12,7 @@ import java.time.Instant;
  * Who is reading, in one study context ("Languages", "Sciences", "Philosophy") —
  * goal, prior knowledge, how they like to learn, any accessibility need. Not tied
  * to any {@link AiProfile}: a {@link Session} picks one. A {@code user} of {@code
- * null} is the built-in read-only default everyone sees.
+ * null} marks a shipped read-only reader template everyone sees.
  */
 @Entity
 @Table(name = "reader_profiles")
@@ -25,7 +25,7 @@ public class ReaderProfile {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** Null = the built-in default (shared, read-only). */
+    /** Null = a shipped template (shared, read-only). */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;

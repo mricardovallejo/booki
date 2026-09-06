@@ -34,7 +34,7 @@ class PromptAssemblerTest {
 
     @BeforeEach
     void setUp() {
-        assembler = new PromptAssembler(readerProfiles);
+        assembler = new PromptAssembler(readerProfiles, catalog);
     }
 
     private Session session(String difficulty, String language, boolean withProfile) {
@@ -77,7 +77,7 @@ class PromptAssemblerTest {
 
         String prompt = assembler.forChat(s, "PAGE TEXT");
 
-        assertThat(prompt).contains("You are BooKI, a reading companion");                 // core
+        assertThat(prompt).contains("You are BooKI, a conversational reading companion"); // core
         assertThat(prompt).contains("Advanced. Assume a close reading");                    // rubric_hard
         assertThat(prompt).contains("You are a patient tutor");                             // persona
         assertThat(prompt).contains("Reader level: intermediate.\nPrefers short answers."); // reader profile
@@ -95,12 +95,23 @@ class PromptAssemblerTest {
 
         assertThat(section).contains("--- When BooKI can act on its own ---");
         assertThat(section).contains("respond with only {\"capability\":\"<name>\"}"); // locked frame
-        assertThat(section).contains("Route to a capability only when");               // editable body
+        assertThat(section).contains("Route only when the reader's latest message");  // editable body
     }
 
     @Test
     void chatRoutingSectionIsEmptyWithoutAProfile() {
         assertThat(assembler.chatRoutingSection(session("medium", "en", false))).isEmpty();
+    }
+
+    @Test
+    void completeChatPlacesAllRoutingBeforeTheUntrustedDocument() {
+        Session s = session("medium", "en", true);
+
+        String prompt = assembler.forChat(s, "PAGE TEXT", "Enabled: quiz and explain.");
+
+        assertThat(prompt).contains("--- Routing ---", "Enabled: quiz and explain.");
+        assertThat(prompt.indexOf("--- Routing ---")).isLessThan(prompt.indexOf("<<<BEGIN DOCUMENT>>>"));
+        assertThat(prompt).endsWith("<<<END DOCUMENT>>>");
     }
 
     @Test
@@ -111,7 +122,7 @@ class PromptAssemblerTest {
         String prompt = assembler.forFunction(s, SlotKey.FN_ANSWER_GRADING, "easy", "P");
         assertThat(prompt).contains("Reply in exactly three lines and nothing else:");
         assertThat(prompt).contains("CORRECT: yes or no");
-        assertThat(prompt).contains("Judge whether the reader's answer shows");
+        assertThat(prompt).contains("Judge whether the answer demonstrates understanding");
     }
 
     @Test
@@ -131,6 +142,7 @@ class PromptAssemblerTest {
                         "functions", "functions", "functions", "functions", "functions",
                         "routing", "session");
         assertThat(ctx.layers().get(0).editable()).isFalse();   // core
+        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v1.0.0");
         assertThat(ctx.layers().get(1).content()).contains("Medium. Assume the reader");
     }
 

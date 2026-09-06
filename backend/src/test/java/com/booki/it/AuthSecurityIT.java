@@ -44,7 +44,7 @@ class AuthSecurityIT extends IntegrationTestBase {
     }
 
     @Test
-    void registerSeedsFourDefaultAiProfiles() {
+    void registerSeedsEveryShippedAiProfile() {
         AuthData user = register();
 
         ResponseEntity<List<AiProfileSummaryResponse>> response = rest.exchange(
@@ -54,9 +54,10 @@ class AuthSecurityIT extends IntegrationTestBase {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         List<AiProfileSummaryResponse> profiles = response.getBody();
-        assertThat(profiles).hasSize(4);
+        assertThat(profiles).hasSize(5);
         assertThat(profiles).extracting(AiProfileSummaryResponse::name)
-                .containsExactlyInAnyOrder("Patient Tutor", "Study Buddy", "Subject Expert", "Accessible Pace");
+                .containsExactlyInAnyOrder("Patient Tutor", "Study Buddy", "Subject Expert", "Accessible Pace",
+                        "Dyslexia-Friendly Guide");
         assertThat(profiles).filteredOn(AiProfileSummaryResponse::isDefault)
                 .singleElement().extracting(AiProfileSummaryResponse::name).isEqualTo("Patient Tutor");
     }

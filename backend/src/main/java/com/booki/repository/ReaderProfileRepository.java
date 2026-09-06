@@ -10,7 +10,7 @@ import java.util.Optional;
 
 public interface ReaderProfileRepository extends JpaRepository<ReaderProfile, Long> {
 
-    /** The built-in read-only default (user NULL) + the given user's own; built-in first (lowest id). */
+    /** Shipped read-only templates (user NULL) + the given user's own; shipped templates first. */
     @Query("select r from ReaderProfile r left join r.user u where u is null or u.id = :userId order by r.id asc")
     List<ReaderProfile> visibleTo(@Param("userId") Long userId);
 

@@ -4,9 +4,10 @@ How BooKI decides *what* to say — the instructions the model reads before ever
 answer, who owns which part, and how the pieces combine.
 
 This is the single reference for the topic. `docs/backend.md` and
-`docs/frontend.md` only point here; the decision record is `ADR-015` (and
-`ADR-017` for the reader-profile split) in `docs/decisions.md`. Frontend, Node
-mock and Spring backend all implement this.
+`docs/frontend.md` only point here; the decision record is `ADR-015`, `ADR-017`
+and `ADR-019` in `docs/decisions.md`. The Spring backend is authoritative. The
+Node mock is only a lightweight UI-design fixture and is not expected to mirror
+production prompt wording or behavior.
 
 ## The model
 
@@ -20,8 +21,9 @@ Every conversational turn assembles one system prompt. Three owners:
 - **Reader profile** — who is reading, in one study context ("Languages",
   "Sciences", "Philosophy"): their goal, prior knowledge, how they like to learn,
   any accessibility need. Its own named, reusable entity, with **no association
-  to any AI Profile**. There is a built-in **read-only default** ("General
-  reader", a fill-in scaffold); the user duplicates it to make editable ones.
+  to any AI Profile**. Shipped read-only reader templates include the default
+  "General reader" scaffold and "Dyslexia-friendly reader"; the user may use or
+  duplicate either to make an editable profile.
   **Shared** — editing a reader profile changes it for every session that uses
   it. `readerLevel` (beginner/intermediate/advanced) lives here, drives the
   create-session difficulty suggestion, AND is prepended to the reader-context
@@ -61,6 +63,22 @@ renders it. The Reading-setup editor shows every group flat (no "Advanced" fold)
 the reader profile is a separate tab in that editor.
 
 ## The AI Profile
+
+### Versioned prompt catalog
+
+The authoritative shipped wording lives in
+`backend/src/main/resources/prompts/catalog.yml`, currently catalog version
+`1.0.0`. It contains the fixed core, shared SlotPrompt defaults and tutor
+personas. `SlotPromptCatalog` loads and validates it at startup: every key must
+be known, every template must define all slots, template keys must be unique,
+and exactly one tutor template must be the default. A malformed catalog fails
+startup rather than silently producing an incomplete system prompt.
+
+`SlotKey` remains Java code because its labels and locked output contracts are
+part of the typed application/parser boundary. `application.yml` contains only
+the small catalog location (`booki.prompts.catalog`); prompt bodies are not
+environment variables. `BOOKI_PROMPT_CATALOG` may point to another catalog for
+controlled testing.
 
 ### SlotPrompts
 
@@ -104,24 +122,28 @@ Reader profile.)
   (one flagged `isDefault`). Sessions always run on one of the user's own,
   editable profiles — there is no read-only-profile state in normal use.
 - A profile holds the *whole set* of SlotPrompts and is **autonomous**: it
-  doesn't read from its template, it only remembers (`basedOnId`) which one it
+  doesn't read from its template, it only remembers (`basedOnTemplate`) which one it
   came from.
 - Each SlotPrompt stores an `originalText` snapshot (the text it was born with).
   It powers the computed **Edited / Original** badge (`text != originalText`,
   never a stored flag), the per-SlotPrompt **Restore original text**, and the
   whole-profile **Restore to original** (`POST /ai-profiles/{id}/restore` —
-  re-seeds all SlotPrompts + `enabledCapabilities` from `basedOnId`, keeps the
+  re-seeds all SlotPrompts + `enabledCapabilities` from `basedOnTemplate`, keeps the
   name).
 - **Duplicate** makes another autonomous copy.
-- **Reader profiles**: a built-in read-only "General reader" (a fill-in scaffold,
-  `readOnly`, `isDefault` until the user sets their own default) plus whatever
-  the user has made. `POST /reader-profiles` (optionally `fromId` to copy),
-  `PATCH`/`DELETE` (the built-in one is not editable/deletable — 404). Deleting a
+- **Reader profiles**: shipped read-only templates (`user_id IS NULL`) plus
+  whatever the user has made. "General reader" is the fallback default;
+  "Dyslexia-friendly reader" supplies accessibility guidance without assuming
+  a lower difficulty or intellectual level. `POST /reader-profiles` can copy one
+  with `fromId`; shipped templates are not editable/deletable. Deleting a
   reader profile: sessions that used it fall back to the default at read time.
 - **When a shipped template's text is later improved: only the hidden template
   changes. Existing user profiles are never touched** — edited or not. A user who
   wants the new text does "Restore to original" or redoes that prompt by hand.
   Rationale: zero surprises, and no reconciliation logic in the migration.
+- **When an entirely new tutor template is shipped**, `AiProfileBackfill` gives
+  existing users one autonomous copy if they do not already have a profile with
+  that template key. Existing profiles and defaults are left unchanged.
 
 ## Difficulty
 
@@ -146,7 +168,8 @@ Three separate things:
 ## How a turn is assembled
 
 - **Plain chat**: core + rubric(active level) + persona + reader profile
-  context + session facts + page text + `capability_routing`. If the model
+  context + `capability_routing` + the enabled capability list + session facts +
+  fenced page text. The document is always last. If the model
   replies with exactly `{"capability":"<name>"}` for an *enabled* capability,
   that capability runs instead; otherwise its reply is the answer.
 - **Quick-action button / explicit capability**: skips routing, runs the
@@ -167,10 +190,10 @@ Three separate things:
 | POST | `/ai-profiles/{id}/revert` | one SlotPrompt back to its `originalText` |
 | POST | `/ai-profiles/{id}/restore` | prompts + capabilities back to the template |
 | DELETE | `/ai-profiles/{id}` | delete (400 if it's the only one) |
-| GET | `/reader-profiles` | the built-in read-only default + the user's own |
-| POST | `/reader-profiles` | create, optionally `{fromId}` to copy (defaults to the built-in) |
-| PATCH | `/reader-profiles/{id}` | `name` / `context` (≤4000) / `readerLevel` / `isDefault: true` — 404 on the built-in |
-| DELETE | `/reader-profiles/{id}` | delete an own one — 404 on the built-in |
+| GET | `/reader-profiles` | shipped read-only templates + the user's own |
+| POST | `/reader-profiles` | create, optionally `{fromId}` to copy a visible profile |
+| PATCH | `/reader-profiles/{id}` | `name` / `context` (≤4000) / `readerLevel` / `isDefault: true` — 404 on shipped templates |
+| DELETE | `/reader-profiles/{id}` | delete an owned profile — 404 on shipped templates |
 | POST | `/sessions` | `{…, aiProfileId?, readerProfileId?}` — both default to the user's default |
 | GET | `/sessions/{id}/context` | the assembled layers + `aiProfileName` + `readerProfileName` |
 
@@ -220,15 +243,15 @@ Tables:
 - `ai_profile_slot_prompts` — `profile_id`, `slot` (`SlotKey` enum), `text`,
   `original_text`. `ON DELETE CASCADE`; sessions/quiz_attempts FK to
   `ai_profiles` is `ON DELETE SET NULL`.
-- `reader_profiles` — `user_id` (**NULL = the built-in read-only "General
-  reader"**, seeded in `V1__init.sql`), `name`, `context`, `reader_level`,
+- `reader_profiles` — `user_id` (**NULL = a shipped read-only reader template**,
+  seeded in `V1__init.sql`), `name`, `context`, `reader_level`,
   `is_default`, `read_only`. `sessions.reader_profile_id` FK is `ON DELETE SET
   NULL` (a deleted reader profile falls back to the default at read time).
 
-Templates and the fixed core live in code: **`SlotPromptCatalog`** (mirror of
-`mock-backend/src/aiProfiles.js`). `SlotKey` carries each prompt's label, group
-and locked frame. "Improving a template" = editing that class; existing profiles
-keep their own rows and are never touched.
+Templates and the fixed core live in the versioned YAML prompt catalog.
+**`SlotPromptCatalog`** loads it into typed definitions and seeds/restores user
+profiles. `SlotKey` carries each prompt's label, group and locked frame. The mock
+backend keeps its own deliberately simplified UI fixture.
 
 **`PromptAssembler`** owns the layering + precedence: `forChat(session, docText)`,
 `forFunction(session, SlotKey, difficulty, docText)`, `chatRoutingSection(session)`
@@ -246,9 +269,10 @@ their `fn_*` SlotPrompt.
 `fromId` copy), `update` / `delete` (404 on the built-in), `resolveFor(session)`
 and `forNewSession(userId, requestedId)`.
 
-Registration seeds one AI Profile per template (`SlotPromptCatalog.seedFor(user)`,
-`AiProfileBackfill` backfills on startup). Reader profiles need no per-user seed —
-the built-in one is shared. The schema is a single `V1__init.sql` — **wipe the
+Registration seeds one AI Profile per template (`SlotPromptCatalog.seedFor(user)`).
+`AiProfileBackfill` adds only newly shipped template keys to existing accounts;
+it never rewrites their prompts. Reader templates need no per-user seed. The
+schema is a single `V1__init.sql` — **wipe the
 target DB before deploying a change to it** so Flyway re-runs clean.
 
 ## Design principles

@@ -10,9 +10,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Safety net: any user with no AI Profiles (e.g. registered before this feature,
- * or against a database that wasn't wiped) gets the seeded set on next startup.
- * New users are seeded at registration; this is idempotent.
+ * Keeps shipped templates available without rewriting any user-owned prompt.
+ * New users are seeded at registration; on startup, an existing user receives
+ * only templates whose {@code basedOnTemplate} key they do not have yet.
  */
 @Slf4j
 @Component
@@ -26,15 +26,29 @@ public class AiProfileBackfill {
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void seedMissing() {
-        int seeded = 0;
+        int seededProfiles = 0;
         for (var user : userRepository.findAll()) {
-            if (aiProfileRepository.countByUserId(user.getId()) == 0) {
-                aiProfileRepository.saveAll(catalog.seedFor(user));
-                seeded++;
+            var existing = aiProfileRepository.findByUserIdOrderByIdAsc(user.getId());
+            var existingTemplateKeys = existing.stream()
+                    .map(profile -> profile.getBasedOnTemplate())
+                    .collect(java.util.stream.Collectors.toSet());
+            var missing = catalog.templates().stream()
+                    .filter(template -> !existingTemplateKeys.contains(template.key()))
+                    .map(template -> {
+                        var profile = catalog.newProfile(template, user);
+                        if (!existing.isEmpty()) {
+                            profile.setDefaultProfile(false);
+                        }
+                        return profile;
+                    })
+                    .toList();
+            if (!missing.isEmpty()) {
+                aiProfileRepository.saveAll(missing);
+                seededProfiles += missing.size();
             }
         }
-        if (seeded > 0) {
-            log.info("Seeded AI Profiles for {} user(s) with none", seeded);
+        if (seededProfiles > 0) {
+            log.info("Seeded {} missing shipped AI Profile(s)", seededProfiles);
         }
     }
 }

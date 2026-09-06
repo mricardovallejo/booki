@@ -21,7 +21,7 @@ This starts the backend on `http://localhost:8080` without needing PostgreSQL or
 - `Document`: metadata for a PDF uploaded by the user (title, file path, page count).
 - `DocumentPage`: text extracted per page of a document.
 - `AiProfile` + `SlotPrompt`: the "master" a session runs on — persona, difficulty rubrics, per-function prompts, capability routing — plus `enabledCapabilities`. Per-user; seeded from code templates at registration. **`docs/prompts.md`** (ADR-015; the old `ProfileMaster` entity is gone).
-- `ReaderProfile`: who is reading, in one study context — `name`, free-text `context`, `readerLevel`, `isDefault`, `readOnly`. A `user` of `null` is the built-in read-only "General reader" (seeded in `V1__init.sql`) everyone sees. Not tied to any AI Profile — a `Session` picks one. ADR-017.
+- `ReaderProfile`: who is reading, in one study context — `name`, free-text `context`, `readerLevel`, `isDefault`, `readOnly`. A `user` of `null` marks a shipped read-only template (`General reader` or `Dyslexia-friendly reader`, seeded in `V1__init.sql`) everyone sees. Not tied to any AI Profile — a `Session` picks one. ADR-017/ADR-019.
 - `Tag`: a per-user label a document can be filed under (many-to-many with `Document`); exposed via the `/api/collections` endpoints for historical reasons — see note below.
 - `Session`: a page range (`startPage`/`endPage`) of a document, with `currentPage`, chosen `difficulty`, `language`, `aiProvider` (nullable), an optional `AiProfile` and an optional `ReaderProfile` (both FKs `ON DELETE SET NULL`; null → resolved to the user's default at read time).
 - `Message`: one turn of conversation history in a session (`USER` / `BOOKI`, `TEXT` / `VOICE`). Text and voice turns share this single model — a voice turn is just a `Message` whose `inputType` is `VOICE`; raw audio is never stored.
@@ -74,10 +74,10 @@ endpoints:
 | POST | `/api/ai-profiles/{id}/revert` | One SlotPrompt back to its original (`{key}`) |
 | POST | `/api/ai-profiles/{id}/restore` | Whole profile back to its shipped template |
 | DELETE | `/api/ai-profiles/{id}` | Delete (`400` if it's the only one) |
-| GET | `/api/reader-profiles` | The built-in read-only default + the user's own |
+| GET | `/api/reader-profiles` | Shipped read-only reader templates + the user's own |
 | POST | `/api/reader-profiles` | Create (`{name, context?, readerLevel?, fromId?}`) |
-| PATCH | `/api/reader-profiles/{id}` | `name` / `context` / `readerLevel` (`""` clears) / `isDefault:true` — `404` on the built-in |
-| DELETE | `/api/reader-profiles/{id}` | Delete an own one — `404` on the built-in |
+| PATCH | `/api/reader-profiles/{id}` | `name` / `context` / `readerLevel` (`""` clears) / `isDefault:true` — `404` on shipped templates |
+| DELETE | `/api/reader-profiles/{id}` | Delete an owned one — `404` on shipped templates |
 
 ### Collections (Tags) — `/api/collections`
 
@@ -161,6 +161,15 @@ endpoints:
 Every write endpoint has `@Valid` on its `@RequestBody`. Free-text fields carry `@Size` caps (persona slots ≤ 8000, reader-profile context ≤ 4000, names ≤ 120, prompts ≤ 2000), enum-ish strings carry `@Pattern` (`difficulty` ∈ `easy|medium|hard`, `deliverAs` ∈ `chat|pdf`, `readerLevel` ∈ `beginner|intermediate|advanced`), numeric ranges carry `@Min`/`@Max` (`lengthPages` 1–10), and email fields carry `@Email`. A violation is a `400 {"error": "field: message"}` via `GlobalExceptionHandler.handleValidation`.
 
 ## Conversation engine, capabilities and voice
+
+### Prompt catalog
+
+The authoritative fixed core, editable starting texts and shipped tutor
+personas are in `src/main/resources/prompts/catalog.yml`, not Java or environment
+variables. `SlotPromptCatalog` validates the versioned catalog at startup.
+`SlotKey` keeps machine-dependent output contracts typed in Java. The optional
+`BOOKI_PROMPT_CATALOG` variable changes only the resource location for controlled
+experiments. See `docs/prompts.md` and ADR-019.
 
 ### `ConversationEngine` (package `conversation`)
 

@@ -106,7 +106,8 @@ public class QuizServiceImpl implements QuizService {
     private String questionForPage(Session session, DocumentPage page, String difficulty, AiProvider provider) {
         String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_QUIZ_QUESTION, difficulty,
                 "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
-        return provider.converse(systemPrompt, List.of(), "Write the question about the page above now.").strip();
+        return provider.converse(systemPrompt, List.of(),
+                "Write the quiz question now, following the instructions above.").strip();
     }
 
     @Override
@@ -135,7 +136,8 @@ public class QuizServiceImpl implements QuizService {
             String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_ANSWER_GRADING, difficulty,
                     "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
             String instruction = "Question: " + (request.getQuestion() == null ? "" : request.getQuestion()) + "\n"
-                    + "Reader's answer: " + (answer.isBlank() ? "(no answer given)" : answer) + "\n\nGrade it now.";
+                    + "Reader's answer: " + (answer.isBlank() ? "(no answer given)" : answer)
+                    + "\n\nGrade the answer now, in the required three-line format.";
 
             String response = provider.converse(systemPrompt, List.of(), instruction);
             GradeResult grade = parseGrade(response);

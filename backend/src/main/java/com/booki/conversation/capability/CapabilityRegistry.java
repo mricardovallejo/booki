@@ -75,13 +75,9 @@ public class CapabilityRegistry {
         if (active.isEmpty()) {
             return "";
         }
-        StringBuilder sb = new StringBuilder("\n\n---\n")
-                .append("You have specialized capabilities. If the reader's latest message is clearly ")
-                .append("better served by one of them, reply with ONLY this JSON and nothing else: ")
-                .append("{\"capability\":\"<name>\"}\n")
-                .append("Available capabilities:\n");
+        StringBuilder sb = new StringBuilder("\n\n--- Capabilities available this turn ---\n");
         active.forEach(c -> sb.append("- ").append(c.modelDescription()).append('\n'));
-        sb.append("If none clearly applies, just answer the reader normally in prose.");
+        sb.append("Use one only when it clearly fits the reader's last message; otherwise answer in prose.");
         return sb.toString();
     }
 

@@ -23,8 +23,8 @@ public class QuizCapability implements ConversationCapability {
 
     @Override
     public String modelDescription() {
-        return "quiz — ask the reader ONE short comprehension question about what they are currently reading; "
-                + "use when they ask to be quizzed, tested, or checked on their understanding";
+        return "quiz — ask the reader one comprehension question about the page they are on; "
+                + "use when they ask to be quizzed, tested, or checked";
     }
 
     @Override

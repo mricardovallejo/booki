@@ -14,7 +14,8 @@ public enum SlotKey {
     RUBRIC_HARD("Difficulty — Advanced", Group.DIFFICULTY, null, null),
 
     FN_QUIZ_QUESTION("Function — Quiz question", Group.FUNCTIONS,
-            "Output only the question. No preamble, no numbering, no quotes.", null),
+            "Output only the question. No preamble and no surrounding quotes; do not put a number or "
+                    + "label before the question itself (lettered answer options inside it are fine).", null),
     FN_ANSWER_GRADING("Function — Answer grading", Group.FUNCTIONS,
             "Reply in exactly three lines and nothing else:\nCORRECT: yes or no\n"
                     + "SCORE: a number from 0.0 to 1.0\nFEEDBACK: one short sentence", null),

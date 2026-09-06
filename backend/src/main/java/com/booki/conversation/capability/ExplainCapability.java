@@ -25,8 +25,8 @@ public class ExplainCapability implements ConversationCapability {
 
     @Override
     public String modelDescription() {
-        return "explain — restate the reader's current passage in simpler terms with a concrete everyday analogy; "
-                + "use only when the reader says they did not understand a specific part";
+        return "explain — restate a specific passage in simpler terms with an analogy; "
+                + "use only when the reader says they did not understand a particular part";
     }
 
     @Override

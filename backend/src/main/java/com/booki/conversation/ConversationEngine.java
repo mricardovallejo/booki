@@ -145,6 +145,7 @@ public class ConversationEngine {
         }
 
         String systemPrompt = promptAssembler.forChat(session, pageContext)
+                + promptAssembler.chatRoutingSection(session)
                 + capabilityRegistry.routerInstructions(promptAssembler.enabledCapabilities(session));
 
         aiProviderRegistry.converseStreaming(session.getAiProvider(), systemPrompt, history, request.text(),
@@ -278,6 +279,7 @@ public class ConversationEngine {
 
         Set<Capability> enabled = promptAssembler.enabledCapabilities(session);
         String systemPrompt = promptAssembler.forChat(session, pageContext)
+                + promptAssembler.chatRoutingSection(session)
                 + capabilityRegistry.routerInstructions(enabled);
         String providerName = aiProviderRegistry.resolveName(session.getAiProvider());
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());

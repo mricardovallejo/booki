@@ -86,6 +86,21 @@ public class PromptAssembler {
         return assemble(session, resolveDifficulty(difficulty), functionSlot, documentText);
     }
 
+    /**
+     * The capability-routing section for a normal chat turn: the locked JSON
+     * contract plus the profile's editable {@code capability_routing} body.
+     * {@code ConversationEngine} appends this after {@link #forChat} (and then the
+     * dynamic list of enabled capabilities). Empty when the session has no
+     * profile or the slot is blank.
+     */
+    public String chatRoutingSection(Session session) {
+        if (session.getAiProfile() == null) {
+            return "";
+        }
+        String body = framed(SlotKey.CAPABILITY_ROUTING, session.getAiProfile());
+        return body.isBlank() ? "" : "\n\n--- When BooKI can act on its own ---\n" + body;
+    }
+
     private String assemble(Session session, String difficulty, SlotKey functionSlot, String documentText) {
         AiProfile profile = session.getAiProfile();
         StringBuilder sb = new StringBuilder(SlotPromptCatalog.CORE_PROMPT);
@@ -94,7 +109,7 @@ public class PromptAssembler {
         if (functionSlot != null) {
             appendSection(sb, "What to do this turn", framed(functionSlot, profile));
         }
-        appendSection(sb, "Master persona", text(profile, SlotKey.PERSONA));
+        appendSection(sb, "Persona", text(profile, SlotKey.PERSONA));
         appendSection(sb, "Reader", readerContextText(session));
         appendSection(sb, "This session", sessionFacts(session));
 
@@ -120,7 +135,7 @@ public class PromptAssembler {
         layers.add(layer("core", "core", "BooKI core", false, "App", SlotPromptCatalog.CORE_PROMPT));
         layers.add(layer("rubric", "difficulty", "Difficulty — " + LEVEL_LABEL.get(difficulty),
                 true, source, blankToNull(text(profile, RUBRIC.get(difficulty)))));
-        layers.add(layer("persona", "persona", "Master persona", true, source,
+        layers.add(layer("persona", "persona", "Persona", true, source,
                 blankToNull(text(profile, SlotKey.PERSONA))));
         ReaderProfile reader = readerProfiles.resolveFor(session);
         layers.add(layer("reader_context", "reader", "Reader profile", true,

@@ -27,7 +27,7 @@ public class SummaryCapability implements ConversationCapability {
 
     @Override
     public String modelDescription() {
-        return "summary — write a concise recap of the session's page range and the discussion so far; "
+        return "summary — recap the session's pages and the discussion so far; "
                 + "use when the reader asks for a summary, recap, or overview";
     }
 

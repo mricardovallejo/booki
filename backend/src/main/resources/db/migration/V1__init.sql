@@ -71,10 +71,10 @@ CREATE TABLE reader_profiles (
 INSERT INTO reader_profiles (user_id, name, context, is_default, read_only) VALUES (
     NULL,
     'General reader',
-    'My goal for this reading: ' || CHR(10)
-        || 'What I already know about the topic: ' || CHR(10)
-        || 'How I like to learn (examples, definitions, pace): ' || CHR(10)
-        || 'Anything that helps me (short paragraphs, dyslexia-friendly formatting, ...): ',
+    'What I want to get out of this reading: ' || CHR(10)
+        || 'How familiar I already am with the topic: ' || CHR(10)
+        || 'How I learn best (worked examples, plain definitions, analogies, a slower pace...): ' || CHR(10)
+        || 'Anything that helps me follow along (short paragraphs, no jargon, dyslexia-friendly formatting...): ',
     TRUE,
     TRUE
 );

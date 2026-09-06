@@ -24,8 +24,8 @@ public class MnemonicCapability implements ConversationCapability {
 
     @Override
     public String modelDescription() {
-        return "mnemonic — create a memory aid (acronym, vivid image, or short rhyme) for the key ideas in these pages; "
-                + "use when the reader asks for help memorizing or remembering the material";
+        return "mnemonic — build a memory aid for the key points of these pages; "
+                + "use when the reader asks for help memorising or remembering";
     }
 
     @Override

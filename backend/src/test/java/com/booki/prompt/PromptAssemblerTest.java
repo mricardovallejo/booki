@@ -78,13 +78,29 @@ class PromptAssemblerTest {
         String prompt = assembler.forChat(s, "PAGE TEXT");
 
         assertThat(prompt).contains("You are BooKI, a reading companion");                 // core
-        assertThat(prompt).contains("Advanced: assume a close reading");                    // rubric_hard
+        assertThat(prompt).contains("Advanced. Assume a close reading");                    // rubric_hard
         assertThat(prompt).contains("You are a patient tutor");                             // persona
         assertThat(prompt).contains("Reader level: intermediate.\nPrefers short answers."); // reader profile
         assertThat(prompt).contains("Reply in Spanish.");                                   // session facts
         assertThat(prompt).contains("<<<BEGIN DOCUMENT>>>\nPAGE TEXT\n<<<END DOCUMENT>>>");  // fenced page text
         assertThat(prompt).endsWith("<<<END DOCUMENT>>>");
-        assertThat(prompt).doesNotContain("Easy: assume little prior knowledge");
+        assertThat(prompt).doesNotContain("Assume the reader is new to this material");
+    }
+
+    @Test
+    void chatRoutingSectionCarriesTheLockedFrameAndTheEditableBody() {
+        Session s = session("medium", "en", true);
+
+        String section = assembler.chatRoutingSection(s);
+
+        assertThat(section).contains("--- When BooKI can act on its own ---");
+        assertThat(section).contains("respond with only {\"capability\":\"<name>\"}"); // locked frame
+        assertThat(section).contains("Route to a capability only when");               // editable body
+    }
+
+    @Test
+    void chatRoutingSectionIsEmptyWithoutAProfile() {
+        assertThat(assembler.chatRoutingSection(session("medium", "en", false))).isEmpty();
     }
 
     @Test
@@ -95,7 +111,7 @@ class PromptAssemblerTest {
         String prompt = assembler.forFunction(s, SlotKey.FN_ANSWER_GRADING, "easy", "P");
         assertThat(prompt).contains("Reply in exactly three lines and nothing else:");
         assertThat(prompt).contains("CORRECT: yes or no");
-        assertThat(prompt).contains("Judge the reader's answer against the page");
+        assertThat(prompt).contains("Judge whether the reader's answer shows");
     }
 
     @Test
@@ -115,7 +131,7 @@ class PromptAssemblerTest {
                         "functions", "functions", "functions", "functions", "functions",
                         "routing", "session");
         assertThat(ctx.layers().get(0).editable()).isFalse();   // core
-        assertThat(ctx.layers().get(1).content()).contains("Medium: assume the reader");
+        assertThat(ctx.layers().get(1).content()).contains("Medium. Assume the reader");
     }
 
     @Test

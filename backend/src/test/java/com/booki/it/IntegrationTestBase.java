@@ -1,25 +1,25 @@
 package com.booki.it;
 
-import com.booki.ai.AiProvider;
 import com.booki.dto.AuthRequest;
 import com.booki.dto.AuthResponse;
 import com.booki.dto.DocumentResponse;
 import com.booki.dto.SessionRequest;
 import com.booki.dto.SessionResponse;
-import com.booki.voice.SpeechToTextProvider;
-import com.booki.voice.TextToSpeechProvider;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -63,10 +63,14 @@ import static org.assertj.core.api.Assertions.assertThat;
         "booki.storage.local-path=build/it-storage"
 })
 @ActiveProfiles("test")
+@Import(IntegrationTestBase.FakeBoundaryBeans.class)
 public abstract class IntegrationTestBase {
 
-    @Autowired
-    protected TestRestTemplate rest;
+    @LocalServerPort
+    private int port;
+
+    /** Set fresh per test once the random port is known (see {@link #resetFakes()}). */
+    protected HttpClient rest;
 
     @Autowired
     protected FakeAiProvider fakeAi;
@@ -89,27 +93,36 @@ public abstract class IntegrationTestBase {
 
     @BeforeEach
     void resetFakes() {
+        rest = new HttpClient("http://localhost:" + port);
         fakeAi.clear();
+        fakeStt.clear();
+        fakeTts.clear();
     }
 
     @TestConfiguration
     static class FakeBoundaryBeans {
 
+        /**
+         * Concrete return types on purpose: the beans satisfy the app's
+         * interface injection points <em>and</em> the concrete-typed
+         * {@code @Autowired} fields the tests use to poke the fakes.
+         */
+
         /** Named "fake" so {@code AiProviderRegistry} exposes it (and the default-provider property resolves it). */
         @Bean("fake")
-        AiProvider fakeAiProvider() {
+        FakeAiProvider fakeAiProvider() {
             return new FakeAiProvider();
         }
 
         @Bean
         @Primary
-        SpeechToTextProvider fakeSpeechToText() {
+        FakeSpeechToTextProvider fakeSpeechToText() {
             return new FakeSpeechToTextProvider();
         }
 
         @Bean
         @Primary
-        TextToSpeechProvider fakeTextToSpeech() {
+        FakeTextToSpeechProvider fakeTextToSpeech() {
             return new FakeTextToSpeechProvider();
         }
     }
@@ -141,10 +154,20 @@ public abstract class IntegrationTestBase {
     }
 
     protected ResponseEntity<AuthResponse> login(String email, String password) {
+        return rest.postForEntity("/api/auth/login", loginRequest(email, password), AuthResponse.class);
+    }
+
+    /** Login expecting a non-2xx body (e.g. the {@code {"error": ...}} shape). */
+    protected <T> ResponseEntity<T> login(String email, String password, ParameterizedTypeReference<T> type) {
+        return rest.exchange("/api/auth/login", HttpMethod.POST,
+                new HttpEntity<>(loginRequest(email, password)), type);
+    }
+
+    private AuthRequest loginRequest(String email, String password) {
         AuthRequest request = new AuthRequest();
         request.setEmail(email);
         request.setPassword(password);
-        return rest.postForEntity("/api/auth/login", request, AuthResponse.class);
+        return request;
     }
 
     protected HttpHeaders auth(String token) {
@@ -161,7 +184,7 @@ public abstract class IntegrationTestBase {
                 document.addPage(page);
                 try (PDPageContentStream content = new PDPageContentStream(document, page)) {
                     content.beginText();
-                    content.setFont(PDType1Font.HELVETICA, 12);
+                    content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
                     content.newLineAtOffset(50, 700);
                     content.showText(text);
                     content.endText();

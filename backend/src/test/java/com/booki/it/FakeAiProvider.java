@@ -57,19 +57,23 @@ public class FakeAiProvider implements AiProvider {
         if (reply != null) {
             return reply;
         }
-        if (systemPrompt.contains("CORRECT:")) {
+        // Match phrases that appear ONLY in a forFunction() system prompt (locked
+        // frames / fn_* bodies), never in a plain chat turn — the capability
+        // router lists every capability's description, so chat prompts now
+        // mention "memory aid", "question", etc.
+        if (systemPrompt.contains("Reply in exactly three lines and nothing else:")) {
             return "CORRECT: yes\nSCORE: 0.85\nFEEDBACK: Well done.";
         }
-        if (systemPrompt.contains("comprehension question")) {
+        if (systemPrompt.contains("Output only the question.")) {
             return "What is the main idea of this page?";
         }
-        if (systemPrompt.contains("Summarize")) {
+        if (systemPrompt.contains("Write prose only. No headings")) {
             return "Summary of the pages.";
         }
-        if (systemPrompt.contains("memory aid")) {
+        if (systemPrompt.contains("Build one memory aid whose form fits")) {
             return "BEE: Bold ideas become memorable.";
         }
-        if (systemPrompt.contains("plainer terms")) {
+        if (systemPrompt.contains("explain that point from the ground up")) {
             return "In plain words, it works like a library companion.";
         }
         return "Fake AI reply";

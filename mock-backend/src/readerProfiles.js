@@ -12,10 +12,10 @@
 const READER_LEVELS = ['beginner', 'intermediate', 'advanced'];
 
 const GENERIC_CONTEXT =
-  'My goal for this reading: \n' +
-  'What I already know about the topic: \n' +
-  'How I like to learn (examples, definitions, pace): \n' +
-  'Anything that helps me (short paragraphs, dyslexia-friendly formatting, …): ';
+  'What I want to get out of this reading: \n' +
+  'How familiar I already am with the topic: \n' +
+  'How I learn best (worked examples, plain definitions, analogies, a slower pace…): \n' +
+  'Anything that helps me follow along (short paragraphs, no jargon, dyslexia-friendly formatting…): ';
 
 const FACTORY_READER = {
   id: 1,

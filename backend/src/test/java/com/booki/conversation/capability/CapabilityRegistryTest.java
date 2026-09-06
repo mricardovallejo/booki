@@ -40,7 +40,7 @@ class CapabilityRegistryTest {
     @Test
     void routerInstructionsListEveryCapability() {
         String instructions = registry.routerInstructions();
-        assertThat(instructions).contains("quiz").contains("summary").contains("{\"capability\":\"<name>\"}");
+        assertThat(instructions).contains("quiz").contains("summary").contains("Capabilities available this turn");
     }
 
     @Test

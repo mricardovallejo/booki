@@ -89,11 +89,11 @@ class AuthSecurityIT extends IntegrationTestBase {
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(ok.getBody().getToken()).isNotBlank();
 
-        ResponseEntity<Map<String, String>> wrongPassword = login(email, "wrong-pass");
+        ResponseEntity<Map<String, String>> wrongPassword = login(email, "wrong-pass", errorType());
         assertThat(wrongPassword.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(wrongPassword.getBody().get("error")).isEqualTo("Invalid credentials");
 
-        ResponseEntity<Map<String, String>> unknownEmail = login(uniqueEmail("ghost"), "password123");
+        ResponseEntity<Map<String, String>> unknownEmail = login(uniqueEmail("ghost"), "password123", errorType());
         assertThat(unknownEmail.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(unknownEmail.getBody().get("error")).isEqualTo("Invalid credentials");
     }

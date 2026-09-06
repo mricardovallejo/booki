@@ -26,7 +26,9 @@ class VoiceIT extends IntegrationTestBase {
 
     @Test
     void capabilitiesReportFakeProviders() {
-        ResponseEntity<VoiceCapabilitiesResponse> response = rest.getForEntity("/api/voice/capabilities", VoiceCapabilitiesResponse.class);
+        AuthData user = register(uniqueEmail("voicecap"));
+        ResponseEntity<VoiceCapabilitiesResponse> response = rest.exchange("/api/voice/capabilities",
+                HttpMethod.GET, new HttpEntity<>(auth(user.token())), VoiceCapabilitiesResponse.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().stt()).isTrue();

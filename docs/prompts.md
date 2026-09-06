@@ -231,13 +231,16 @@ and locked frame. "Improving a template" = editing that class; existing profiles
 keep their own rows and are never touched.
 
 **`PromptAssembler`** owns the layering + precedence: `forChat(session, docText)`,
-`forFunction(session, SlotKey, difficulty, docText)`, and `describe(session)` for
-`GET /sessions/{id}/context`. It resolves the reader context via
-`ReaderProfileService.resolveFor(session)` (the session's reader profile, else
-the user's default, else the built-in). `ConversationEngine` appends the
-capability router, filtered to the profile's `enabledCapabilities`; a routed
-directive or explicit `capabilityHint` for a disabled capability is rejected.
-Quiz / summary / explain / mnemonic ask the assembler for their `fn_*` SlotPrompt.
+`forFunction(session, SlotKey, difficulty, docText)`, `chatRoutingSection(session)`
+and `describe(session)` for `GET /sessions/{id}/context`. It resolves the reader
+context via `ReaderProfileService.resolveFor(session)` (the session's reader
+profile, else the user's default, else the built-in). For a chat turn
+`ConversationEngine` composes `forChat` + `chatRoutingSection` (the
+`capability_routing` locked frame + the profile's editable body) +
+`CapabilityRegistry.routerInstructions(enabled)` (just the dynamic list of enabled
+capabilities); a routed directive or explicit `capabilityHint` for a disabled
+capability is rejected. Quiz / summary / explain / mnemonic ask the assembler for
+their `fn_*` SlotPrompt.
 
 **`ReaderProfileServiceImpl`** — `list` (built-in + own), `create` (optional
 `fromId` copy), `update` / `delete` (404 on the built-in), `resolveFor(session)`

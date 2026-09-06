@@ -591,9 +591,10 @@ export default function AiProfilesPage() {
                     rows={9}
                     className="font-mono text-[13px] leading-relaxed"
                     placeholder={
-                      'Describe the reader for this context: their goal, how much they already know, how ' +
-                      'they like to learn (examples, definitions, pace), and anything that helps them ' +
-                      '(short paragraphs, dyslexia-friendly formatting…).'
+                      'Describe yourself for this reading: what you want out of it, how familiar you ' +
+                      'already are with the topic, how you learn best (worked examples, plain definitions, ' +
+                      'analogies, a slower pace), and anything that helps you follow along (short paragraphs, ' +
+                      'no jargon, dyslexia-friendly formatting).'
                     }
                   />
 

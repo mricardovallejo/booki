@@ -50,7 +50,7 @@ class SessionConversationIT extends IntegrationTestBase {
         assertThat(session.getCurrentPage()).isEqualTo(1);
         assertThat(session.getTitle()).contains("(pages 1-3)");
         assertThat(session.getAiProvider()).isEqualTo("fake");
-        assertThat(session.getEnabledCapabilities()).containsExactly("explain", "mnemonic", "quiz", "summary");
+        assertThat(session.getEnabledCapabilities()).containsExactlyInAnyOrder("explain", "mnemonic", "quiz", "summary");
         assertThat(session.getReaderProfileId()).isNull();
     }
 
@@ -196,7 +196,7 @@ class SessionConversationIT extends IntegrationTestBase {
         assertThat(context.language()).isEqualTo("en");
         assertThat(context.difficulty()).isEqualTo("easy");
         assertThat(context.layers()).extracting(SessionContextResponse.Layer::key)
-                .contains("core", "rubric_easy", "persona", "session", "capability_routing");
+                .contains("core", "rubric", "persona", "session", "capability_routing");
     }
 
     @Test

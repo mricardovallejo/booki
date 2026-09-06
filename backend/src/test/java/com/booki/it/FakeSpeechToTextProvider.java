@@ -22,6 +22,12 @@ public class FakeSpeechToTextProvider implements SpeechToTextProvider {
         return lastLanguage.get();
     }
 
+    /** Drop state carried over from an earlier test (one Spring context per package). */
+    public void clear() {
+        transcript.set("fake transcript");
+        lastLanguage.set(null);
+    }
+
     @Override
     public boolean isConfigured() {
         return true;

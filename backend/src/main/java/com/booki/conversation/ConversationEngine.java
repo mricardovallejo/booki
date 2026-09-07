@@ -100,7 +100,7 @@ public class ConversationEngine {
 
         Message userMessage = persist(session, Message.Speaker.USER, request.inputType(), request.text());
 
-        String pageContext = buildContextText(session, request.text());
+        String pageContext = buildContextText(session, request);
 
         String answer;
         try {
@@ -135,7 +135,7 @@ public class ConversationEngine {
 
         List<AiProvider.Message> history = recentHistory(session.getId());
         Message userMessage = persist(session, Message.Speaker.USER, request.inputType(), request.text());
-        String pageContext = buildContextText(session, request.text());
+        String pageContext = buildContextText(session, request);
         CapabilityInvocation invocation = new CapabilityInvocation(session, request.text(), history, pageContext);
 
         Optional<ConversationCapability> hinted = hintedCapability(request, session);
@@ -326,15 +326,24 @@ public class ConversationEngine {
      * and restores reading order before sending. A session may span the whole
      * document, but a normal chat turn must not send the whole PDF.
      */
-    private String buildContextText(Session session, String userText) {
+    private String buildContextText(Session session, ConversationRequest request) {
+        String userText = request.text();
+        int documentPageCount = session.getDocument().getPageCount();
         int currentPage = session.getCurrentPage() != null
                 ? session.getCurrentPage() : session.getStartPage();
         int contextStart;
         int contextEnd;
-        Optional<int[]> explicitRange = explicitPageRange(userText, session.getDocument().getPageCount());
+        Optional<int[]> explicitRange = explicitPageRange(userText, documentPageCount);
+        Optional<int[]> activityRange = activityPageRange(request, documentPageCount);
         if (explicitRange.isPresent()) {
+            // A range typed into the message ("pages 4-6") always wins.
             contextStart = explicitRange.get()[0];
             contextEnd = explicitRange.get()[1];
+        } else if (activityRange.isPresent()) {
+            // A quick-action button carries the shared activity range; take the
+            // last MAX_EXPLICIT_CONTEXT_PAGES of it so a wide range stays bounded.
+            contextEnd = activityRange.get()[1];
+            contextStart = Math.max(activityRange.get()[0], contextEnd - MAX_EXPLICIT_CONTEXT_PAGES + 1);
         } else {
             contextStart = currentPage >= session.getStartPage()
                     ? Math.max(session.getStartPage(), currentPage - MAX_CONTEXT_PAGES + 1)
@@ -364,6 +373,18 @@ public class ConversationEngine {
         }
         Collections.reverse(selected);
         return String.join("\n\n", selected);
+    }
+
+    /** The activity page range a quick action sent alongside the turn, clamped to the document. */
+    private Optional<int[]> activityPageRange(ConversationRequest request, int documentPageCount) {
+        Integer start = request.pageStart();
+        Integer end = request.pageEnd();
+        if (start == null || end == null) {
+            return Optional.empty();
+        }
+        int s = Math.max(1, Math.min(start, documentPageCount));
+        int e = Math.max(s, Math.min(end, documentPageCount));
+        return Optional.of(new int[]{s, e});
     }
 
     private Optional<int[]> explicitPageRange(String userText, int documentPageCount) {

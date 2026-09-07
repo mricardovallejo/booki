@@ -20,7 +20,9 @@ public record ConversationRequest(
         Long sessionId,
         String text,
         Message.InputType inputType,
-        String capabilityHint) {
+        String capabilityHint,
+        Integer pageStart,
+        Integer pageEnd) {
 
     public ConversationRequest {
         if (inputType == null) {
@@ -30,6 +32,12 @@ public record ConversationRequest(
 
     /** Turn with no explicit capability hint — the model routes. */
     public ConversationRequest(Long userId, Long sessionId, String text, Message.InputType inputType) {
-        this(userId, sessionId, text, inputType, null);
+        this(userId, sessionId, text, inputType, null, null, null);
+    }
+
+    /** Turn with a capability hint but no explicit page range (voice, tests). */
+    public ConversationRequest(Long userId, Long sessionId, String text, Message.InputType inputType,
+                               String capabilityHint) {
+        this(userId, sessionId, text, inputType, capabilityHint, null, null);
     }
 }

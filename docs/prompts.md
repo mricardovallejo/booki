@@ -160,9 +160,10 @@ Reader profile.)
 how much scaffolding, how strict the grading — is the text in `rubric_easy/…`.
 The session carries a default difficulty; the quiz panel can override it per
 round (the AI Profile is always the session's). The quiz panel shows the active
-rubric inline with a deep link (`/ai-profiles/{id}?slot=rubric_<level>`) to edit
-it. A round also selects an explicit range within the pages reached so far; the
-backend echoes the effective `startPage` / `endPage` in the response.
+rubric inline (collapsed) with a deep link (`/ai-profiles/{id}?slot=rubric_<level>`)
+to edit it. A round runs on the session's shared activity page range (set above
+the tabs, ADR-024); the backend echoes the effective `startPage` / `endPage` in
+the response.
 
 ## Language
 

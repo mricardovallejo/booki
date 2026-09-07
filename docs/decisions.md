@@ -318,3 +318,40 @@ will use SSE, which every browser supports.
   is still stored, just computed from the score. The Node mock's fixtures were
   updated to match; it still only word-matches, so its feedback can't quote the
   page.
+
+## ADR-024: AI activities run on a reader-controlled page range, not the reading marker
+
+- **Context**: the panel quiz and the summary modal were bounded to
+  `startPage..endPage` — "the pages reached so far". Tying the AI activity scope
+  to reading progress broke in use: a just-opened session has `endPage = 1`, so
+  a quiz could only cover page 1; the old "one question per page" cap turned a
+  request for 3 questions on a 1-page range into 1 question; each panel carried
+  its own range selector; and the chat quick-actions (Ask me / Explain /
+  Summarize / Mnemonic) ignored any range entirely and used the reading
+  position, so tapping "Ask me" while reading chapter 3 of a child's history
+  book produced a question about page 1.
+- **Decision**: an **activity page range** — one value shared by the panel quiz,
+  the summary modal and the chat quick-actions. It is **not** a session field:
+  it lives in a React context (`ActivityRangeContext`, scoped per session id,
+  not persisted). Default = page 1 to the furthest page read, following reading
+  progress; once the reader edits the steppers it pins in place, though the end
+  still extends if they later read past it. The steppers are a single bar above
+  the sidebar tabs (`ActivityRangeBar`), removed from the individual panels.
+  Every activity call carries its own `startPage`/`endPage`: the quiz and
+  summary endpoints already accepted them; `POST /sessions/{id}/messages` (and
+  `ConversationRequest` → `ConversationEngine`) gains optional
+  `pageStart`/`pageEnd`, sent only for quick-actions — **plain chat text stays
+  anchored on the reading position** (a range typed into the message still wins
+  over both). The backend validates against the whole document (`1..pageCount`)
+  and **clamps rather than rejects** a stale range. Quiz question count is
+  decoupled from page count: N questions are spread evenly across the range
+  (`i * (n-1) / (N-1)`), and a 1-page range still yields N. The summary book
+  excerpt is capped (`SUMMARY_EXCERPT_CHAR_BUDGET`, ~12k chars) by even-sampling
+  pages, so a wide range cannot blow up the request.
+- **Consequence**: activities obey a range the reader owns, independent of where
+  they navigate — "quiz me on chapter 3" no longer leaks chapter 4. No schema
+  change: `Session.endPage` is now purely a reading-progress marker (still grows
+  as pages turn, still shown as "read so far"). The range is per-tab state — a
+  reload re-derives it from reading progress. Voice quick-actions still use the
+  reading position (not wired through). PDF text is still extracted for every
+  page at upload, now in one `PDFTextStripper` pass instead of a per-page loop.

@@ -106,6 +106,7 @@ export interface Session {
   documentId: number;
   title: string;
   startPage: number;
+  /** How far the reader has actually got — informational. */
   endPage: number;
   currentPage: number;
   difficulty: Difficulty;

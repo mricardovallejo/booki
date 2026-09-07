@@ -28,13 +28,14 @@ export function useChat(sessionId: number, onActivity?: () => void) {
     async (
       text: string,
       inputType: 'TEXT' | 'VOICE' = 'TEXT',
-      capabilityHint?: CapabilityHint
+      capabilityHint?: CapabilityHint,
+      pageRange?: { start: number; end: number }
     ) => {
       if (!text.trim()) return;
       setSending(true);
       setError(null);
       try {
-        await sendMessage(sessionId, text.trim(), inputType, capabilityHint);
+        await sendMessage(sessionId, text.trim(), inputType, capabilityHint, pageRange);
         await refresh();
         onActivity?.();
       } catch (err) {

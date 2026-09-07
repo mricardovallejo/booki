@@ -61,7 +61,7 @@ On register the account is also seeded with its default tutor profiles and an ed
 | GET | `/api/documents/{id}/file` | Stream/view the PDF file |
 | DELETE | `/api/documents/{id}` | Delete a document |
 
-Upload parsing, blob storage and row creation live in `DocumentService.importPdf(userId, title, bytes)`; `uploadDocument` just unwraps the multipart and delegates. The same method seeds the welcome guide (ADR-022).
+Upload parsing, blob storage and row creation live in `DocumentService.importPdf(userId, title, bytes)`; `uploadDocument` just unwraps the multipart and delegates. The same method seeds the welcome guide (ADR-022). Text is extracted in a single `PDFTextStripper` pass over the whole document (split on a form feed), then the `DocumentPage` rows are written with one `saveAll` — a per-page `getText` loop re-walked the page tree each call and was O(n²) on large PDFs.
 
 ### AI Profiles — `/api/ai-profiles` · Reader Profiles — `/api/reader-profiles`
 
@@ -100,10 +100,13 @@ endpoints:
 ### Sessions — `/api/sessions`
 
 Page fields have distinct meanings: `startPage` is the immutable start of the
-reading journey, `endPage` is the furthest page reached and only grows, and
-`currentPage` is the page currently displayed. The reader may navigate to any
-document page, including backward for review. Quiz and summary ranges remain
-limited to `startPage..endPage`, the pages reached since this session began.
+reading journey, `endPage` is a reading-progress marker (the furthest page
+reached, only grows), and `currentPage` is the page currently displayed. The
+reader may navigate to any document page, including backward for review. The AI
+activities (quiz, summary, chat quick-actions) run on a **client-side activity
+range** the reader controls (default: pages read so far), passed on each request
+and validated against the whole document (`1..pageCount`, clamped not rejected).
+See ADR-024.
 
 | Method | Route | Description |
 |--------|------|-------------|
@@ -112,20 +115,20 @@ limited to `startPage..endPage`, the pages reached since this session began.
 | GET | `/api/sessions/{id}/context` | Inspect the assembled prompt layers (core, difficulty, persona, reader profile, per-function, routing, session facts) each tagged with a `group`, plus `aiProfileName` / `readerProfileName`. See `docs/prompts.md` |
 | PATCH | `/api/sessions/{id}/current-page` | Navigate to any page in the document; moving forward also expands `endPage`, the furthest page reached |
 | GET | `/api/sessions/{id}/messages` | Conversation history |
-| POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `502` if the AI provider fails |
+| POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly; a quick-action also sends the activity range as `pageStart`/`pageEnd` (plain chat omits them and stays on the reading position). `502` if the AI provider fails |
 | POST | `/api/sessions/{id}/voice` | Voice turn: multipart `audio` (+ optional `capabilityHint`). Backend transcribes → same `ConversationEngine` → optional spoken reply. Returns the persisted user + bot messages and a base64 MP3 (or `null`). `502` if transcription fails |
 | GET | `/api/sessions/{id}/progress` | Reading progress for the session |
 | GET | `/api/sessions/{id}/notifications` | Contextual nudges (halfway, done, say hi, try a quiz), localized per session language |
 | GET | `/api/sessions/{id}/reports` | List reports already generated/sent for this session |
 | POST | `/api/sessions/{id}/reports/progress` | Generate (and optionally email) a progress report |
 | POST | `/api/sessions/{id}/reports/quiz` | Generate (and optionally email) a quiz report |
-| POST | `/api/sessions/{id}/summary` | Generate a summary for a requested range within the pages reached so far; omitted range fields default to the full reached range for API compatibility |
+| POST | `/api/sessions/{id}/summary` | Generate a summary for a requested page range (omitted fields default to the whole document; clamped, not rejected). The book excerpt is capped (~12k chars, even-sampled) so a wide range stays bounded |
 
 ### Quiz — `/api/sessions/{sessionId}` (mounted under Sessions)
 
 | Method | Route | Description |
 |--------|------|-------------|
-| POST | `/api/sessions/{sessionId}/quiz` | Generate 1–20 page-bound questions for a requested range within the pages reached so far; omitted range fields default to the full reached range, and the response echoes the effective range |
+| POST | `/api/sessions/{sessionId}/quiz` | Generate 1–20 questions for a requested page range (omitted fields default to the whole document; clamped, not rejected). Question count is independent of the range width — questions are spread evenly across it, and a 1-page range still yields N. The response echoes the effective range |
 | POST | `/api/sessions/{sessionId}/quiz/answer` | Submit an open answer, get a score + teaching feedback that states the answer (ADR-023) |
 | GET | `/api/sessions/{sessionId}/quiz/attempts` | Quiz attempt history/report for the session |
 
@@ -216,11 +219,13 @@ each produce the reply text for one turn. Not an agent framework. Routing is
 instructions are appended to the system prompt, and when a capability fits the
 model replies with only `{"capability":"<name>"}`, which `CapabilityRegistry`
 recognises strictly. A quick-action button skips routing by passing
-`capabilityHint`. `quiz` and `summary` reuse
+`capabilityHint`, and also sends the activity range (`pageStart`/`pageEnd`).
+`ConversationEngine.buildContextText` uses that range (its last
+`MAX_EXPLICIT_CONTEXT_PAGES`) when present, a range typed into the message when
+that is present, else the reading-position window. `quiz` and `summary` reuse
 `QuizService.generateComprehensionQuestion(Session, pageContextText)` /
 `ReportService.generateSummaryText(Session, ..., pageContextText)`, so the
-selected page context is carried into the capability instead of being rebuilt
-from the full session range.
+selected page context is carried into the capability.
 The conversational quiz only *asks* — scored `QuizAttempt` rows stay on the
 `POST /quiz/answer` panel flow. See ADR-008.
 

@@ -78,12 +78,17 @@ public class DocumentServiceImpl implements DocumentService {
         List<String> pageTexts;
         try (PDDocument pdDocument = Loader.loadPDF(bytes)) {
             pageCount = pdDocument.getNumberOfPages();
-            pageTexts = new ArrayList<>(pageCount);
+            // One pass over the whole document (a per-page loop re-walks the page
+            // tree every call — O(n^2) on large PDFs). A form feed between pages
+            // lets us split the single output back into per-page text.
             PDFTextStripper stripper = new PDFTextStripper();
-            for (int i = 1; i <= pageCount; i++) {
-                stripper.setStartPage(i);
-                stripper.setEndPage(i);
-                pageTexts.add(stripper.getText(pdDocument).trim());
+            stripper.setStartPage(1);
+            stripper.setEndPage(pageCount);
+            stripper.setPageEnd("\f");
+            String[] parts = stripper.getText(pdDocument).split("\f", -1);
+            pageTexts = new ArrayList<>(pageCount);
+            for (int i = 0; i < pageCount; i++) {
+                pageTexts.add(i < parts.length ? parts[i].trim() : "");
             }
         } catch (IOException e) {
             throw new IllegalArgumentException("Invalid or unreadable PDF file", e);
@@ -98,13 +103,15 @@ public class DocumentServiceImpl implements DocumentService {
             document.setPageCount(pageCount);
             documentRepository.save(document);
 
+            List<DocumentPage> pages = new ArrayList<>(pageCount);
             for (int i = 0; i < pageCount; i++) {
                 DocumentPage page = new DocumentPage();
                 page.setDocument(document);
                 page.setPageNumber(i + 1);
                 page.setExtractedText(pageTexts.get(i));
-                documentPageRepository.save(page);
+                pages.add(page);
             }
+            documentPageRepository.saveAll(pages);
             return toResponse(document);
         } catch (RuntimeException e) {
             // The transaction will roll the rows back; drop the stored object too.

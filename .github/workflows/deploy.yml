@@ -81,7 +81,7 @@ jobs:
             --region "${{ vars.GCP_REGION }}" \
             --source backend \
             --allow-unauthenticated \
-            --min-instances 0 \
+            --min-instances 1 \
             --max-instances 2 \
             --memory 512Mi \
             --port 8080 \

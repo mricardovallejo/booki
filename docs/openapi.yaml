@@ -802,6 +802,19 @@ paths:
                 capabilityHint:
                   allOf: [{ $ref: "#/components/schemas/CapabilityHint" }]
                   description: Optional — set by a quick-action button to run that capability directly, skipping model routing.
+                pageStart:
+                  type: integer
+                  minimum: 1
+                  description: >
+                    Optional. The shared activity page range, sent by a
+                    quick-action so its capability stays within those pages.
+                    Omit for plain chat (the turn then uses the reading
+                    position). Clamped to the document; a range typed into the
+                    message still takes precedence.
+                pageEnd:
+                  type: integer
+                  minimum: 1
+                  description: See `pageStart`.
       responses:
         "201":
           description: BooKI's reply
@@ -890,13 +903,15 @@ paths:
       summary: Generate quiz questions for this session
       operationId: generateQuiz
       description: >
-        Mock logic: one templated question per page (up to `questionCount`), in
-        the session's language. Real backend: asks the session's AI provider
-        (see Session.aiProvider) to write one genuine comprehension question
-        per page for the explicitly selected range within the pages reached so
-        far. Each question is restricted to its supplied page block and may not
-        use another page or outside knowledge. The response echoes the effective
-        range in `config.startPage` / `config.endPage`.
+        Asks the session's AI provider (see Session.aiProvider) to write
+        `questionCount` genuine comprehension questions. The count is
+        independent of the range width — questions are spread evenly across the
+        selected page range, and a 1-page range still yields `questionCount`.
+        Each question is restricted to its supplied page block and may not use
+        another page or outside knowledge. Omitted range fields default to the
+        whole document; an out-of-bounds range is clamped, not rejected. The
+        response echoes the effective range in `config.startPage` /
+        `config.endPage`.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -909,8 +924,8 @@ paths:
                   allOf: [{ $ref: "#/components/schemas/Difficulty" }]
                   description: Overrides the session difficulty for this round only. The session's AI Profile is always used.
                 questionCount: { type: integer, minimum: 1, maximum: 20, default: 3 }
-                startPage: { type: integer, minimum: 1, description: "Optional first page for this quiz round; must have been reached in this session. Defaults to Session.startPage." }
-                endPage: { type: integer, minimum: 1, description: "Optional last page for this quiz round; must have been reached in this session. Defaults to Session.endPage." }
+                startPage: { type: integer, minimum: 1, description: "Optional first page for this quiz round (the client sends the shared activity range). Defaults to 1; clamped to the document." }
+                endPage: { type: integer, minimum: 1, description: "Optional last page for this quiz round. Defaults to the document's last page; clamped to the document." }
       responses:
         "200":
           description: Generated quiz
@@ -1098,8 +1113,10 @@ paths:
       operationId: generateSummary
       description: >
         A genuine AI call (the session's `aiProvider`) that combines the
-        explicitly selected `startPage` / `endPage` range with recent chat
-        history. The selected range must be within the pages reached so far. The
+        selected `startPage` / `endPage` range with recent chat history. Omitted
+        range fields default to the whole document; an out-of-bounds range is
+        clamped, not rejected. The book excerpt sent to the model is capped
+        (~12k chars, pages even-sampled) so a wide range stays bounded. The
         session's AI Profile (persona, reader context, `fn_summary` slot) and an
         optional free-text instruction (`prompt`) shape the result. `lengthPages`
         controls the target density (roughly 1–10 pages). Delivered either as a
@@ -1566,11 +1583,11 @@ components:
         startPage:
           type: integer
           minimum: 1
-          description: Optional first page to summarize; must have been reached in this session. Defaults to Session.startPage.
+          description: Optional first page to summarize (the client sends the shared activity range). Defaults to 1; clamped to the document.
         endPage:
           type: integer
           minimum: 1
-          description: Optional last page to summarize; must have been reached in this session. Defaults to Session.endPage.
+          description: Optional last page to summarize. Defaults to the document's last page; clamped to the document.
         prompt:
           type: string
           description: Optional free-text instruction from the reader (e.g. "focus on the characters"). Echoed verbatim into the generated summary's intro.

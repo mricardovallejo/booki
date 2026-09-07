@@ -4,6 +4,7 @@ import { ROUTES } from '../config/routes';
 import ChatPanel from './ChatPanel';
 import QuizPanel from './QuizPanel';
 import ProgressPanel from './ProgressPanel';
+import ActivityRangeBar from './ActivityRangeBar';
 import NotificationsBell from './NotificationsBell';
 import ContextInfoButton from './ContextInfoButton';
 import { useSessionContext } from '../hooks/useSessionContext';
@@ -87,6 +88,8 @@ export default function SessionSidebar({ sessionId }: Props) {
           </button>
         </div>
       </div>
+
+      <ActivityRangeBar />
 
       <div className="flex border-b border-white/10 px-5">
         {TABS.map((t) => (

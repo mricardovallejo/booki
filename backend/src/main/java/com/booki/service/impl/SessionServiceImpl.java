@@ -167,7 +167,7 @@ public class SessionServiceImpl implements SessionService {
         // would hold a DB connection open across that call and undo that design.
         ConversationResult result = conversationEngine.converse(new ConversationRequest(
                 userId, sessionId, request.getMessage(), parseInputType(request.getInputType()),
-                request.getCapabilityHint()));
+                request.getCapabilityHint(), request.getPageStart(), request.getPageEnd()));
         return toResponse(result.botMessage());
     }
 

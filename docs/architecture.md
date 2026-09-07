@@ -34,10 +34,12 @@ typing, a quick-action button, or speaking — converges on one
 **capabilities** and an **AI provider**.
 
 Sessions are open-ended: `startPage` records where the journey began,
-`endPage` grows to the furthest page reached, and `currentPage` may move anywhere
-in the PDF. The engine sends a bounded page window by default or an explicit
-written range; quiz and summary screens select their own ranges within the pages
-reached so far.
+`endPage` is a pure reading-progress marker (grows to the furthest page reached),
+and `currentPage` may move anywhere in the PDF. Plain chat sends a bounded window
+around the reading position (or an explicit range typed into the message). The AI
+*activities* — panel quiz, summary modal, chat quick-actions — instead run on a
+reader-controlled **activity page range** (client-side, shared, defaults to
+"pages read so far", editable); see ADR-024.
 
 ```
   TEXT ─────────────┐

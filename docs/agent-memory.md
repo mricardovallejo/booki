@@ -7,10 +7,14 @@ sessions; one `ConversationEngine` behind text, quick actions and voice;
 quiz/summary/explain/mnemonic as conversational capabilities. One responsive
 PWA for Android/Windows/Linux.
 
-Session invariant: `startPage` is the reading start, `endPage` is the furthest
-page reached, and `currentPage` is freely navigable. Normal AI context contains
-at most eight pages; a written range may select up to 20. Quiz and summary use
-explicit ranges within the pages reached so far.
+Session invariant: `startPage` is the reading start, `endPage` is a
+reading-progress marker (furthest page reached), and `currentPage` is freely
+navigable. Normal chat context contains at most eight pages; a written range may
+select up to 20. The AI *activities* (panel quiz, summary modal, chat
+quick-actions) run on a client-side **activity page range** — shared per
+session, not persisted, default "pages read so far", editable — passed on each
+request and clamped to the document. Quiz question count is independent of the
+range width. See ADR-024.
 
 ## Fixed stack
 

@@ -70,12 +70,12 @@ public class QuizServiceImpl implements QuizService {
                 : session.getAiProfile() != null ? session.getAiProfile().getId() : null;
         String resolvedDifficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
-        // Upper bound matches GenerateQuizRequest's @Max; the real cap is one
-        // question per page, applied by the .limit() below.
         int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 20);
-        int startPage = request.getStartPage() != null ? request.getStartPage() : session.getStartPage();
-        int endPage = request.getEndPage() != null ? request.getEndPage() : session.getEndPage();
-        validateReadRange(session, startPage, endPage);
+        int pageCount = session.getDocument().getPageCount();
+        // Clamp rather than reject: a stale or oversized range from the client
+        // self-corrects instead of erroring.
+        int endPage = clamp(request.getEndPage() != null ? request.getEndPage() : pageCount, 1, pageCount);
+        int startPage = clamp(request.getStartPage() != null ? request.getStartPage() : 1, 1, endPage);
 
         AiProfile profile = resolvedProfileId != null
                 ? aiProfileRepository.findByIdAndUserId(resolvedProfileId, userId).orElse(null) : null;
@@ -83,12 +83,23 @@ public class QuizServiceImpl implements QuizService {
 
         List<DocumentPage> pages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
                 session.getDocument().getId(), startPage, endPage);
+        if (pages.isEmpty()) {
+            throw new IllegalStateException("The selected pages have no extracted text to build questions from.");
+        }
 
-        List<QuizQuestionResponse> questions = pages.stream()
-                .limit(questionCount)
-                .map(p -> new QuizQuestionResponse(p.getPageNumber(), p.getPageNumber(),
-                        questionForPage(session, p, resolvedDifficulty, provider, startPage, endPage)))
-                .toList();
+        // The number of questions is independent of how many pages the range
+        // spans. Spread the questions evenly ACROSS the range (not clustered at
+        // its start) so the quiz reflects the whole selection; a 1-page range
+        // still yields as many questions as asked.
+        int n = pages.size();
+        List<QuizQuestionResponse> questions = new java.util.ArrayList<>(questionCount);
+        for (int i = 0; i < questionCount; i++) {
+            int idx = questionCount == 1 ? 0
+                    : (int) Math.round((double) i * (n - 1) / (questionCount - 1));
+            DocumentPage page = pages.get(Math.min(idx, n - 1));
+            questions.add(new QuizQuestionResponse(i + 1, page.getPageNumber(),
+                    questionForPage(session, page, resolvedDifficulty, provider, startPage, endPage)));
+        }
 
         QuizConfigResponse config = new QuizConfigResponse(
                 resolvedProfileId, profile != null ? profile.getName() : null, resolvedDifficulty, questions.size(),
@@ -236,13 +247,6 @@ public class QuizServiceImpl implements QuizService {
 
     private int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
-    }
-
-    private void validateReadRange(Session session, int startPage, int endPage) {
-        if (startPage < session.getStartPage() || endPage > session.getEndPage() || startPage > endPage) {
-            throw new IllegalArgumentException("Quiz pages must be within the pages read so far ("
-                    + session.getStartPage() + "-" + session.getEndPage() + ")");
-        }
     }
 
     private double round2(double value) {

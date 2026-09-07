@@ -57,9 +57,12 @@ back, or keep it text-only.
 ![Reading with the assistant](docs/images/reader-chat.png)
 
 ### Quiz yourself on what you've read
-Pick a page range you've already covered and BooKI generates a short quiz.
-Answer in your own words and each answer is marked with a score and specific
-feedback — not just right/wrong.
+BooKI keeps an activity page range next to the tabs — it starts as everything
+you've read and follows along as you go, and you can narrow it to a single
+chapter in a click. Pick how many questions you want (the count is independent
+of how many pages the range covers) and BooKI spreads them across it. Answer in
+your own words and each answer is marked with a score and specific feedback —
+not just right/wrong. The same range bounds summaries and the chat quick-actions.
 
 ![Quiz](docs/images/quiz.png)
 

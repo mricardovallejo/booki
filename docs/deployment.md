@@ -72,10 +72,11 @@ env var — not business logic. Self-hosted alternative: GlitchTip.
 
 ### Cost
 
-Everything above is free for dev + a handful of pilot users. The only line that
-can bill anything is Cloud Run with `min-instances=1` to avoid cold starts
-(~5–10 $/mo); at `min-instances=0` it is free and pays a ~10–30 s cold start on
-the first request after idle — fine for dev.
+Everything above is free for dev + a handful of pilot users, except Cloud Run,
+which runs at `min-instances=1` (~5–10 $/mo) so the first request after idle
+doesn't eat a ~10–30 s cold start — the app felt broken at `min-instances=0`
+(every page turn, quiz and upload waited on it). Drop it back to `0` for a
+throwaway environment where nobody's watching.
 
 Note: GCS "Always Free" (5 GB) is **US regions only**. EU-region storage costs a
 few cents/month for a few GB — trivial, but not zero. If the US-region
@@ -275,8 +276,10 @@ docker run --rm -p 8080:8080 --env-file .env \
 Verified: image builds; the container starts against the Docker Postgres,
 Flyway runs, `/actuator/health` is 200, register/login/PDF-upload work.
 
-**Cloud Run** (Phase 5 wires it up): port 8080, `--min-instances=0` (free, cold
-starts), `--memory=512Mi`, `SPRING_PROFILES_ACTIVE=dev`, startup probe on
+**Cloud Run** (Phase 5 wires it up): port 8080, `--min-instances=1` (one warm
+instance — Spring Boot + a scale-to-zero Neon both cold-start slowly, and every
+page turn / quiz / upload hit that latency), `--memory=512Mi`,
+`SPRING_PROFILES_ACTIVE=dev`, startup probe on
 `/actuator/health`. Cloud Run ignores any Docker `HEALTHCHECK`; it uses its own
 HTTP probe, so none is set in the Dockerfile.
 
@@ -414,15 +417,16 @@ deploy workflow.
 - **`.github/workflows/deploy.yml`** — on push to `main` (or manual):
   - `backend`: `gcloud run deploy booki-backend --source backend` — Cloud Build
     builds `backend/Dockerfile`, deploys with
-    `--min-instances 0 --max-instances 2 --memory 512Mi`, env from a generated
-    `env.yaml`. Outputs the service URL. `max-instances 2` is the guard against
-    a runaway scale-out bill.
+    `--min-instances 1 --max-instances 2 --memory 512Mi`, env from a generated
+    `env.yaml`. Outputs the service URL. `min-instances 1` keeps one instance
+    warm (no cold-start on the first request after idle); `max-instances 2` is
+    the guard against a runaway scale-out bill.
   - `frontend`: `needs: backend`, builds with
     `VITE_API_BASE_URL=<backend-url>/api`, then `firebase deploy --only hosting`
     (config in `frontend/firebase.json`, SPA rewrite to `index.html`).
   - Auth: the one `GCP_SA_KEY` JSON key for both `gcloud` and `firebase-tools`.
 
-Flyway runs at startup — fine with one instance (`min-instances 0`, and Cloud
+Flyway runs at startup — fine with one instance (`min-instances 1`, and Cloud
 Run won't run two at this traffic); with 2+ it locks and the others wait.
 
 ---

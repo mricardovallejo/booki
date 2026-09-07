@@ -5,6 +5,7 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { getDocumentFileUrl } from '../api/documents';
 import { API_BASE_IS_SECURE } from '../config/endpoints';
 import { useAuth } from '../context/AuthContext';
+import { useActivityRange } from '../context/ActivityRangeContext';
 import { useSession } from '../hooks/useSession';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -19,6 +20,7 @@ interface Props {
 export default function PdfViewer({ sessionId }: Props) {
   const { token } = useAuth();
   const { session, error, goToPage } = useSession(sessionId);
+  const { initTotalPages, setReadEnd } = useActivityRange();
   const [numPages, setNumPages] = useState(0);
   const [inputPage, setInputPage] = useState(1);
   const [pageContainerNode, setPageContainerNode] = useState<HTMLDivElement | null>(null);
@@ -29,6 +31,15 @@ export default function PdfViewer({ sessionId }: Props) {
   useEffect(() => {
     if (currentPage != null) setInputPage(currentPage);
   }, [currentPage]);
+
+  // Feed the shared activity-range state: document length + reading progress.
+  // The range control itself lives above the sidebar tabs (ActivityRangeBar).
+  useEffect(() => {
+    if (numPages) initTotalPages(numPages);
+  }, [numPages, initTotalPages]);
+  useEffect(() => {
+    if (session?.endPage) setReadEnd(session.endPage);
+  }, [session?.endPage, setReadEnd]);
 
   // Cap the rendered PDF width to the space actually available so the page
   // scales to fit instead of overflowing into a horizontal scrollbar on

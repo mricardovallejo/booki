@@ -30,14 +30,21 @@ export default function DocumentCard({ document, onSelect, onOrganize, onDelete 
         <span className="text-4xl font-black text-white/30 drop-shadow-lg">{initials(document.title)}</span>
       </div>
 
+      {/* Corner actions. On desktop they fade in on hover; on touch devices
+          (no hover) they stay visible and use a 44px tap target so they don't
+          get lost behind the full-card "open" button. */}
       {onOrganize && (
         <button
           type="button"
-          onClick={() => onOrganize(document)}
-          className="absolute right-2 top-2 z-10 rounded-full bg-black/50 p-1.5 text-white/80 opacity-0 backdrop-blur transition hover:bg-black/70 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOrganize(document);
+          }}
+          className="absolute right-1.5 top-1.5 z-10 flex items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur transition hover:bg-black/70 hover:text-white focus-visible:opacity-100 group-hover:opacity-100 max-sm:h-11 max-sm:w-11 sm:p-1.5 sm:opacity-0"
           title="Organize tags"
+          aria-label="Organize tags"
         >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <svg className="h-5 w-5 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-6.586 6.586a1 1 0 01-1.414 0L5.293 11.293A1 1 0 015 10.586V5a2 2 0 012-2z" />
           </svg>
         </button>
@@ -45,11 +52,15 @@ export default function DocumentCard({ document, onSelect, onOrganize, onDelete 
       {onDelete && (
         <button
           type="button"
-          onClick={() => onDelete(document)}
-          className="absolute left-2 top-2 z-10 rounded-full bg-black/50 p-1.5 text-white/80 opacity-0 backdrop-blur transition hover:bg-black/70 hover:text-rose-300 focus-visible:opacity-100 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(document);
+          }}
+          className="absolute left-1.5 top-1.5 z-10 flex items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur transition hover:bg-black/70 hover:text-rose-300 focus-visible:opacity-100 group-hover:opacity-100 max-sm:h-11 max-sm:w-11 sm:p-1.5 sm:opacity-0"
           title="Remove book"
+          aria-label="Remove book"
         >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <svg className="h-5 w-5 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0l-.7 11.2a2 2 0 01-2 1.8H8.7a2 2 0 01-2-1.8L6 7h12z" />
           </svg>
         </button>

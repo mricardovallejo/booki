@@ -19,4 +19,12 @@ public class MessageRequest {
      * the model decides whether a capability applies.
      */
     private String capabilityHint;
+
+    /**
+     * Optional page range for a quick-action capability (quiz / summary / explain
+     * / mnemonic). The frontend sends the shared activity range with these; plain
+     * chat leaves them null and the turn stays anchored on the reading position.
+     */
+    private Integer pageStart;
+    private Integer pageEnd;
 }

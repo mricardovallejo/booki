@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSummary } from '../hooks/useSummary';
 import { useSession } from '../hooks/useSession';
+import { useActivityRange } from '../context/ActivityRangeContext';
 import Button from './ui/Button';
 import { Field, Input, TextArea } from './ui/FormField';
 import type { SummaryDeliverAs } from '../types';
@@ -15,6 +16,7 @@ interface Props {
 export default function SummaryModal({ sessionId, open, onClose, onChatGenerated }: Props) {
   const { generating, error, generate } = useSummary(sessionId);
   const { session, refresh } = useSession(sessionId);
+  const { range } = useActivityRange();
   const [lengthPages, setLengthPages] = useState(2);
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState(1);
@@ -25,11 +27,11 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    if (session) {
-      setStartPage(session.startPage);
-      setEndPage(session.endPage);
+    if (range) {
+      setStartPage(range.start);
+      setEndPage(range.end);
     }
-  }, [session]);
+  }, [range]);
 
   useEffect(() => {
     if (open) refresh();
@@ -37,9 +39,7 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
 
   if (!open) return null;
 
-  const pageRangeValid = Boolean(
-    session && startPage >= session.startPage && endPage <= session.endPage && startPage <= endPage
-  );
+  const pageRangeValid = Boolean(session && range);
 
   const onGenerate = async () => {
     setDone(false);
@@ -90,32 +90,10 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
             />
           </Field>
 
-          {session && (
-            <div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Summarize from page">
-                  <Input
-                    type="number"
-                    min={session.startPage}
-                    max={endPage}
-                    value={startPage}
-                    onChange={(e) => setStartPage(Number(e.target.value))}
-                  />
-                </Field>
-                <Field label="Through page">
-                  <Input
-                    type="number"
-                    min={startPage}
-                    max={session.endPage}
-                    value={endPage}
-                    onChange={(e) => setEndPage(Number(e.target.value))}
-                  />
-                </Field>
-              </div>
-              <p className="mt-1 text-xs text-white/50">
-                Available pages read so far: {session.startPage}-{session.endPage}.
-              </p>
-            </div>
+          {range && (
+            <p className="text-xs text-white/50">
+              Covers pages {range.start}–{range.end} — the activity range set above the PDF.
+            </p>
           )}
 
           <label className="flex items-center gap-2 text-sm text-white/80">

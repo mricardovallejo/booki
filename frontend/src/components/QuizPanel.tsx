@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuiz } from '../hooks/useQuiz';
 import { useSession } from '../hooks/useSession';
+import { useActivityRange } from '../context/ActivityRangeContext';
 import { useAiProfileSlots } from '../hooks/useAiProfileSlots';
 import { useSessionReports } from '../hooks/useSessionReports';
 import { ROUTES } from '../config/routes';
@@ -42,6 +43,11 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
     report
   } = useQuiz(sessionId, session, onActivity);
   const { sending, lastSent, error: reportError, send, download } = useSessionReports(sessionId);
+  const { range } = useActivityRange();
+  // The shared activity range (set above the PDF) drives which pages the quiz uses.
+  useEffect(() => {
+    if (range) setConfig((prev) => ({ ...prev, startPage: range.start, endPage: range.end }));
+  }, [range, setConfig]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [showSetup, setShowSetup] = useState(true);
   const [autoSend, setAutoSend] = useState(false);
@@ -58,12 +64,9 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
   const answeredCount = Object.keys(results).length;
   const correctCount = Object.values(results).filter((r) => r.correct).length;
   const roundComplete = questions.length > 0 && answeredCount === questions.length;
-  const pageRangeValid = Boolean(
-    session &&
-      config.startPage >= session.startPage &&
-      config.endPage <= session.endPage &&
-      config.startPage <= config.endPage
-  );
+  // Wait until the shared activity range is known (it comes from the PDF's page
+  // count) so we never generate a quiz on a stale 1-1 default.
+  const pageRangeValid = Boolean(session && range);
 
   useEffect(() => {
     if (roundComplete && autoSend && reportEmail.trim() && !autoSentRef.current) {
@@ -106,8 +109,11 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
               const rubric = profileSlots.find((s) => s.key === `rubric_${config.difficulty}`)?.text;
               if (!rubric) return null;
               return (
-                <div className="mt-2 rounded-lg bg-booki-bg/60 p-2.5 text-[11px] leading-relaxed text-white/60">
-                  <p>{rubric}</p>
+                <details className="mt-2 rounded-lg bg-booki-bg/60 p-2.5 text-[11px] leading-relaxed text-white/60">
+                  <summary className="cursor-pointer select-none font-medium text-white/70">
+                    What this level means
+                  </summary>
+                  <p className="mt-1.5">{rubric}</p>
                   {session?.aiProfileId && (
                     <Link
                       to={`${ROUTES.aiProfile(session.aiProfileId)}?slot=rubric_${config.difficulty}`}
@@ -116,46 +122,19 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                       Fine-tune this level in the tutor profile →
                     </Link>
                   )}
-                </div>
+                </details>
               );
             })()}
           </Field>
 
-          {session && (
-            <div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Quiz from page">
-                  <Input
-                    type="number"
-                    min={session.startPage}
-                    max={config.endPage}
-                    value={config.startPage}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, startPage: Number(e.target.value) }))
-                    }
-                  />
-                </Field>
-                <Field label="Through page">
-                  <Input
-                    type="number"
-                    min={config.startPage}
-                    max={session.endPage}
-                    value={config.endPage}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, endPage: Number(e.target.value) }))
-                    }
-                  />
-                </Field>
-              </div>
-              <p className="mt-1 text-xs text-white/50">
-                Available pages read so far: {session.startPage}-{session.endPage}.
-              </p>
-            </div>
+          {range && (
+            <p className="text-xs text-white/50">
+              Questions are drawn from pages {range.start}–{range.end} — the activity range set above the PDF.
+            </p>
           )}
 
           {(() => {
-            const pageSpan = Math.max(1, config.endPage - config.startPage + 1);
-            const maxQuestions = Math.max(1, Math.min(QUESTION_HARD_MAX, pageSpan));
+            const maxQuestions = QUESTION_HARD_MAX;
             const setCount = (n: number) =>
               setConfig((prev) => ({
                 ...prev,
@@ -191,9 +170,6 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                     +
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-white/50">
-                  One question per page — this range has {pageSpan} page{pageSpan === 1 ? '' : 's'}.
-                </p>
               </Field>
             );
           })()}

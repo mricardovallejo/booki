@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChat } from '../hooks/useChat';
 import { useSession } from '../hooks/useSession';
+import { useActivityRange } from '../context/ActivityRangeContext';
 import { useVoice } from '../hooks/useVoice';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { getVoiceCapabilities, type VoiceCapabilities } from '../api/voice';
@@ -86,6 +87,7 @@ interface Props {
 export default function ChatPanel({ sessionId, onActivity }: Props) {
   const { messages, sending, error, send, sendVoice, refresh } = useChat(sessionId, onActivity);
   const { session } = useSession(sessionId);
+  const { range } = useActivityRange();
   const lang: SessionLanguage = session?.language ?? 'en';
   const enabledCapabilities = session?.enabledCapabilities ?? ['quiz', 'summary', 'explain', 'mnemonic'];
   const quickActions = QUICK_ACTIONS.filter((a) => enabledCapabilities.includes(a.hint));
@@ -159,7 +161,10 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
     else setVoiceError("BooKI couldn't hear you. Check your microphone and try again.");
   };
 
-  const runQuickAction = (action: QuickAction) => send(action.text[lang], 'TEXT', action.hint);
+  // Quick actions are "functions" — they run on the shared activity range, not
+  // the reading position. Free-text chat below stays anchored on the page.
+  const runQuickAction = (action: QuickAction) =>
+    send(action.text[lang], 'TEXT', action.hint, range ?? undefined);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

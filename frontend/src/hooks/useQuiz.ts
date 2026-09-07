@@ -27,13 +27,7 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
 
   useEffect(() => {
     if (session) {
-      setConfig((prev) => ({
-        ...prev,
-        difficulty: session.difficulty,
-        questionCount: Math.min(prev.questionCount, session.endPage - session.startPage + 1),
-        startPage: session.startPage,
-        endPage: session.endPage
-      }));
+      setConfig((prev) => ({ ...prev, difficulty: session.difficulty }));
     }
   }, [session]);
 

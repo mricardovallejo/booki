@@ -42,10 +42,17 @@ export const sendMessage = (
   id: number,
   message: string,
   inputType: 'TEXT' | 'VOICE' = 'TEXT',
-  capabilityHint?: CapabilityHint
+  capabilityHint?: CapabilityHint,
+  pageRange?: { start: number; end: number }
 ) =>
   api
-    .post<Message>(ENDPOINTS.sessions.messages(id), { message, inputType, capabilityHint })
+    .post<Message>(ENDPOINTS.sessions.messages(id), {
+      message,
+      inputType,
+      capabilityHint,
+      pageStart: pageRange?.start,
+      pageEnd: pageRange?.end
+    })
     .then((r) => r.data);
 
 export interface GenerateQuizRequest {

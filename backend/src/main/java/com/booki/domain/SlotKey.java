@@ -14,11 +14,15 @@ public enum SlotKey {
     RUBRIC_HARD("Difficulty — Advanced", Group.DIFFICULTY, null, null),
 
     FN_QUIZ_QUESTION("Function — Quiz question", Group.FUNCTIONS,
-            "Output only the question. No preamble and no surrounding quotes; do not put a number or "
-                    + "label before the question itself (lettered answer options inside it are fine).", null),
+            "Output only the question — one open question the reader answers in their own words. "
+                    + "No preamble, no surrounding quotes, no number or label before it, and no "
+                    + "multiple-choice options.", null),
     FN_ANSWER_GRADING("Function — Answer grading", Group.FUNCTIONS,
-            "Reply in exactly three lines and nothing else:\nCORRECT: yes or no\n"
-                    + "SCORE: a number from 0.0 to 1.0\nFEEDBACK: one short sentence", null),
+            "Reply in exactly this format and nothing else:\n"
+                    + "SCORE: a number from 0.0 to 1.0 for how complete and accurate the answer is\n"
+                    + "FEEDBACK: two to four warm sentences — first what the reader got right, then the "
+                    + "part they missed or misread together with the correct information from the page. "
+                    + "Never tell them to try again.", null),
     FN_SUMMARY("Function — Summary", Group.FUNCTIONS,
             "Write prose only. No headings unless the reader asks for them.", null),
     FN_EXPLAIN("Function — Explain", Group.FUNCTIONS, null, null),

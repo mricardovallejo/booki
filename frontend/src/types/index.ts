@@ -189,7 +189,7 @@ export interface SessionProgress {
   totalPages: number;
   pctRead: number;
   messageCount: number;
-  quizzesTaken: number;
+  questionsAnswered: number;
   quizAverageScore: number;
 }
 

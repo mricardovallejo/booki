@@ -76,7 +76,7 @@ and `docs/ai-voice.md` for the detail.
 
 - `controller` → REST controllers (incl. `VoiceController`)
 - `service` → service interfaces
-- `service/impl` → implementations; the prompt assembly lives in `prompt/PromptAssembler` (`docs/prompts.md`). On sign-up, `ReaderProfileProvisioner` and `WelcomeDocumentProvisioner` seed a new account's reader profile and the bundled guide document (ADR-020, ADR-022).
+- `service/impl` → implementations; the prompt assembly lives in `prompt/PromptAssembler` (`docs/prompts.md`). On sign-up `ReaderProfileProvisioner` seeds the reader profile inline, and `AuthServiceImpl` publishes `service/event/UserRegisteredEvent` which `WelcomeDocumentProvisioner` handles after commit to seed the bundled guide (ADR-020, ADR-022).
 - `src/main/resources/prompts/catalog.yml` → versioned canonical core, defaults and tutor personas; loaded and validated by `SlotPromptCatalog`
 - `conversation` → `ConversationEngine`, `ConversationRequest/Result/Stream`
 - `conversation/capability` → `ConversationCapability` + registry + the 4 capabilities
@@ -91,7 +91,7 @@ and `docs/ai-voice.md` for the detail.
 
 ## Frontend layers
 
-- `src/pages` → screens (Login, Home, Session, AiProfiles, Profile)
+- `src/pages` → screens (Login, Home eager; Session, AiProfiles, Profile `React.lazy` — Session pulls in react-pdf/pdf.js, kept out of the initial bundle)
 - `src/components` → reusable components (Layout, PdfViewer, ChatPanel, VoiceButton, QuizPanel, …) — see `docs/frontend.md`
 - `src/api` → backend calls, one file per resource (incl. `voice.ts`)
 - `src/hooks` → custom hooks on `src/api` (`useChat` with `send` + `sendVoice`, `useSession`, `useQuiz`, `useVoiceRecorder` for cloud capture, `useVoice` for the browser fallback, …)

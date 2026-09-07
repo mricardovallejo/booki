@@ -23,7 +23,8 @@ public class SessionProgressCalculator {
         // Aggregate in the database rather than loading every message/attempt row
         // just to size and average them.
         int messageCount = (int) messageRepository.countBySessionId(session.getId());
-        int quizzesTaken = (int) quizAttemptRepository.countBySessionId(session.getId());
+        // One row per graded question, so this is questions answered — not rounds.
+        int questionsAnswered = (int) quizAttemptRepository.countBySessionId(session.getId());
         double avg = quizAttemptRepository.averageScoreBySessionId(session.getId());
 
         return new SessionProgressResponse(
@@ -31,7 +32,7 @@ public class SessionProgressCalculator {
                 totalPages,
                 Math.max(0, Math.min(pctRead, 100)),
                 messageCount,
-                quizzesTaken,
+                questionsAnswered,
                 (int) Math.round(avg * 100)
         );
     }

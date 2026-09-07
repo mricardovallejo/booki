@@ -419,18 +419,20 @@ function generateQuiz(session, config) {
     });
 }
 
+// The mock only word-matches, so it can't quote the missing point back like the
+// real grader does — but the tone matches: encouraging, never "try again".
 const FEEDBACK = {
   en: {
-    correct: 'Nice! Your answer covers key ideas from this page.',
-    incorrect: 'Not quite — try rereading the page and mentioning its key terms.'
+    correct: 'Good — your answer captures the key ideas from this page.',
+    incorrect: "You're on the right track. The page's main point here is one you didn't quite land yet — look at its key terms and how they connect."
   },
   es: {
-    correct: '¡Bien! Tu respuesta cubre ideas clave de esta página.',
-    incorrect: 'No del todo — vuelve a leer la página y menciona sus términos clave.'
+    correct: 'Bien — tu respuesta recoge las ideas clave de esta página.',
+    incorrect: 'Vas por buen camino. La idea principal de esta página es una que aún no terminaste de captar — fíjate en sus términos clave y cómo se conectan.'
   },
   fr: {
-    correct: 'Bien joué ! Ta réponse couvre les idées clés de cette page.',
-    incorrect: 'Pas tout à fait — relis la page et mentionne ses termes clés.'
+    correct: 'Bien — ta réponse reprend les idées clés de cette page.',
+    incorrect: "Tu es sur la bonne voie. L'idée principale de cette page t'a un peu échappé — regarde ses termes clés et comment ils s'articulent."
   }
 };
 
@@ -481,16 +483,16 @@ function computeProgress(session) {
   const pctRead = totalPages ? Math.round((pagesRead / totalPages) * 100) : 0;
   const sessionMessages = messages.filter((m) => m.sessionId === session.id);
   const sessionAttempts = quizAttempts.filter((a) => a.sessionId === session.id);
-  const quizzesTaken = sessionAttempts.length;
-  const quizAverageScore = quizzesTaken
-    ? Math.round((sessionAttempts.reduce((sum, a) => sum + a.score, 0) / quizzesTaken) * 100)
+  const questionsAnswered = sessionAttempts.length;
+  const quizAverageScore = questionsAnswered
+    ? Math.round((sessionAttempts.reduce((sum, a) => sum + a.score, 0) / questionsAnswered) * 100)
     : 0;
   return {
     pagesRead: Math.max(0, Math.min(pagesRead, totalPages)),
     totalPages,
     pctRead: Math.max(0, Math.min(pctRead, 100)),
     messageCount: sessionMessages.length,
-    quizzesTaken,
+    questionsAnswered,
     quizAverageScore
   };
 }
@@ -530,7 +532,7 @@ function computeNotifications(session) {
   if (progress.messageCount === 0) {
     notifications.push({ id: 2, type: 'chat', message: t.sayHi, createdAt: nowIso() });
   }
-  if (progress.quizzesTaken === 0) {
+  if (progress.questionsAnswered === 0) {
     notifications.push({ id: 3, type: 'quiz', message: t.tryQuiz, createdAt: nowIso() });
   }
   return notifications;
@@ -822,7 +824,7 @@ router.post('/:id/reports/progress', authMiddleware, async (req, res) => {
       lines: [
         `Pages read: ${progress.pagesRead}/${progress.totalPages} (${progress.pctRead}%)`,
         `Messages exchanged: ${progress.messageCount}`,
-        `Quizzes taken: ${progress.quizzesTaken}`,
+        `Quiz questions answered: ${progress.questionsAnswered}`,
         `Quiz average score: ${progress.quizAverageScore}%`
       ]
     }

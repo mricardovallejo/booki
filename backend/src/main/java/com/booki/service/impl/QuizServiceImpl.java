@@ -51,9 +51,15 @@ public class QuizServiceImpl implements QuizService {
 
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
 
-    private static final Pattern CORRECT_PATTERN = Pattern.compile("CORRECT:\\s*(yes|no)", Pattern.CASE_INSENSITIVE);
     private static final Pattern SCORE_PATTERN = Pattern.compile("SCORE:\\s*([0-9]*\\.?[0-9]+)");
-    private static final Pattern FEEDBACK_PATTERN = Pattern.compile("FEEDBACK:\\s*(.+)");
+    private static final Pattern FEEDBACK_PATTERN = Pattern.compile("FEEDBACK:\\s*(.+)", Pattern.DOTALL);
+
+    /**
+     * A single scale drives the whole quiz report: {@code correct} is just
+     * "scored at least this", so the correction summary's correct-count and its
+     * average score never tell contradictory stories.
+     */
+    private static final double PASS_SCORE = 0.6;
 
     @Override
     public QuizGenerateResponse generateQuiz(Long userId, Long sessionId, GenerateQuizRequest request) {
@@ -152,7 +158,7 @@ public class QuizServiceImpl implements QuizService {
                     "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
             String instruction = "Question: " + (request.getQuestion() == null ? "" : request.getQuestion()) + "\n"
                     + "Reader's answer: " + (answer.isBlank() ? "(no answer given)" : answer)
-                    + "\n\nGrade the answer now, in the required three-line format.";
+                    + "\n\nGrade the answer now, in the required format.";
 
             String response = provider.converse(systemPrompt, List.of(), instruction);
             GradeResult grade = parseGrade(response);
@@ -204,22 +210,19 @@ public class QuizServiceImpl implements QuizService {
     private record GradeResult(boolean correct, double score, String feedback) {
     }
 
-    /** Parses the AI's CORRECT/SCORE/FEEDBACK reply; degrades gracefully (score 0, raw text as feedback) if the model didn't follow the format. Provider failures now surface as errors upstream rather than reaching here. */
+    /** Parses the AI's SCORE/FEEDBACK reply; degrades gracefully (score 0, raw text as feedback) if the model didn't follow the format. {@code correct} is derived from the score (see {@link #PASS_SCORE}). Provider failures now surface as errors upstream rather than reaching here. */
     private GradeResult parseGrade(String response) {
-        Matcher correctMatcher = CORRECT_PATTERN.matcher(response);
         Matcher scoreMatcher = SCORE_PATTERN.matcher(response);
         Matcher feedbackMatcher = FEEDBACK_PATTERN.matcher(response);
 
-        boolean correct = correctMatcher.find() && "yes".equalsIgnoreCase(correctMatcher.group(1));
         double score;
         try {
-            score = scoreMatcher.find() ? Math.max(0, Math.min(1, Double.parseDouble(scoreMatcher.group(1))))
-                    : (correct ? 1.0 : 0.0);
+            score = scoreMatcher.find() ? Math.max(0, Math.min(1, Double.parseDouble(scoreMatcher.group(1)))) : 0.0;
         } catch (NumberFormatException e) {
-            score = correct ? 1.0 : 0.0;
+            score = 0.0;
         }
         String feedback = feedbackMatcher.find() ? feedbackMatcher.group(1).strip() : response.strip();
-        return new GradeResult(correct, score, feedback);
+        return new GradeResult(score >= PASS_SCORE, score, feedback);
     }
 
     private Session findOwned(Long userId, Long sessionId) {

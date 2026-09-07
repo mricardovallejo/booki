@@ -120,9 +120,9 @@ class PromptAssemblerTest {
         lenient().when(readerProfiles.resolveFor(any())).thenReturn(null);
 
         String prompt = assembler.forFunction(s, SlotKey.FN_ANSWER_GRADING, "easy", "P");
-        assertThat(prompt).contains("Reply in exactly three lines and nothing else:");
-        assertThat(prompt).contains("CORRECT: yes or no");
-        assertThat(prompt).contains("Judge whether the answer demonstrates understanding");
+        assertThat(prompt).contains("Reply in exactly this format and nothing else:");
+        assertThat(prompt).contains("SCORE: a number from 0.0 to 1.0");
+        assertThat(prompt).contains("This is a moment to teach, not to test");
     }
 
     @Test
@@ -142,7 +142,7 @@ class PromptAssemblerTest {
                         "functions", "functions", "functions", "functions", "functions",
                         "routing", "session");
         assertThat(ctx.layers().get(0).editable()).isFalse();   // core
-        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v1.2.0");
+        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v1.3.0");
         assertThat(ctx.layers().get(1).content()).contains("Medium. Assume the reader");
     }
 

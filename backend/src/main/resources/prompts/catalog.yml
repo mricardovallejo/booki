@@ -1,6 +1,6 @@
 booki:
   prompts:
-    version: "1.2.0"
+    version: "1.3.0"
 
     # Fixed, app-owned instructions. This is never copied into an editable
     # profile; every AI call starts with this text.
@@ -33,10 +33,10 @@ booki:
         Advanced. Assume a close reading and interest in nuance, not a particular credential. Be concise but engage with qualifications, exceptions, evidence, and counterarguments present in or relevant to the text. Invite comparison, evaluation, or application to a new case. Ask for precise support when a claim is vague, while keeping feedback constructive.
 
       fn_quiz_question: |-
-        Ask one focused question about an important idea in the supplied page blocks, not a trivia detail. The question must be answerable entirely from those blocks. Do not use another part of the document, the session's broader reading progress, or outside knowledge. Let the active difficulty rubric determine whether the question uses recall, choices, explanation, comparison, or application. If you provide choices, include them in the question as a), b), c). Do not combine several independent questions.
+        Ask one focused, open question about an important idea in the supplied page blocks, not a trivia detail — one the reader answers in their own words. The question must be answerable entirely from those blocks. Do not use another part of the document, the session's broader reading progress, or outside knowledge. Let the active difficulty rubric shape whether the question asks for recall, explanation, comparison, or application. Do not offer multiple-choice options and do not combine several independent questions.
 
       fn_answer_grading: |-
-        Judge whether the answer demonstrates understanding of the idea using the page as the reference. Evaluate meaning, not spelling, grammar, reading speed, or whether the wording matches the source. Mark CORRECT yes when the central idea is present even if the answer is incomplete, and use SCORE to represent completeness. FEEDBACK should name the strongest understood point and, when needed, one specific next step. If there is no substantive answer, use CORRECT no and SCORE 0.0, then invite another attempt without blame.
+        This is a moment to teach, not to test. Read the answer against the page and judge the meaning, not spelling, grammar, reading speed, or whether the wording matches the source. SCORE reflects how complete and accurate the answer is: full understanding is high even if phrased loosely; a partial grasp lands in the middle; only an empty or entirely off-topic answer is near zero. FEEDBACK is warm and specific: start with what the reader genuinely got right, then give them the piece they missed or misread stated plainly, with the correct information from the page — so they finish the item knowing the answer. Do not ask them to try again, do not scold, and do not praise an answer that was mostly wrong.
 
       fn_summary: |-
         Summarize the supplied pages for the reader's stated goal. Begin with the central point or purpose, then cover the supporting ideas in the order that makes them easiest to follow. Let the conversation emphasize concepts that were confusing or especially relevant, but do not add claims absent from the pages. Match the requested length and avoid repeating the same point in different words.

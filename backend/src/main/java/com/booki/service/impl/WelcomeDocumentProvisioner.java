@@ -2,6 +2,7 @@ package com.booki.service.impl;
 
 import com.booki.repository.DocumentRepository;
 import com.booki.service.DocumentService;
+import com.booki.service.event.UserRegisteredEvent;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.io.IOException;
 
@@ -19,11 +22,12 @@ import java.io.IOException;
  * ({@code welcome/booki-guide.pdf}); parsing and storage go through the normal
  * {@link DocumentService#importPdf} path.
  *
- * <p>Best-effort and fully off the request path: {@code AuthController} calls
- * this after {@code register()} has committed, and {@code @Async} then runs the
- * PDF parse + blob write on the {@code backgroundTasks} pool — so it adds
- * nothing to the sign-up response time. Any failure is logged and swallowed;
- * the guide is also reachable from the landing "Learn more" link.
+ * <p>Best-effort and fully off the request path: it reacts to
+ * {@link UserRegisteredEvent} only after the sign-up transaction has committed,
+ * and {@code @Async} then runs the PDF parse + blob write on the
+ * {@code backgroundTasks} pool — so it adds nothing to the sign-up response
+ * time. Any failure is logged and swallowed; the guide is also reachable from
+ * the landing "Learn more" link.
  */
 @Component
 @RequiredArgsConstructor
@@ -40,13 +44,14 @@ public class WelcomeDocumentProvisioner {
     private boolean enabled;
 
     @Async("backgroundTasks")
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onUserRegistered(UserRegisteredEvent event) {
+        provisionFor(event.userId());
+    }
+
+    /** Idempotent: skips if this user already has the guide (e.g. a retried event). */
     public void provisionFor(Long userId) {
-        if (!enabled || userId == null) {
-            return;
-        }
-        boolean alreadyHasIt = documents.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .anyMatch(d -> TITLE.equals(d.getTitle()));
-        if (alreadyHasIt) {
+        if (!enabled || userId == null || documents.existsByUserIdAndTitle(userId, TITLE)) {
             return;
         }
         try {

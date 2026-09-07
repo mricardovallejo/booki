@@ -56,7 +56,6 @@ export default function LoginPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-booki-bg px-4">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-black" />
-      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1507842217121-9e9f147d7121?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center opacity-10" />
       <div className="absolute inset-0 bg-gradient-to-t from-booki-bg via-booki-bg/60 to-transparent" />
 
       <div className="relative w-full max-w-md rounded-2xl bg-booki-surface/90 p-8 shadow-2xl backdrop-blur">

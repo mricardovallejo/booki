@@ -10,7 +10,6 @@ export default function HeroSection({ onUploadClick, hasDocuments }: Props) {
   return (
     <section className="relative h-[70vh] min-h-[480px] w-full overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-black" />
-      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1507842217121-9e9f147d7121?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center opacity-20" />
       <div className="absolute inset-0 bg-gradient-to-t from-booki-bg via-booki-bg/40 to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-r from-booki-bg via-booki-bg/60 to-transparent" />
 

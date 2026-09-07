@@ -3,7 +3,7 @@
 ## Technologies
 
 - React 18 + TypeScript (`strict`, `noUnusedLocals`, `noUnusedParameters`)
-- Vite (dev server + build)
+- Vite (dev server + build). `App.tsx` `React.lazy`-loads the heavy screens (Session — react-pdf/pdf.js — plus AiProfiles and Profile) behind a `<Suspense>`, so the login/library entry chunk stays small.
 - ESLint — `.eslintrc.cjs` (`@typescript-eslint` + `react-hooks` + `react-refresh`); `npm run lint` is a CI gate (see `.github/workflows/ci.yml`)
 - Tailwind CSS — the palette lives once as RGB channels in `src/index.css` (`:root`), referenced from `tailwind.config.js` via `rgb(var(--color-*) / <alpha-value>)`
 - react-pdf for PDF rendering
@@ -78,7 +78,7 @@ Streaming voice (incremental STT / TTS) is not built — see `docs/ai-voice.md`
 - **Token storage**: the JWT is in `localStorage` (`booki-auth`), mirrored into the in-memory holder above. `AuthContext` validates the stored object's shape on load and discards a malformed entry. Moving to an `HttpOnly` cookie is a known follow-up (it complicates local dev, so it's deferred while the product isn't public).
 - **Markdown links** in chat replies render with `target="_blank" rel="noopener noreferrer nofollow"` (model output can contain links — tabnabbing guard).
 - **Uploads** are checked client-side for `application/pdf` type and a 40 MB size cap before the request; the backend re-checks (`%PDF-` magic bytes).
-- **Deployed headers** (`frontend/firebase.json`): CSP (`script-src 'self'`, no inline scripts in the built `index.html`), `Strict-Transport-Security`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`. Verify against the real deploy — a too-strict CSP fails silently; `Content-Security-Policy-Report-Only` is the safe way to iterate.
+- **Deployed headers** (`frontend/firebase.json`): CSP (`script-src 'self'`, no inline scripts in the built `index.html`; `img-src 'self' data: blob:` — the login/hero backdrops are pure CSS gradients now, no third-party image), `Strict-Transport-Security`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`. Verify against the real deploy — a too-strict CSP fails silently; `Content-Security-Policy-Report-Only` is the safe way to iterate.
 - `<select>` values are narrowed through guards (`toSessionLanguage`) rather than `as` casts.
 
 ## Dev proxy vs. deployed origin

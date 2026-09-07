@@ -9,7 +9,9 @@ import com.booki.repository.AiProfileRepository;
 import com.booki.repository.UserRepository;
 import com.booki.security.JwtUtil;
 import com.booki.service.AuthService;
+import com.booki.service.event.UserRegisteredEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,7 @@ public class AuthServiceImpl implements AuthService {
     private final AiProfileRepository aiProfileRepository;
     private final SlotPromptCatalog slotPromptCatalog;
     private final ReaderProfileProvisioner readerProfileProvisioner;
+    private final ApplicationEventPublisher events;
 
     @Override
     @Transactional
@@ -40,6 +43,8 @@ public class AuthServiceImpl implements AuthService {
         userRepository.save(user);
         aiProfileRepository.saveAll(slotPromptCatalog.seedFor(user));
         readerProfileProvisioner.provisionFor(user);
+        // Post-registration side effects run after this transaction commits.
+        events.publishEvent(new UserRegisteredEvent(user.getId()));
         return toAuthResponse(user);
     }
 

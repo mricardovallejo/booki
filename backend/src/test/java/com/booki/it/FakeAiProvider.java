@@ -61,10 +61,10 @@ public class FakeAiProvider implements AiProvider {
         // frames / fn_* bodies), never in a plain chat turn — the capability
         // router lists every capability's description, so chat prompts now
         // mention "memory aid", "question", etc.
-        if (systemPrompt.contains("Reply in exactly three lines and nothing else:")) {
-            return "CORRECT: yes\nSCORE: 0.85\nFEEDBACK: Well done.";
+        if (systemPrompt.contains("Reply in exactly this format and nothing else:")) {
+            return "SCORE: 0.85\nFEEDBACK: You've got the main idea; the page also notes the second reason.";
         }
-        if (systemPrompt.contains("Output only the question.")) {
+        if (systemPrompt.contains("Output only the question")) {
             return "What is the main idea of this page?";
         }
         if (systemPrompt.contains("Write prose only. No headings")) {

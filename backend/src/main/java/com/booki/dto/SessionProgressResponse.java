@@ -10,6 +10,6 @@ public class SessionProgressResponse {
     private int totalPages;
     private int pctRead;
     private int messageCount;
-    private int quizzesTaken;
+    private int questionsAnswered;
     private int quizAverageScore;
 }

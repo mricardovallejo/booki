@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface DocumentRepository extends JpaRepository<Document, Long> {
     List<Document> findByUserIdOrderByCreatedAtDesc(Long userId);
     Optional<Document> findByIdAndUserId(Long id, Long userId);
+    boolean existsByUserIdAndTitle(Long userId, String title);
 }

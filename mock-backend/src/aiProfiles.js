@@ -40,8 +40,8 @@ const SLOT_DEFS = [
     label: 'Function — Quiz question',
     group: 'functions',
     lockedPreamble:
-      'Output only the question. No preamble and no surrounding quotes; do not put a number or label ' +
-      'before the question itself (lettered answer options inside it are fine).',
+      'Output only the question — one open question the reader answers in their own words. No preamble, ' +
+      'no surrounding quotes, no number or label before it, and no multiple-choice options.',
     lockedPostamble: null
   },
   {
@@ -49,7 +49,7 @@ const SLOT_DEFS = [
     label: 'Function — Answer grading',
     group: 'functions',
     lockedPreamble:
-      'Reply in exactly three lines and nothing else:\nCORRECT: yes or no\nSCORE: a number from 0.0 to 1.0\nFEEDBACK: one short sentence',
+      'Reply in exactly this format and nothing else:\nSCORE: a number from 0.0 to 1.0 for how complete and accurate the answer is\nFEEDBACK: two to four warm sentences — first what the reader got right, then the part they missed or misread together with the correct information from the page. Never tell them to try again.',
     lockedPostamble: null
   },
   {
@@ -91,16 +91,15 @@ const SHARED_DEFAULTS = {
     'case. Expect a precise, well-structured answer, and push back on vague or unsupported claims instead of ' +
     'letting them pass.',
   fn_quiz_question:
-    'Ask one question that tests whether the reader grasped a key idea on this page, not a trivia detail. ' +
-    'Keep it to a single focus and answerable from the page alone. Let the difficulty rubric decide the ' +
-    'question type — recall, "why/how", analysis — and, on Easy, whether to give options or a true/false ' +
-    'choice. When you give options, put them in the question text, labelled a), b), c).',
+    'Ask one open question that tests whether the reader grasped a key idea on this page, not a trivia ' +
+    'detail — one they answer in their own words. Keep it to a single focus and answerable from the page ' +
+    'alone. Let the difficulty rubric decide whether it asks for recall, "why/how", or analysis. No ' +
+    'multiple-choice options.',
   fn_answer_grading:
-    "Judge whether the reader's answer shows they understood the idea, with the page as the reference — grade " +
-    'the understanding, not the wording or spelling. Mark CORRECT yes when the core idea is there even if ' +
-    'incomplete; let SCORE reflect how complete it is. In FEEDBACK, give the single most useful next step, or ' +
-    'confirm what they got right when the answer is solid. If no answer was given, mark it not correct with ' +
-    'SCORE 0.0 and invite them to try.',
+    'This is a moment to teach, not to test. Judge the meaning against the page, not wording or spelling. ' +
+    'SCORE reflects how complete and accurate the answer is. In FEEDBACK, start with what the reader got ' +
+    'right, then give them the piece they missed or misread with the correct information from the page, so ' +
+    'they finish knowing the answer. Do not ask them to try again and do not scold.',
   fn_summary:
     'Recap what these pages say: lead with the main point or argument, then the supporting ideas in the order ' +
     'the text develops them. Where the discussion so far clarified something or showed the reader was stuck, ' +

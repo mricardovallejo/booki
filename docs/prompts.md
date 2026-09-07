@@ -68,7 +68,7 @@ the reader profile is a separate tab in that editor.
 
 The authoritative shipped wording lives in
 `backend/src/main/resources/prompts/catalog.yml`, currently catalog version
-`1.2.0`. It contains the fixed core, shared SlotPrompt defaults, tutor personas,
+`1.3.0`. It contains the fixed core, shared SlotPrompt defaults, tutor personas,
 and optional per-template prompt overrides. Overrides are layered on the shared
 defaults before a profile is seeded; the `Language & Learning Guide` uses them
 for distinct Easy, Medium and Advanced rubrics. `SlotPromptCatalog` loads and
@@ -94,8 +94,8 @@ that the user can't touch. A `null` frame means the whole SlotPrompt is free tex
 |---|---|---|---|
 | `persona` | Persona | persona | — |
 | `rubric_easy` / `_medium` / `_hard` | Difficulty — Easy/Medium/Advanced | difficulty | — |
-| `fn_quiz_question` | Function — Quiz question | functions | "output only the question…" |
-| `fn_answer_grading` | Function — Answer grading | functions | the `CORRECT:` / `SCORE:` / `FEEDBACK:` format |
+| `fn_quiz_question` | Function — Quiz question | functions | "output only the question…", one open question, no multiple choice |
+| `fn_answer_grading` | Function — Answer grading | functions | the `SCORE:` / `FEEDBACK:` format (ADR-023) |
 | `fn_summary` | Function — Summary | functions | "prose only…" |
 | `fn_explain` | Function — Explain | functions | — |
 | `fn_mnemonic` | Function — Mnemonic | functions | — |
@@ -192,7 +192,10 @@ Three separate things:
   + reader profile context + the relevant page(s). Grading and quiz
   generation parse the model's reply against the locked frame's format. Quiz
   generation is explicitly source-limited: it may use only the supplied page
-  blocks and may not ask about another page or outside knowledge.
+  blocks and may not ask about another page or outside knowledge. Grading
+  returns `SCORE` (0–1) + a short teaching `FEEDBACK` that states the answer;
+  `correct` is derived as `SCORE ≥ 0.6`, so the correction report's
+  correct-count and average score stay consistent (ADR-023).
 
 The standalone quiz and summary screens do not inherit an opening-session end
 boundary. They choose their own explicit range within `startPage..endPage`,

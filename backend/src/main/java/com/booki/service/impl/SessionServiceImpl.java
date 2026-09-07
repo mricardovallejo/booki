@@ -193,7 +193,7 @@ public class SessionServiceImpl implements SessionService {
         if (progress.getMessageCount() == 0) {
             notifications.add(new SessionNotificationResponse(2, "chat", t.get("sayHi"), java.time.Instant.now()));
         }
-        if (progress.getQuizzesTaken() == 0) {
+        if (progress.getQuestionsAnswered() == 0) {
             notifications.add(new SessionNotificationResponse(3, "quiz", t.get("tryQuiz"), java.time.Instant.now()));
         }
         return notifications;

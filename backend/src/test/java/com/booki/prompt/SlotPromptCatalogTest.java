@@ -11,7 +11,7 @@ class SlotPromptCatalogTest {
 
     @Test
     void loadsTheVersionedCatalogAndEveryRequiredSlot() {
-        assertThat(catalog.version()).isEqualTo("1.2.0");
+        assertThat(catalog.version()).isEqualTo("1.3.0");
         assertThat(catalog.corePrompt()).contains("conversational reading companion", "SOURCE DISCIPLINE");
         assertThat(catalog.templates()).extracting(SlotPromptCatalog.Template::key)
                 .containsExactly("patient_tutor", "study_buddy", "subject_expert", "accessible_pace",

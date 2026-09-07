@@ -269,19 +269,20 @@ will use SSE, which every browser supports.
   → `docs/booki-guide.pdf`, built by `scripts/build-guide.mjs`); the question
   was how a user meets it.
 - **Decision**: the guide ships as a real PDF with selectable text, so BooKI
-  can read it like any other document. `AuthController.register` calls
-  `WelcomeDocumentProvisioner` once the account transaction has committed; the
-  provisioner is `@Async` (`backgroundTasks` pool, `config/AsyncConfig`), so the
-  PDF parse + blob write run off the request thread and add nothing to the
-  sign-up response — a warm registration stays ~140 ms. It imports the bundled
-  `welcome/booki-guide.pdf` via `DocumentService.importPdf(userId, title, bytes)`
-  (the shared core extracted from `uploadDocument`). Any failure is logged and
-  swallowed; it is idempotent (skips if a document with that title already
-  exists) and gated by `booki.welcome-document.enabled`
+  can read it like any other document. `AuthServiceImpl.register` publishes a
+  `UserRegisteredEvent`; `WelcomeDocumentProvisioner` handles it with
+  `@TransactionalEventListener(AFTER_COMMIT)` + `@Async` (`backgroundTasks`
+  pool, `config/AsyncConfig`), so the PDF parse + blob write run off the request
+  thread, after commit — a warm registration stays ~140 ms. The controller is
+  untouched. It imports the bundled `welcome/booki-guide.pdf` via
+  `DocumentService.importPdf(userId, title, bytes)` (the shared core extracted
+  from `uploadDocument`). Any failure is logged and swallowed; it is idempotent
+  (`documents.existsByUserIdAndTitle`) and gated by
+  `booki.welcome-document.enabled`
   (`WELCOME_DOCUMENT_ENABLED`, default `true`; the integration suite sets it
-  `false` because those tests assert on empty libraries). The landing "Learn
-  more" button links to the same file served statically from
-  `frontend/public/booki-guide.pdf`.
+  `false` because those tests assert on empty libraries — `WelcomeDocumentIT`
+  turns it back on). The landing "Learn more" button links to the same file
+  served statically from `frontend/public/booki-guide.pdf`.
 - **Consequence**: a new user can immediately open the guide, read it, quiz
   themselves on it, or ask BooKI "how does this work?" — the document appears in
   the library within ~1 s of landing on home. Already-registered accounts are
@@ -289,3 +290,31 @@ will use SSE, which every browser supports.
   drains on shutdown, so this is a narrow window). Three copies of the PDF are
   committed (`docs/`, `frontend/public/`, `backend/src/main/resources/welcome/`)
   and kept in sync by the build script, since deploy builds do not run it.
+
+## ADR-023: quiz grading is a teaching moment, on one score scale
+
+- **Context**: the in-session quiz had three problems seen in use. (1) The quiz
+  prompt allowed multiple-choice questions ("include choices as a), b), c)") but
+  the UI only has a free-text box, so the reader got an a/b/c question, typed
+  prose, and the grader replied "try picking a), b), or c)" — a dead end. (2)
+  Grading told the reader to "try again" without ever stating the answer, and
+  the textarea is disabled after grading, so there was nothing to try. (3) The
+  model returned `CORRECT` (yes/no) and `SCORE` (0–1) independently, so the
+  correction report could show "1 of 3 correct" next to a 62% average — two
+  numbers telling different stories.
+- **Decision**: catalog `1.3.0`. `fn_quiz_question` asks for one **open**
+  question, no options. `fn_answer_grading` is reframed as teaching: FEEDBACK is
+  two-to-four warm sentences that name what the reader got right, then give the
+  missed or misread part **with the correct information from the page**, and
+  never says "try again". The grading reply is now `SCORE` + `FEEDBACK` only;
+  `QuizServiceImpl` derives `correct = SCORE ≥ 0.6`, so the report's
+  correct-count and average score are two views of one scale. The Progress
+  panel's "Quizzes taken" (which counted answered questions, not rounds) is
+  renamed **"Quiz questions answered"** everywhere (`questionsAnswered`).
+- **Consequence**: a reader finishes every question knowing the answer, in a
+  supportive voice; the correction report is internally consistent. Prompt
+  wording is a reviewable YAML diff; existing users keep their own edited copies
+  (only new accounts seed `1.3.0`). No schema change — `quiz_attempts.correct`
+  is still stored, just computed from the score. The Node mock's fixtures were
+  updated to match; it still only word-matches, so its feedback can't quote the
+  page.

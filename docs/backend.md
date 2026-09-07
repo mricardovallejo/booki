@@ -42,7 +42,7 @@ All routes below are under `/api` and require a `Authorization: Bearer <jwt>` he
 
 Email is normalized (trimmed + lowercased) before lookup/storage on both routes, so `Name@Example.com` and `name@example.com` are treated as the same account.
 
-On register the account is also seeded with its default tutor profiles, an editable `My reader profile` (ADR-020), and — unless `WELCOME_DOCUMENT_ENABLED=false` — the bundled BooKI guide as a document in its library (ADR-022). The guide seeding is `@Async` (`config/AsyncConfig`, the `backgroundTasks` pool), so it runs after the register transaction commits, on a background thread, and adds nothing to the sign-up response.
+On register the account is also seeded with its default tutor profiles and an editable `My reader profile` (ADR-020). It then publishes a `UserRegisteredEvent`; unless `WELCOME_DOCUMENT_ENABLED=false`, `WelcomeDocumentProvisioner` reacts with `@TransactionalEventListener(AFTER_COMMIT)` + `@Async` (`config/AsyncConfig`, `backgroundTasks` pool) to drop the bundled BooKI guide into the new library (ADR-022) — off the request thread, so it adds nothing to the sign-up response.
 
 ### Users — `/api/users`
 
@@ -126,7 +126,7 @@ limited to `startPage..endPage`, the pages reached since this session began.
 | Method | Route | Description |
 |--------|------|-------------|
 | POST | `/api/sessions/{sessionId}/quiz` | Generate 1–20 page-bound questions for a requested range within the pages reached so far; omitted range fields default to the full reached range, and the response echoes the effective range |
-| POST | `/api/sessions/{sessionId}/quiz/answer` | Submit an answer, get correctness/feedback |
+| POST | `/api/sessions/{sessionId}/quiz/answer` | Submit an open answer, get a score + teaching feedback that states the answer (ADR-023) |
 | GET | `/api/sessions/{sessionId}/quiz/attempts` | Quiz attempt history/report for the session |
 
 ### Voice — `/api/voice`
@@ -266,7 +266,7 @@ The `AiProvider` interface (package `ai`) has 4 implementations, **all always re
 
 ### Where AI is actually called vs. templated
 
-- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the layered prompt `PromptAssembler` builds, with the matching `fn_*` SlotPrompt layered in for the capability calls (`docs/prompts.md`). Quiz grading asks the model to reply in the strict `CORRECT:`/`SCORE:`/`FEEDBACK:` format (the `fn_answer_grading` locked frame) that `QuizServiceImpl.parseGrade` parses; a response that doesn't follow the format degrades to `correct=false, score=0`, feedback = the raw text. (Provider *failures* no longer reach the parser — see below.)
+- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the layered prompt `PromptAssembler` builds, with the matching `fn_*` SlotPrompt layered in for the capability calls (`docs/prompts.md`). Quiz grading asks the model for a `SCORE:` (0–1) + a teaching `FEEDBACK:` that states the answer (the `fn_answer_grading` locked frame); `QuizServiceImpl.parseGrade` derives `correct = score ≥ 0.6` so the correction report is internally consistent (ADR-023). A response that doesn't follow the format degrades to `score=0`, feedback = the raw text. (Provider *failures* no longer reach the parser — see below.)
 - **Progress/quiz-correction PDF reports** (`POST /sessions/{id}/reports/*`) — deliberately stay template-based, no AI call. These are factual recaps (page counts, past Q&A already graded) where a template is more reliable than an LLM restating numbers.
 
 Variables, in `.env` at the **repo root** (sibling of `.env.example`, not inside `backend/`) or the shell environment:

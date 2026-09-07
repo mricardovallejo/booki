@@ -28,7 +28,7 @@ export default function ProgressPanel({ sessionId, refreshKey }: Props) {
   const stats = [
     { label: 'Pages read', value: `${progress.pagesRead}/${progress.totalPages}` },
     { label: 'Messages exchanged', value: progress.messageCount },
-    { label: 'Quizzes taken', value: progress.quizzesTaken },
+    { label: 'Quiz questions answered', value: progress.questionsAnswered },
     { label: 'Quiz average score', value: `${progress.quizAverageScore}%` }
   ];
 

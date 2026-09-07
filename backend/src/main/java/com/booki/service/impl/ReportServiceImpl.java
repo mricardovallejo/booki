@@ -86,7 +86,7 @@ public class ReportServiceImpl implements ReportService {
                 new PdfReportBuilder.Section("Progress", List.of(
                         "Pages read: " + progress.getPagesRead() + "/" + progress.getTotalPages() + " (" + progress.getPctRead() + "%)",
                         "Messages exchanged: " + progress.getMessageCount(),
-                        "Quizzes taken: " + progress.getQuizzesTaken(),
+                        "Quiz questions answered: " + progress.getQuestionsAnswered(),
                         "Quiz average score: " + progress.getQuizAverageScore() + "%"
                 ))
         );

@@ -142,7 +142,7 @@ class PromptAssemblerTest {
                         "functions", "functions", "functions", "functions", "functions",
                         "routing", "session");
         assertThat(ctx.layers().get(0).editable()).isFalse();   // core
-        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v1.1.0");
+        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v1.2.0");
         assertThat(ctx.layers().get(1).content()).contains("Medium. Assume the reader");
     }
 

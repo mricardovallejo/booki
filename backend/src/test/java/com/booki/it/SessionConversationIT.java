@@ -4,6 +4,9 @@ import com.booki.dto.CreateReaderProfileRequest;
 import com.booki.dto.AiProfileSummaryResponse;
 import com.booki.dto.MessageRequest;
 import com.booki.dto.MessageResponse;
+import com.booki.dto.GenerateQuizRequest;
+import com.booki.dto.GenerateSummaryRequest;
+import com.booki.dto.QuizGenerateResponse;
 import com.booki.dto.ReaderProfileResponse;
 import com.booki.dto.SessionContextResponse;
 import com.booki.dto.SessionNotificationResponse;
@@ -38,7 +41,6 @@ class SessionConversationIT extends IntegrationTestBase {
         SessionRequest request = new SessionRequest();
         request.setDocumentId(documentId);
         request.setStartPage(1);
-        request.setEndPage(3);
         request.setDifficulty("easy");
         request.setLanguage("en");
         request.setAiProvider("fake");
@@ -48,7 +50,8 @@ class SessionConversationIT extends IntegrationTestBase {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         SessionResponse session = response.getBody();
         assertThat(session.getCurrentPage()).isEqualTo(1);
-        assertThat(session.getTitle()).contains("(pages 1-3)");
+        assertThat(session.getEndPage()).isEqualTo(1);
+        assertThat(session.getTitle()).contains("(pages 1-1)");
         assertThat(session.getAiProvider()).isEqualTo("fake");
         assertThat(session.getEnabledCapabilities()).containsExactlyInAnyOrder("explain", "mnemonic", "quiz", "summary");
         assertThat(session.getReaderProfileId()).isNotNull();
@@ -130,7 +133,9 @@ class SessionConversationIT extends IntegrationTestBase {
         assertThat(history.getBody()).extracting(MessageResponse::getSpeaker).containsExactly("USER", "BOOKI");
 
         FakeAiProvider.Call call = fakeAi.calls().getLast();
-        assertThat(call.systemPrompt()).contains("BEGIN DOCUMENT", "Page one text about bees", "Pages 1–3");
+        assertThat(call.systemPrompt()).contains(
+                "BEGIN DOCUMENT", "Page one text about bees",
+                "Reading started on page 1", "furthest page reached is 3");
         assertThat(call.userMessage()).isEqualTo("What are these pages about?");
     }
 
@@ -170,22 +175,70 @@ class SessionConversationIT extends IntegrationTestBase {
     }
 
     @Test
-    void currentPageFollowsSessionRange() {
+    void currentPageCanAdvanceThroughTheDocumentAndExpandsTheReadRange() {
         AuthData user = register(uniqueEmail("page"));
-        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 3);
+        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 1);
 
         ResponseEntity<SessionResponse> ok = patchPage(user, sessionId, 2);
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(ok.getBody().getCurrentPage()).isEqualTo(2);
+        assertThat(ok.getBody().getEndPage()).isEqualTo(2);
+
+        ResponseEntity<SessionResponse> lastPage = patchPage(user, sessionId, 3);
+        assertThat(lastPage.getBody().getCurrentPage()).isEqualTo(3);
+        assertThat(lastPage.getBody().getEndPage()).isEqualTo(3);
 
         assertThat(patchPage(user, sessionId, 0).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(patchPage(user, sessionId, 4).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
+    void quizAndSummaryAcceptExplicitRangesWithinPagesReadSoFar() {
+        AuthData user = register(uniqueEmail("feature-range"));
+        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 1);
+        patchPage(user, sessionId, 3);
+
+        MessageRequest conversationalQuiz = new MessageRequest();
+        conversationalQuiz.setMessage("Quiz me on pages 2 to 3");
+        conversationalQuiz.setCapabilityHint("quiz");
+        rest.exchange("/api/sessions/" + sessionId + "/messages", HttpMethod.POST,
+                new HttpEntity<>(conversationalQuiz, auth(user.token())), MessageResponse.class);
+        assertThat(fakeAi.calls().getLast().systemPrompt())
+                .contains("[Page 2]", "[Page 3]")
+                .doesNotContain("[Page 1]");
+
+        GenerateQuizRequest quiz = new GenerateQuizRequest();
+        quiz.setDifficulty("easy");
+        quiz.setQuestionCount(2);
+        quiz.setStartPage(2);
+        quiz.setEndPage(3);
+        ResponseEntity<QuizGenerateResponse> quizResponse = rest.exchange(
+                "/api/sessions/" + sessionId + "/quiz", HttpMethod.POST,
+                new HttpEntity<>(quiz, auth(user.token())), QuizGenerateResponse.class);
+        assertThat(quizResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(quizResponse.getBody().getConfig().getStartPage()).isEqualTo(2);
+        assertThat(quizResponse.getBody().getConfig().getEndPage()).isEqualTo(3);
+        assertThat(quizResponse.getBody().getQuestions())
+                .extracting(q -> q.getPageNumber()).containsExactly(2, 3);
+
+        GenerateSummaryRequest summary = new GenerateSummaryRequest();
+        summary.setLengthPages(1);
+        summary.setStartPage(2);
+        summary.setEndPage(3);
+        summary.setDeliverAs("chat");
+        ResponseEntity<MessageResponse> summaryResponse = rest.exchange(
+                "/api/sessions/" + sessionId + "/summary", HttpMethod.POST,
+                new HttpEntity<>(summary, auth(user.token())), MessageResponse.class);
+        assertThat(summaryResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(fakeAi.calls().getLast().systemPrompt())
+                .contains("p.2:", "p.3:")
+                .doesNotContain("p.1:");
+    }
+
+    @Test
     void contextExposesPromptLayersAndResolvedProfiles() {
         AuthData user = register(uniqueEmail("ctx"));
-        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 3);
+        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 1);
 
         ResponseEntity<SessionContextResponse> response = rest.exchange("/api/sessions/" + sessionId + "/context", HttpMethod.GET,
                 new HttpEntity<>(auth(user.token())), SessionContextResponse.class);
@@ -202,7 +255,7 @@ class SessionConversationIT extends IntegrationTestBase {
     @Test
     void progressAndNotificationsReflectActivity() {
         AuthData user = register(uniqueEmail("prog"));
-        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 3);
+        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 1);
 
         ResponseEntity<SessionProgressResponse> initial = rest.exchange("/api/sessions/" + sessionId + "/progress", HttpMethod.GET,
                 new HttpEntity<>(auth(user.token())), SessionProgressResponse.class);

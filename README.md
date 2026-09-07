@@ -1,6 +1,6 @@
 # BooKI
 
-A cloud-based conversational reading assistant: PDF reading in page-range
+A cloud-based conversational reading assistant: open-ended PDF reading
 sessions, with a context-aware AI you talk to by text or voice — and that can
 quiz you, summarize, or explain a passage without leaving the conversation.
 One responsive web / PWA app for Android, Windows and Linux.
@@ -66,8 +66,9 @@ environment. See [docs/deployment.md](docs/deployment.md).
 1. Open `http://localhost:5173`.
 2. Sign up or log in from the login page.
 3. Upload a PDF from the home screen.
-4. Click a book to create a session (choose page range, difficulty, an AI Profile and a reader profile).
-5. Open the session and chat with BooKI by text or voice.
+4. Click a book to create a session (choose a starting page, difficulty, a tutor profile and a reader profile).
+5. Open the session and navigate the whole PDF; BooKI records the furthest page reached.
+6. Chat by text or voice, or choose a page range from what you have read for a quiz or summary.
 
 ## AI configuration
 
@@ -103,7 +104,7 @@ key covers chat and voice. Model and voice options: see
 ## Status
 
 Core product in place: authentication, PDF library and per-page extraction,
-page-range sessions, AI Profiles + reader profiles (the per-session prompt set —
+open-ended reading sessions, AI Profiles + reader profiles (the per-session prompt set —
 `docs/prompts.md`), the unified conversation engine (text + voice + capabilities),
 per-session AI provider, quiz, progress, reports, and cloud STT/TTS. A post-review
 hardening pass (ADR-016) added `/actuator` auth, security headers/CSP, request

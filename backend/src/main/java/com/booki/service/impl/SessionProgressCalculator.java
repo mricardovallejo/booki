@@ -16,8 +16,8 @@ public class SessionProgressCalculator {
     private final QuizAttemptRepository quizAttemptRepository;
 
     public SessionProgressResponse compute(Session session) {
-        int totalPages = session.getEndPage() - session.getStartPage() + 1;
-        int pagesRead = session.getCurrentPage() - session.getStartPage() + 1;
+        int totalPages = session.getDocument().getPageCount() - session.getStartPage() + 1;
+        int pagesRead = session.getEndPage() - session.getStartPage() + 1;
         int pctRead = totalPages == 0 ? 0 : Math.round((pagesRead * 100f) / totalPages);
 
         // Aggregate in the database rather than loading every message/attempt row

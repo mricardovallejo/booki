@@ -161,7 +161,11 @@ public class ReportServiceImpl implements ReportService {
             email = requireValidEmail(request.getEmail());
         }
 
-        String summaryText = generateSummaryText(session, request.getLengthPages(), request.getPrompt());
+        int startPage = request.getStartPage() != null ? request.getStartPage() : session.getStartPage();
+        int endPage = request.getEndPage() != null ? request.getEndPage() : session.getEndPage();
+        validateReadRange(session, startPage, endPage, "Summary");
+        String summaryText = generateSummaryText(
+                session, request.getLengthPages(), request.getPrompt(), startPage, endPage);
 
         if (!deliverAsPdf) {
             Message botMessage = new Message();
@@ -212,12 +216,26 @@ public class ReportServiceImpl implements ReportService {
      */
     @Override
     public String generateSummaryText(Session session, Integer lengthPages, String customPrompt) {
-        int pages = Math.min(10, Math.max(1, lengthPages != null ? lengthPages : 2));
+        int endPage = session.getEndPage();
+        int startPage = Math.max(session.getStartPage(), endPage - 7);
+        return generateSummaryText(session, lengthPages, customPrompt, startPage, endPage);
+    }
+
+    @Override
+    public String generateSummaryText(Session session, Integer lengthPages, String customPrompt,
+                                      String pageContextText) {
+        int pages = normalizedSummaryLength(lengthPages);
+        return generateSummaryFromExcerpt(session, pages, customPrompt,
+                pageContextText == null ? "" : pageContextText);
+    }
+
+    private String generateSummaryText(Session session, Integer lengthPages, String customPrompt,
+                                       int startPage, int endPage) {
+        int pages = normalizedSummaryLength(lengthPages);
         int charsPerPage = Math.round(80 + pages * 90);
-        int messageCount = Math.min(40, Math.max(2, pages * 4));
 
         List<DocumentPage> bookPages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                session.getDocument().getId(), session.getStartPage(), session.getEndPage());
+                session.getDocument().getId(), startPage, endPage);
         String bookExcerpt = bookPages.stream()
                 .map(p -> {
                     String text = p.getExtractedText();
@@ -227,6 +245,12 @@ public class ReportServiceImpl implements ReportService {
                 })
                 .reduce((a, b) -> a + " " + b)
                 .orElse("");
+
+        return generateSummaryFromExcerpt(session, pages, customPrompt, bookExcerpt);
+    }
+
+    private String generateSummaryFromExcerpt(Session session, int pages, String customPrompt, String bookExcerpt) {
+        int messageCount = Math.min(40, Math.max(2, pages * 4));
 
         List<Message> sessionMessages = messageRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
         List<Message> recent = sessionMessages.subList(Math.max(0, sessionMessages.size() - messageCount), sessionMessages.size());
@@ -250,6 +274,17 @@ public class ReportServiceImpl implements ReportService {
 
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
         return provider.converse(systemPrompt, List.of(), instruction.toString()).strip();
+    }
+
+    private int normalizedSummaryLength(Integer lengthPages) {
+        return Math.min(10, Math.max(1, lengthPages != null ? lengthPages : 2));
+    }
+
+    private void validateReadRange(Session session, int startPage, int endPage, String feature) {
+        if (startPage < session.getStartPage() || endPage > session.getEndPage() || startPage > endPage) {
+            throw new IllegalArgumentException(feature + " pages must be within the pages read so far ("
+                    + session.getStartPage() + "-" + session.getEndPage() + ")");
+        }
     }
 
     private String requireValidEmail(String email) {

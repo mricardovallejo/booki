@@ -22,4 +22,7 @@ public interface ReportService {
      * the caller decides whether to persist it, wrap it in a PDF, or both.
      */
     String generateSummaryText(Session session, Integer lengthPages, String customPrompt);
+
+    /** Generate a conversational summary from the page context already selected for this turn. */
+    String generateSummaryText(Session session, Integer lengthPages, String customPrompt, String pageContextText);
 }

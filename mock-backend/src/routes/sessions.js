@@ -139,8 +139,8 @@ function buildContext(session) {
     source: 'Session',
     content:
       `Document: ${doc ? doc.title : 'Unknown'}\n` +
-      `Pages ${session.startPage}–${session.endPage} · you are on page ${session.currentPage}\n` +
-      `The text of pages ${session.startPage}–${session.endPage} is included in every answer.`
+      `Reading started on page ${session.startPage} · furthest page reached ${session.endPage} · current page ${session.currentPage}\n` +
+      'Only a bounded window of relevant extracted pages is included in each answer.'
   });
 
   return {
@@ -157,10 +157,11 @@ function buildContext(session) {
 
 function toSessionResponse(session) {
   const reader = readerProfileFor(session);
+  const doc = documents.find((d) => d.id === session.documentId);
   return {
     id: session.id,
     documentId: session.documentId,
-    title: session.title,
+    title: `${doc ? doc.title : session.title} (pages ${session.startPage}-${session.endPage})`,
     startPage: session.startPage,
     endPage: session.endPage,
     currentPage: session.currentPage,
@@ -314,9 +315,9 @@ const STOPWORDS = new Set([
   'los', 'las', 'del', 'que', 'una', 'para', 'como', 'sus', 'por'
 ]);
 
-function pagesInRange(session) {
+function pagesInRange(session, startPage = session.startPage, endPage = session.endPage) {
   return documentPages.filter(
-    (p) => p.documentId === session.documentId && p.pageNumber >= session.startPage && p.pageNumber <= session.endPage
+    (p) => p.documentId === session.documentId && p.pageNumber >= startPage && p.pageNumber <= endPage
   );
 }
 
@@ -359,7 +360,7 @@ const SUMMARY_LABELS = {
   }
 };
 
-function buildSummaryContent(session, lengthPages, customPrompt) {
+function buildSummaryContent(session, lengthPages, customPrompt, startPage, endPage) {
   const lang = SUPPORTED_LANGUAGES.includes(session.language) ? session.language : 'en';
   const settings = summaryLengthSettings(lengthPages);
   const labels = SUMMARY_LABELS[lang];
@@ -367,7 +368,7 @@ function buildSummaryContent(session, lengthPages, customPrompt) {
   const readerContext = readerContentFor(session);
   const tone = profile ? profile.name : 'assistant';
 
-  const pages = pagesInRange(session);
+  const pages = pagesInRange(session, startPage, endPage);
   const bookPart = pages
     .map((p) => {
       const truncated = p.extractedText.length > settings.charsPerPage;
@@ -407,7 +408,7 @@ function generateQuiz(session, config) {
   const questionCount = Math.min(10, Math.max(1, Number(config.questionCount) || 3));
   const readerContext = readerContentFor(session);
 
-  return pagesInRange(session)
+  return pagesInRange(session, config.startPage, config.endPage)
     .slice(0, questionCount)
     .map((p, idx) => {
       let question = template(p.pageNumber);
@@ -474,8 +475,9 @@ function gradeAnswer(session, pageNumber, answer, difficulty, isFirstAttempt) {
 }
 
 function computeProgress(session) {
-  const totalPages = session.endPage - session.startPage + 1;
-  const pagesRead = session.currentPage - session.startPage + 1;
+  const doc = documents.find((d) => d.id === session.documentId);
+  const totalPages = (doc?.pageCount || session.endPage) - session.startPage + 1;
+  const pagesRead = session.endPage - session.startPage + 1;
   const pctRead = totalPages ? Math.round((pagesRead / totalPages) * 100) : 0;
   const sessionMessages = messages.filter((m) => m.sessionId === session.id);
   const sessionAttempts = quizAttempts.filter((a) => a.sessionId === session.id);
@@ -554,14 +556,19 @@ router.post('/', authMiddleware, (req, res) => {
     visibleReaders[0] ||
     null;
 
+  const resolvedStartPage = Math.max(1, Math.min(Number(startPage) || 1, doc.pageCount));
+  const resolvedEndPage = Math.max(
+    resolvedStartPage,
+    Math.min(Number(endPage) || resolvedStartPage, doc.pageCount)
+  );
   const session = {
     id: sessions.length ? Math.max(...sessions.map((s) => s.id)) + 1 : 1,
     userId: req.userId,
     documentId,
     title: title || `${doc.title} (pages ${startPage}-${endPage})`,
-    startPage: Math.max(1, Math.min(startPage, doc.pageCount)),
-    endPage: Math.max(1, Math.min(endPage, doc.pageCount)),
-    currentPage: startPage,
+    startPage: resolvedStartPage,
+    endPage: resolvedEndPage,
+    currentPage: resolvedStartPage,
     difficulty: difficulty || 'medium',
     aiProfileId: resolvedProfile ? resolvedProfile.id : null,
     readerProfileId: resolvedReader ? resolvedReader.id : null,
@@ -587,7 +594,13 @@ router.get('/:id/context', authMiddleware, (req, res) => {
 router.patch('/:id/current-page', authMiddleware, (req, res) => {
   const session = sessions.find((s) => s.id === Number(req.params.id) && s.userId === req.userId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  session.currentPage = req.body.currentPage;
+  const doc = documents.find((d) => d.id === session.documentId);
+  const page = Number(req.body.currentPage);
+  if (!Number.isInteger(page) || page < 1 || page > doc.pageCount) {
+    return res.status(400).json({ error: `currentPage must be between 1 and ${doc.pageCount}` });
+  }
+  session.currentPage = page;
+  session.endPage = Math.max(session.endPage, page);
   res.json(toSessionResponse(session));
 });
 
@@ -639,18 +652,27 @@ router.post('/:id/quiz', authMiddleware, (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
   const { aiProfileId, difficulty, questionCount } = req.body || {};
+  const startPage = Number(req.body?.startPage) || session.startPage;
+  const endPage = Number(req.body?.endPage) || session.endPage;
+  if (startPage < session.startPage || endPage > session.endPage || startPage > endPage) {
+    return res.status(400).json({
+      error: `Quiz pages must be within the pages read so far (${session.startPage}-${session.endPage})`
+    });
+  }
   const resolvedDifficulty = QUIZ_DIFFICULTIES.includes(difficulty) ? difficulty : session.difficulty || 'medium';
   const resolvedProfileId = aiProfileId || session.aiProfileId || null;
   const profile = aiProfiles.find((p) => p.id === resolvedProfileId);
 
-  const questions = generateQuiz(session, { questionCount });
+  const questions = generateQuiz(session, { questionCount, startPage, endPage });
   res.json({
     questions,
     config: {
       aiProfileId: resolvedProfileId,
       profileName: profile ? profile.name : null,
       difficulty: resolvedDifficulty,
-      questionCount: questions.length
+      questionCount: questions.length,
+      startPage,
+      endPage
     }
   });
 });
@@ -865,13 +887,22 @@ router.post('/:id/summary', authMiddleware, async (req, res) => {
   }
 
   const { lengthPages, prompt, includeCover, deliverAs, email } = req.body || {};
+  const startPage = Number(req.body?.startPage) || session.startPage;
+  const endPage = Number(req.body?.endPage) || session.endPage;
+  if (startPage < session.startPage || endPage > session.endPage || startPage > endPage) {
+    return res.status(400).json({
+      error: `Summary pages must be within the pages read so far (${session.startPage}-${session.endPage})`
+    });
+  }
   const resolvedDeliverAs = deliverAs === 'pdf' ? 'pdf' : 'chat';
 
   if (resolvedDeliverAs === 'pdf' && email && !EMAIL_RE.test(email)) {
     return res.status(400).json({ error: 'A valid email is required' });
   }
 
-  const { intro, bookPart, discussionPart, labels } = buildSummaryContent(session, lengthPages, prompt);
+  const { intro, bookPart, discussionPart, labels } = buildSummaryContent(
+    session, lengthPages, prompt, startPage, endPage
+  );
 
   if (resolvedDeliverAs === 'chat') {
     const summaryText = `${intro}\n\n${labels.book}: ${bookPart}\n\n${labels.discussion}: ${discussionPart}`;

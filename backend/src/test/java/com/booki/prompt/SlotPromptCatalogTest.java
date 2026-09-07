@@ -11,7 +11,7 @@ class SlotPromptCatalogTest {
 
     @Test
     void loadsTheVersionedCatalogAndEveryRequiredSlot() {
-        assertThat(catalog.version()).isEqualTo("1.1.0");
+        assertThat(catalog.version()).isEqualTo("1.2.0");
         assertThat(catalog.corePrompt()).contains("conversational reading companion", "SOURCE DISCIPLINE");
         assertThat(catalog.templates()).extracting(SlotPromptCatalog.Template::key)
                 .containsExactly("patient_tutor", "study_buddy", "subject_expert", "accessible_pace",
@@ -19,6 +19,8 @@ class SlotPromptCatalogTest {
         assertThat(catalog.templates()).filteredOn(SlotPromptCatalog.Template::isDefault).hasSize(1);
         assertThat(catalog.templates()).allSatisfy(template ->
                 assertThat(template.texts()).containsKeys(SlotKey.values()));
+        assertThat(catalog.byKey("patient_tutor").orElseThrow().texts().get(SlotKey.FN_QUIZ_QUESTION))
+                .contains("Do not use another part of the document");
     }
 
     @Test

@@ -13,10 +13,10 @@ public interface QuizService {
     QuizReportResponse getReport(Long userId, Long sessionId);
 
     /**
-     * One comprehension question about the reader's current page, grounded in
-     * the same page text and three-layer prompt the full quiz uses. For the
+     * One comprehension question about the bounded page context selected for
+     * the current turn. For the
      * conversational quiz capability — does not persist a {@code QuizAttempt};
      * the scored flow stays behind {@link #submitAnswer}.
      */
-    String generateComprehensionQuestion(Session session);
+    String generateComprehensionQuestion(Session session, String pageContextText);
 }

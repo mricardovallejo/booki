@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSummary } from '../hooks/useSummary';
+import { useSession } from '../hooks/useSession';
 import Button from './ui/Button';
 import { Field, Input, TextArea } from './ui/FormField';
 import type { SummaryDeliverAs } from '../types';
@@ -13,19 +14,39 @@ interface Props {
 
 export default function SummaryModal({ sessionId, open, onClose, onChatGenerated }: Props) {
   const { generating, error, generate } = useSummary(sessionId);
+  const { session, refresh } = useSession(sessionId);
   const [lengthPages, setLengthPages] = useState(2);
+  const [startPage, setStartPage] = useState(1);
+  const [endPage, setEndPage] = useState(1);
   const [prompt, setPrompt] = useState('');
   const [includeCover, setIncludeCover] = useState(true);
   const [deliverAs, setDeliverAs] = useState<SummaryDeliverAs>('chat');
   const [email, setEmail] = useState('');
   const [done, setDone] = useState(false);
 
+  useEffect(() => {
+    if (session) {
+      setStartPage(session.startPage);
+      setEndPage(session.endPage);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    if (open) refresh();
+  }, [open, refresh]);
+
   if (!open) return null;
+
+  const pageRangeValid = Boolean(
+    session && startPage >= session.startPage && endPage <= session.endPage && startPage <= endPage
+  );
 
   const onGenerate = async () => {
     setDone(false);
     const result = await generate({
       lengthPages,
+      startPage,
+      endPage,
       prompt: prompt.trim() || undefined,
       includeCover,
       deliverAs,
@@ -68,6 +89,34 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
               className="w-full accent-booki-accent"
             />
           </Field>
+
+          {session && (
+            <div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Summarize from page">
+                  <Input
+                    type="number"
+                    min={session.startPage}
+                    max={endPage}
+                    value={startPage}
+                    onChange={(e) => setStartPage(Number(e.target.value))}
+                  />
+                </Field>
+                <Field label="Through page">
+                  <Input
+                    type="number"
+                    min={startPage}
+                    max={session.endPage}
+                    value={endPage}
+                    onChange={(e) => setEndPage(Number(e.target.value))}
+                  />
+                </Field>
+              </div>
+              <p className="mt-1 text-xs text-white/50">
+                Available pages read so far: {session.startPage}-{session.endPage}.
+              </p>
+            </div>
+          )}
 
           <label className="flex items-center gap-2 text-sm text-white/80">
             <input
@@ -129,7 +178,7 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
           <Button variant="secondary" onClick={onClose} className="flex-1">
             {done ? 'Close' : 'Cancel'}
           </Button>
-          <Button onClick={onGenerate} disabled={generating} className="flex-1">
+          <Button onClick={onGenerate} disabled={generating || !pageRangeValid} className="flex-1">
             {generating ? 'Generating…' : 'Generate'}
           </Button>
         </div>

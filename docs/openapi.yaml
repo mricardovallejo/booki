@@ -59,7 +59,7 @@ tags:
       plus their own; duplicate a shipped template to customize it. Editing a reader profile changes it for
       every session that uses it.
   - name: Sessions
-    description: A reading session over a page range of one document — the core unit of the product.
+    description: A reading journey through one document — the core unit of the product.
   - name: Quiz
     description: Configurable comprehension quizzes scoped to a session, with a persisted correction history.
   - name: Reports
@@ -656,7 +656,7 @@ paths:
   /sessions:
     post:
       tags: [Sessions]
-      summary: Create a reading session over a page range
+      summary: Start a reading session at one page
       operationId: createSession
       requestBody:
         required: true
@@ -664,12 +664,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [documentId, startPage, endPage, difficulty]
+              required: [documentId, startPage, difficulty]
               properties:
                 documentId: { type: integer }
-                title: { type: string, description: "Auto-generated from the document title and page range if omitted" }
-                startPage: { type: integer, minimum: 1 }
-                endPage: { type: integer, minimum: 1 }
+                title: { type: string, description: "Auto-generated from the document title and pages read if omitted" }
+                startPage: { type: integer, minimum: 1, description: "Where this reading journey begins." }
+                endPage: { type: integer, minimum: 1, description: "Optional compatibility field; defaults to startPage and then grows as the reader advances." }
                 aiProfileId:
                   type: integer
                   nullable: true
@@ -737,7 +737,7 @@ paths:
   /sessions/{id}/current-page:
     patch:
       tags: [Sessions]
-      summary: Update the reader's current page
+      summary: Update the current page and extend the pages-read range
       operationId: updateCurrentPage
       parameters:
         - $ref: "#/components/parameters/SessionId"
@@ -749,7 +749,7 @@ paths:
               type: object
               required: [currentPage]
               properties:
-                currentPage: { type: integer }
+                currentPage: { type: integer, minimum: 1, description: "Any page in the document; moving forward expands Session.endPage." }
       responses:
         "200":
           description: OK
@@ -893,8 +893,10 @@ paths:
         Mock logic: one templated question per page (up to `questionCount`), in
         the session's language. Real backend: asks the session's AI provider
         (see Session.aiProvider) to write one genuine comprehension question
-        per page, grounded in that page's text plus the session's layered
-        prompt (core + AI Profile).
+        per page for the explicitly selected range within the pages reached so
+        far. Each question is restricted to its supplied page block and may not
+        use another page or outside knowledge. The response echoes the effective
+        range in `config.startPage` / `config.endPage`.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -906,7 +908,9 @@ paths:
                 difficulty:
                   allOf: [{ $ref: "#/components/schemas/Difficulty" }]
                   description: Overrides the session difficulty for this round only. The session's AI Profile is always used.
-                questionCount: { type: integer, minimum: 1, maximum: 10, default: 3 }
+                questionCount: { type: integer, minimum: 1, maximum: 20, default: 3 }
+                startPage: { type: integer, minimum: 1, description: "Optional first page for this quiz round; must have been reached in this session. Defaults to Session.startPage." }
+                endPage: { type: integer, minimum: 1, description: "Optional last page for this quiz round; must have been reached in this session. Defaults to Session.endPage." }
       responses:
         "200":
           description: Generated quiz
@@ -1090,17 +1094,18 @@ paths:
   /sessions/{id}/summary:
     post:
       tags: [Summary]
-      summary: Summarize the book pages + discussion so far
+      summary: Summarize selected book pages + discussion so far
       operationId: generateSummary
       description: >
         A genuine AI call (the session's `aiProvider`) that combines the
-        session's page text with its chat history, shaped by the session's
-        AI Profile (persona, reader context, `fn_summary` slot), plus an optional
-        free-text instruction (`prompt`). `lengthPages` scales how much of each is
-        included (roughly 1–10 "pages" of density). Delivered either as a new
-        BooKI chat message, or as a downloadable PDF (optionally also "sent" by
-        email, same caveat as the other reports). Same generator as the `summary`
-        conversational capability.
+        explicitly selected `startPage` / `endPage` range with recent chat
+        history. The selected range must be within the pages reached so far. The
+        session's AI Profile (persona, reader context, `fn_summary` slot) and an
+        optional free-text instruction (`prompt`) shape the result. `lengthPages`
+        controls the target density (roughly 1–10 pages). Delivered either as a
+        new BooKI chat message, or as a downloadable PDF (optionally also "sent"
+        by email, same caveat as the other reports). The conversational summary
+        capability uses the engine's selected page context instead.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -1380,9 +1385,9 @@ components:
         id: { type: integer }
         documentId: { type: integer }
         title: { type: string }
-        startPage: { type: integer }
-        endPage: { type: integer }
-        currentPage: { type: integer }
+        startPage: { type: integer, description: "Page where this reading journey began." }
+        endPage: { type: integer, description: "Furthest page reached; grows automatically as the reader advances." }
+        currentPage: { type: integer, description: "Page currently displayed; may navigate anywhere in the document." }
         difficulty: { $ref: "#/components/schemas/Difficulty" }
         aiProfileId: { type: integer, nullable: true }
         readerProfileId: { type: integer, nullable: true }
@@ -1460,7 +1465,9 @@ components:
         profileName: { type: string, nullable: true }
         difficulty: { $ref: "#/components/schemas/Difficulty" }
         questionCount: { type: integer }
-      required: [difficulty, questionCount]
+        startPage: { type: integer, description: "First page actually used for this quiz round." }
+        endPage: { type: integer, description: "Last page actually used for this quiz round." }
+      required: [difficulty, questionCount, startPage, endPage]
 
     QuizGenerateResult:
       type: object
@@ -1513,9 +1520,9 @@ components:
     SessionProgress:
       type: object
       properties:
-        pagesRead: { type: integer }
-        totalPages: { type: integer }
-        pctRead: { type: integer, description: "0-100" }
+        pagesRead: { type: integer, description: "Pages from the session start through the furthest page reached, inclusive." }
+        totalPages: { type: integer, description: "Pages from the session start through the document's final page, inclusive." }
+        pctRead: { type: integer, description: "0-100 journey progress; reviewing an earlier page does not reduce it." }
         messageCount: { type: integer }
         quizzesTaken: { type: integer }
         quizAverageScore: { type: integer, description: "0-100" }
@@ -1556,6 +1563,14 @@ components:
           minimum: 1
           maximum: 10
           description: Target density of the summary, expressed as an equivalent number of pages.
+        startPage:
+          type: integer
+          minimum: 1
+          description: Optional first page to summarize; must have been reached in this session. Defaults to Session.startPage.
+        endPage:
+          type: integer
+          minimum: 1
+          description: Optional last page to summarize; must have been reached in this session. Defaults to Session.endPage.
         prompt:
           type: string
           description: Optional free-text instruction from the reader (e.g. "focus on the characters"). Echoed verbatim into the generated summary's intro.

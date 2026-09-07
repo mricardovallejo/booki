@@ -58,7 +58,7 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
     const originalName = req.file.originalname || 'document.pdf';
     const titleBase = originalName.replace(/\.pdf$/i, '');
     const pageTexts = [
-      `This is the document "${titleBase}". Your reading with BooKI starts here. You can create page-range sessions and talk to the assistant about the content.`,
+      `This is the document "${titleBase}". Your reading with BooKI starts here. You can read as far as you want and talk to the assistant about the content.`,
       `Page 2 of "${titleBase}". In a real build this text would be the content extracted automatically from the PDF you uploaded.`,
       `Page 3 of "${titleBase}". Keep reading, move through the pages, and ask BooKI questions whenever you need to.`
     ];

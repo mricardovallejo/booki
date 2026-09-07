@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The single orchestrator for every conversational turn in BooKI, whatever its
@@ -37,7 +39,7 @@ import java.util.Set;
  *   <li>build the recent conversation window (most recent N, chronological);</li>
  *   <li>persist the user turn;</li>
  *   <li>assemble the system prompt via {@link PromptAssembler} plus the
- *       session's page-range text (size-capped), and the capability router
+ *       bounded recent-page text (size-capped), and the capability router
  *       filtered to the profile's enabled set;</li>
  *   <li>call the session's {@link AiProvider};</li>
  *   <li>persist BooKI's reply, or raise a controlled failure.</li>
@@ -52,6 +54,13 @@ public class ConversationEngine {
 
     private static final String UNAVAILABLE =
             "The reading assistant is temporarily unavailable. Please try again in a moment.";
+    private static final int MAX_CONTEXT_PAGES = 8;
+    private static final int MAX_EXPLICIT_CONTEXT_PAGES = 20;
+    private static final Pattern PAGE_RANGE = Pattern.compile(
+            "(?iu)\\b(?:pages?|páginas?|paginas?)\\s*(\\d+)\\s*"
+                    + "(?:-|–|—|to|through|a|à|hasta)\\s*"
+                    + "(?:(?:the|la|las|le|les)\\s+)?"
+                    + "(?:pages?|páginas?|paginas?)?\\s*(\\d+)");
 
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
@@ -91,7 +100,7 @@ public class ConversationEngine {
 
         Message userMessage = persist(session, Message.Speaker.USER, request.inputType(), request.text());
 
-        String pageContext = buildContextText(session);
+        String pageContext = buildContextText(session, request.text());
 
         String answer;
         try {
@@ -126,7 +135,7 @@ public class ConversationEngine {
 
         List<AiProvider.Message> history = recentHistory(session.getId());
         Message userMessage = persist(session, Message.Speaker.USER, request.inputType(), request.text());
-        String pageContext = buildContextText(session);
+        String pageContext = buildContextText(session, request.text());
         CapabilityInvocation invocation = new CapabilityInvocation(session, request.text(), history, pageContext);
 
         Optional<ConversationCapability> hinted = hintedCapability(request, session);
@@ -312,30 +321,70 @@ public class ConversationEngine {
     }
 
     /**
-     * The session's page-range text, capped at {@code maxContextChars} so an
-     * extremely wide range cannot produce an unbounded LLM request. A fuller
-     * context-selection strategy is a later concern; this is just the guard.
+     * An explicitly requested range (up to 20 pages), or the current page and
+     * up to seven recently read pages. Selection prioritizes the newest page
+     * and restores reading order before sending. A session may span the whole
+     * document, but a normal chat turn must not send the whole PDF.
      */
-    private String buildContextText(Session session) {
+    private String buildContextText(Session session, String userText) {
+        int currentPage = session.getCurrentPage() != null
+                ? session.getCurrentPage() : session.getStartPage();
+        int contextStart;
+        int contextEnd;
+        Optional<int[]> explicitRange = explicitPageRange(userText, session.getDocument().getPageCount());
+        if (explicitRange.isPresent()) {
+            contextStart = explicitRange.get()[0];
+            contextEnd = explicitRange.get()[1];
+        } else {
+            contextStart = currentPage >= session.getStartPage()
+                    ? Math.max(session.getStartPage(), currentPage - MAX_CONTEXT_PAGES + 1)
+                    : currentPage;
+            contextEnd = currentPage;
+        }
         List<DocumentPage> pages = documentPageRepository
                 .findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                        session.getDocument().getId(), session.getStartPage(), session.getEndPage());
+                        session.getDocument().getId(), contextStart, contextEnd);
 
-        StringBuilder sb = new StringBuilder();
-        for (DocumentPage page : pages) {
+        List<String> selected = new ArrayList<>();
+        int usedChars = 0;
+        for (int i = pages.size() - 1; i >= 0; i--) {
+            DocumentPage page = pages.get(i);
             String block = "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText();
-            if (sb.length() + block.length() > maxContextChars) {
-                sb.append(sb.isEmpty() ? "" : "\n\n")
-                        .append("[Context truncated to about ").append(maxContextChars)
-                        .append(" characters of this session's page range.]");
+            int separatorChars = selected.isEmpty() ? 0 : 2;
+            if (usedChars + separatorChars + block.length() > maxContextChars) {
+                if (selected.isEmpty()) {
+                    String marker = "\n[Current page truncated to fit the AI context limit.]";
+                    int textLimit = Math.max(0, maxContextChars - marker.length());
+                    selected.add(block.substring(0, Math.min(textLimit, block.length())) + marker);
+                }
                 break;
             }
-            if (!sb.isEmpty()) {
-                sb.append("\n\n");
-            }
-            sb.append(block);
+            selected.add(block);
+            usedChars += separatorChars + block.length();
         }
-        return sb.toString();
+        Collections.reverse(selected);
+        return String.join("\n\n", selected);
+    }
+
+    private Optional<int[]> explicitPageRange(String userText, int documentPageCount) {
+        if (userText == null || userText.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher matcher = PAGE_RANGE.matcher(userText);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        try {
+            int startPage = Integer.parseInt(matcher.group(1));
+            int endPage = Integer.parseInt(matcher.group(2));
+            if (startPage < 1 || endPage < startPage || endPage > documentPageCount
+                    || endPage - startPage + 1 > MAX_EXPLICIT_CONTEXT_PAGES) {
+                return Optional.empty();
+            }
+            return Optional.of(new int[]{startPage, endPage});
+        } catch (NumberFormatException ignored) {
+            return Optional.empty();
+        }
     }
 
     private Message persist(Session session, Message.Speaker speaker, Message.InputType inputType, String text) {

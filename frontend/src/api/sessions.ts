@@ -52,6 +52,8 @@ export interface GenerateQuizRequest {
   aiProfileId?: number | null;
   difficulty: Difficulty;
   questionCount: number;
+  startPage: number;
+  endPage: number;
 }
 
 export const generateQuiz = (id: number, payload: GenerateQuizRequest) =>

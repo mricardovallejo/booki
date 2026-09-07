@@ -16,4 +16,10 @@ public class GenerateQuizRequest {
     @Min(1)
     @Max(20)
     private Integer questionCount;
+
+    @Min(1)
+    private Integer startPage;
+
+    @Min(1)
+    private Integer endPage;
 }

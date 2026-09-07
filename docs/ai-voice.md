@@ -10,8 +10,9 @@ Text, quick-action buttons and voice all converge on one **`ConversationEngine`*
    `booki.conversation.history-window`, default 20);
 3. persist the user turn (`Message`, `InputType.TEXT` or `VOICE`);
 4. assemble the system prompt via `PromptAssembler` (`docs/prompts.md`) plus the
-   session's page-range text, capped at `booki.conversation.max-context-chars`
-   (24000) so a very wide range can't produce an unbounded request;
+   current page and up to seven preceding pages, or an explicitly written range
+   of up to 20 document pages. The result is capped at
+   `booki.conversation.max-context-chars` (24000);
 5. call the session's `AiProvider`;
 6. persist BooKI's reply, or raise a controlled error.
 
@@ -74,10 +75,12 @@ framework.
 - **Conversational quiz asks a question only.** The reader's answer and any
   "give me a hint" are ordinary chat turns. Scored `QuizAttempt` rows stay
   exclusive to the `POST /sessions/{id}/quiz/answer` panel flow, so Progress and
-  Reports are unaffected.
+  Reports are unaffected. The question is restricted to the page blocks selected
+  for that conversation turn.
 
-Capabilities reuse the existing services: `QuizService.generateComprehensionQuestion(Session)`
-and `ReportService.generateSummaryText(Session, …)`.
+Capabilities reuse the existing services and receive the engine's selected page
+context: `QuizService.generateComprehensionQuestion(Session, pageContextText)`
+and `ReportService.generateSummaryText(Session, …, pageContextText)`.
 
 ## Voice (ADR-009 — supersedes the Web Speech API decision, ADR-002)
 

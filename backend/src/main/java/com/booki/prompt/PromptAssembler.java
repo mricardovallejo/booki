@@ -192,17 +192,18 @@ public class PromptAssembler {
 
     private String sessionFacts(Session session) {
         return "Document: " + session.getDocument().getTitle()
-                + "\nPages " + session.getStartPage() + "–" + session.getEndPage()
-                + ", the reader is on page " + session.getCurrentPage()
+                + "\nReading started on page " + session.getStartPage()
+                + ", the furthest page reached is " + session.getEndPage()
+                + ", and the reader is now on page " + session.getCurrentPage()
                 + "\nReply in " + languageName(session.getLanguage()) + ".";
     }
 
     private String contextSessionFacts(Session session) {
         return "Document: " + session.getDocument().getTitle()
-                + "\nPages " + session.getStartPage() + "–" + session.getEndPage()
-                + " · the reader is on page " + session.getCurrentPage()
-                + "\nThe text of pages " + session.getStartPage() + "–" + session.getEndPage()
-                + " is included in every answer.";
+                + "\nReading started on page " + session.getStartPage()
+                + " · furthest page reached " + session.getEndPage()
+                + " · current page " + session.getCurrentPage()
+                + "\nOnly a bounded window of relevant extracted pages is included in each answer.";
     }
 
     private String routingContent(AiProfile profile, Set<Capability> enabled) {

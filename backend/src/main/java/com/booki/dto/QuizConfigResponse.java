@@ -10,4 +10,6 @@ public class QuizConfigResponse {
     private String profileName;
     private String difficulty;
     private Integer questionCount;
+    private Integer startPage;
+    private Integer endPage;
 }

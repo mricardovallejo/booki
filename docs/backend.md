@@ -24,7 +24,7 @@ This starts the backend on `http://localhost:8080` without needing PostgreSQL or
 - `ReaderProfile`: who is reading, in one study context — `name`, free-text `context`, `readerLevel`, `isDefault`, `readOnly`. A `user` of `null` marks a shipped read-only template (`General reader` or `Language-support reader`, seeded in `V1__init.sql`) everyone sees. Not tied to any AI Profile — a `Session` picks one. ADR-017/ADR-019.
 - `ReaderProfileProvisioner`: registration creates one editable `My reader profile` from the General reader scaffold and makes it the user's default. ADR-020.
 - `Tag`: a per-user label a document can be filed under (many-to-many with `Document`); exposed via the `/api/collections` endpoints for historical reasons — see note below.
-- `Session`: a page range (`startPage`/`endPage`) of a document, with `currentPage`, chosen `difficulty`, `language`, `aiProvider` (nullable), an optional `AiProfile` and an optional `ReaderProfile` (both FKs `ON DELETE SET NULL`; null → resolved to the user's default at read time).
+- `Session`: an open-ended reading journey. `startPage` records where it began, `endPage` grows to the furthest page reached, and `currentPage` is freely navigable across the document. It also stores the chosen `difficulty`, `language`, `aiProvider` (nullable), an optional `AiProfile` and an optional `ReaderProfile` (both FKs `ON DELETE SET NULL`; null → resolved to the user's default at read time).
 - `Message`: one turn of conversation history in a session (`USER` / `BOOKI`, `TEXT` / `VOICE`). Text and voice turns share this single model — a voice turn is just a `Message` whose `inputType` is `VOICE`; raw audio is never stored.
 - `QuizAttempt`: a generated quiz question for a page plus the reader's answer, correctness, score, and feedback; FKs to the `AiProfile` it was graded under (`ON DELETE SET NULL`).
 - `SentReport`: a record of a progress/quiz report generated (and optionally emailed) for a session.
@@ -95,12 +95,18 @@ endpoints:
 
 ### Sessions — `/api/sessions`
 
+Page fields have distinct meanings: `startPage` is the immutable start of the
+reading journey, `endPage` is the furthest page reached and only grows, and
+`currentPage` is the page currently displayed. The reader may navigate to any
+document page, including backward for review. Quiz and summary ranges remain
+limited to `startPage..endPage`, the pages reached since this session began.
+
 | Method | Route | Description |
 |--------|------|-------------|
-| POST | `/api/sessions` | Create a session (document, page range, difficulty, language, `aiProfileId?`, `readerProfileId?`); `400` if `startPage > endPage` or `endPage` exceeds the document's real page count. Omit either profile id to use the user's default |
+| POST | `/api/sessions` | Create a session (document, starting page, difficulty, language, `aiProfileId?`, `readerProfileId?`). `endPage` is optional for compatibility and defaults to `startPage`. Omit either profile id to use the user's default |
 | GET | `/api/sessions/{id}` | Load a session |
 | GET | `/api/sessions/{id}/context` | Inspect the assembled prompt layers (core, difficulty, persona, reader profile, per-function, routing, session facts) each tagged with a `group`, plus `aiProfileName` / `readerProfileName`. See `docs/prompts.md` |
-| PATCH | `/api/sessions/{id}/current-page` | Update the reader's current page; body `{ "currentPage": n }` (`UpdateCurrentPageRequest`, `@NotNull`); `400` if outside `[startPage, endPage]` |
+| PATCH | `/api/sessions/{id}/current-page` | Navigate to any page in the document; moving forward also expands `endPage`, the furthest page reached |
 | GET | `/api/sessions/{id}/messages` | Conversation history |
 | POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `502` if the AI provider fails |
 | POST | `/api/sessions/{id}/voice` | Voice turn: multipart `audio` (+ optional `capabilityHint`). Backend transcribes → same `ConversationEngine` → optional spoken reply. Returns the persisted user + bot messages and a base64 MP3 (or `null`). `502` if transcription fails |
@@ -109,13 +115,13 @@ endpoints:
 | GET | `/api/sessions/{id}/reports` | List reports already generated/sent for this session |
 | POST | `/api/sessions/{id}/reports/progress` | Generate (and optionally email) a progress report |
 | POST | `/api/sessions/{id}/reports/quiz` | Generate (and optionally email) a quiz report |
-| POST | `/api/sessions/{id}/summary` | Generate a reading summary |
+| POST | `/api/sessions/{id}/summary` | Generate a summary for a requested range within the pages reached so far; omitted range fields default to the full reached range for API compatibility |
 
 ### Quiz — `/api/sessions/{sessionId}` (mounted under Sessions)
 
 | Method | Route | Description |
 |--------|------|-------------|
-| POST | `/api/sessions/{sessionId}/quiz` | Generate a quiz question for the session |
+| POST | `/api/sessions/{sessionId}/quiz` | Generate 1–20 page-bound questions for a requested range within the pages reached so far; omitted range fields default to the full reached range, and the response echoes the effective range |
 | POST | `/api/sessions/{sessionId}/quiz/answer` | Submit an answer, get correctness/feedback |
 | GET | `/api/sessions/{sessionId}/quiz/attempts` | Quiz attempt history/report for the session |
 
@@ -184,10 +190,13 @@ through `ConversationEngine.converse(ConversationRequest)`. It:
 3. persists the user turn;
 4. assembles the system prompt via `PromptAssembler` (the layered
    core → rubric → persona → reader context → session facts — see `docs/prompts.md`)
-   plus the session's page-range text, **capped** at
-   `booki.conversation.max-context-chars` (default 24000) so a very wide range
-   can't produce an unbounded request, and the capability router filtered to the
-   profile's enabled set;
+   plus page context and the capability router filtered to the profile's enabled
+   set. By default, page context is the current page and up to seven preceding
+   pages from this reading journey. An explicit written request such as
+   `pages 10 to 12` selects that document range instead (maximum 20 pages). In
+   both cases it is **capped** at `booki.conversation.max-context-chars`
+   (default 24000), prioritizing the newest selected page before restoring
+   reading order;
 5. calls the session's `AiProvider` — via a capability if one applies (below);
 6. persists BooKI's reply, or raises `ConversationFailedException`.
 
@@ -203,7 +212,10 @@ instructions are appended to the system prompt, and when a capability fits the
 model replies with only `{"capability":"<name>"}`, which `CapabilityRegistry`
 recognises strictly. A quick-action button skips routing by passing
 `capabilityHint`. `quiz` and `summary` reuse
-`QuizService.generateComprehensionQuestion` / `ReportService.generateSummaryText`.
+`QuizService.generateComprehensionQuestion(Session, pageContextText)` /
+`ReportService.generateSummaryText(Session, ..., pageContextText)`, so the
+selected page context is carried into the capability instead of being rebuilt
+from the full session range.
 The conversational quiz only *asks* — scored `QuizAttempt` rows stay on the
 `POST /quiz/answer` panel flow. See ADR-008.
 

@@ -81,8 +81,10 @@ class ConversationEngineTest {
         lenient().when(session.getDocument()).thenReturn(document);
         lenient().when(session.getStartPage()).thenReturn(1);
         lenient().when(session.getEndPage()).thenReturn(3);
+        lenient().when(session.getCurrentPage()).thenReturn(3);
         lenient().when(session.getAiProvider()).thenReturn("claude");
         lenient().when(document.getId()).thenReturn(42L);
+        lenient().when(document.getPageCount()).thenReturn(100);
     }
 
     @Test
@@ -119,6 +121,18 @@ class ConversationEngineTest {
         assertThat(saved.get(0).getInputType()).isEqualTo(Message.InputType.VOICE);
         assertThat(saved.get(1).getSpeaker()).isEqualTo(Message.Speaker.BOOKI);
         assertThat(result.botMessage().getMessage()).isEqualTo("the answer");
+    }
+
+    @Test
+    void anExplicitPageRangeInTheMessageOverridesTheRecentPageWindow() {
+        when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
+        when(aiProvider.converse(anyString(), anyList(), anyString())).thenReturn("a question");
+
+        engine.converse(new ConversationRequest(
+                USER_ID, SESSION_ID, "Ask me about page 10 to the 12", Message.InputType.TEXT));
+
+        verify(documentPageRepository)
+                .findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(42L, 10, 12);
     }
 
     @Test

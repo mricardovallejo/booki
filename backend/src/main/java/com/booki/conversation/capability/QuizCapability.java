@@ -29,6 +29,6 @@ public class QuizCapability implements ConversationCapability {
 
     @Override
     public String execute(CapabilityInvocation invocation) {
-        return quizService.generateComprehensionQuestion(invocation.session());
+        return quizService.generateComprehensionQuestion(invocation.session(), invocation.pageContextText());
     }
 }

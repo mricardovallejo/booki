@@ -22,7 +22,7 @@ export default function HeroSection({ onUploadClick, hasDocuments }: Props) {
           Read, discuss, and learn with <span className="text-booki-accent">BooKI</span>
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/80 md:text-lg">
-          Upload your PDFs, create sessions over a page range, and let the assistant explain, quiz, and discuss the content with you by text or voice.
+          Upload your PDFs, start reading anywhere, and let the assistant explain, quiz, and discuss the pages you reach by text or voice.
         </p>
         <div className="mt-8 flex flex-wrap gap-4">
           {hasDocuments ? (

@@ -64,8 +64,10 @@ class ConversationEngineStreamingTest {
         lenient().when(session.getDocument()).thenReturn(document);
         lenient().when(session.getStartPage()).thenReturn(1);
         lenient().when(session.getEndPage()).thenReturn(3);
+        lenient().when(session.getCurrentPage()).thenReturn(3);
         lenient().when(session.getAiProvider()).thenReturn("claude");
         lenient().when(document.getId()).thenReturn(42L);
+        lenient().when(document.getPageCount()).thenReturn(100);
 
         when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());

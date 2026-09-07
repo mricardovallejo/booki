@@ -32,7 +32,6 @@ export default function CreateSessionModal({ document, onClose }: Props) {
   const { profiles, error: profilesError } = useAiProfiles();
   const { profiles: readerProfiles, error: readerError } = useReaderProfiles();
   const [startPage, setStartPage] = useState(1);
-  const [endPage, setEndPage] = useState(1);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [difficultyTouched, setDifficultyTouched] = useState(false);
   const [aiProfileId, setAiProfileId] = useState<number | undefined>(undefined);
@@ -45,7 +44,6 @@ export default function CreateSessionModal({ document, onClose }: Props) {
   useEffect(() => {
     if (document) {
       setStartPage(1);
-      setEndPage(document.pageCount);
       setLanguage(getDefaultLanguage());
       setRememberLanguage(false);
       setDifficultyTouched(false);
@@ -76,13 +74,11 @@ export default function CreateSessionModal({ document, onClose }: Props) {
   if (!document) return null;
 
   const pageError =
-    !Number.isFinite(startPage) || !Number.isFinite(endPage)
-      ? 'Enter a valid page range.'
-      : startPage < 1 || endPage > document.pageCount
-        ? `Pages must be between 1 and ${document.pageCount}.`
-        : startPage > endPage
-          ? "The start page can't come after the end page."
-          : null;
+    !Number.isFinite(startPage)
+      ? 'Enter a valid starting page.'
+      : startPage < 1 || startPage > document.pageCount
+        ? `The starting page must be between 1 and ${document.pageCount}.`
+        : null;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,9 +94,9 @@ export default function CreateSessionModal({ document, onClose }: Props) {
       }
       const session = await createSession({
         documentId: document.id,
-        title: `${document.title} (${startPage}-${endPage})`,
+        title: document.title,
         startPage,
-        endPage,
+        endPage: startPage,
         difficulty,
         aiProfileId,
         readerProfileId,
@@ -121,28 +117,19 @@ export default function CreateSessionModal({ document, onClose }: Props) {
         <p className="mt-1 text-sm text-booki-muted">{document.title}</p>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Start page">
-              <input
-                type="number"
-                min={1}
-                max={document.pageCount}
-                value={startPage}
-                onChange={(e) => setStartPage(Number(e.target.value))}
-                className="w-full rounded-lg bg-booki-card px-3 py-2 text-white outline-none ring-1 ring-white/10 focus:ring-booki-accent"
-              />
-            </Field>
-            <Field label="End page">
-              <input
-                type="number"
-                min={1}
-                max={document.pageCount}
-                value={endPage}
-                onChange={(e) => setEndPage(Number(e.target.value))}
-                className="w-full rounded-lg bg-booki-card px-3 py-2 text-white outline-none ring-1 ring-white/10 focus:ring-booki-accent"
-              />
-            </Field>
-          </div>
+          <Field label="Start reading on page">
+            <input
+              type="number"
+              min={1}
+              max={document.pageCount}
+              value={startPage}
+              onChange={(e) => setStartPage(Number(e.target.value))}
+              className="w-full rounded-lg bg-booki-card px-3 py-2 text-white outline-none ring-1 ring-white/10 focus:ring-booki-accent"
+            />
+            <p className="mt-1 text-xs text-white/50">
+              The whole PDF stays available. BooKI records how far you read as you move through it.
+            </p>
+          </Field>
 
           <Field label="Difficulty for this session">
             <div className="grid grid-cols-3 gap-2">

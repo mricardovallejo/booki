@@ -6,12 +6,16 @@ import type { Difficulty, QuizAnswerResult, QuizConfig, QuizQuestion, QuizReport
 export interface QuizConfigInput {
   difficulty: Difficulty;
   questionCount: number;
+  startPage: number;
+  endPage: number;
 }
 
 export function useQuiz(sessionId: number, session: Session | null, onActivity?: () => void) {
   const [config, setConfig] = useState<QuizConfigInput>({
     difficulty: 'medium',
-    questionCount: 3
+    questionCount: 3,
+    startPage: 1,
+    endPage: 1
   });
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [activeConfig, setActiveConfig] = useState<QuizConfig | null>(null);
@@ -23,7 +27,13 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
 
   useEffect(() => {
     if (session) {
-      setConfig((prev) => ({ ...prev, difficulty: session.difficulty }));
+      setConfig((prev) => ({
+        ...prev,
+        difficulty: session.difficulty,
+        questionCount: Math.min(prev.questionCount, session.endPage - session.startPage + 1),
+        startPage: session.startPage,
+        endPage: session.endPage
+      }));
     }
   }, [session]);
 

@@ -9,10 +9,10 @@ import java.util.List;
  * Everything a {@link ConversationCapability} needs for one turn, already
  * resolved and ownership-checked by {@code ConversationEngine}.
  *
- * @param session          the reading session (its provider, language, page range, difficulty, Profile Master)
+ * @param session          the reading session (its provider, language, reading progress, difficulty, tutor profile)
  * @param userText         the reader's latest message
  * @param history          recent conversation, chronological, for capabilities that want it (explain / mnemonic)
- * @param pageContextText  the session's page-range text, already size-capped
+ * @param pageContextText  the session's bounded recent-page text
  */
 public record CapabilityInvocation(
         Session session,

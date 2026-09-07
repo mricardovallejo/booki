@@ -67,37 +67,47 @@ public class QuizServiceImpl implements QuizService {
         // Upper bound matches GenerateQuizRequest's @Max; the real cap is one
         // question per page, applied by the .limit() below.
         int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 20);
+        int startPage = request.getStartPage() != null ? request.getStartPage() : session.getStartPage();
+        int endPage = request.getEndPage() != null ? request.getEndPage() : session.getEndPage();
+        validateReadRange(session, startPage, endPage);
 
         AiProfile profile = resolvedProfileId != null
                 ? aiProfileRepository.findByIdAndUserId(resolvedProfileId, userId).orElse(null) : null;
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
 
         List<DocumentPage> pages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                session.getDocument().getId(), session.getStartPage(), session.getEndPage());
+                session.getDocument().getId(), startPage, endPage);
 
         List<QuizQuestionResponse> questions = pages.stream()
                 .limit(questionCount)
                 .map(p -> new QuizQuestionResponse(p.getPageNumber(), p.getPageNumber(),
-                        questionForPage(session, p, resolvedDifficulty, provider)))
+                        questionForPage(session, p, resolvedDifficulty, provider, startPage, endPage)))
                 .toList();
 
         QuizConfigResponse config = new QuizConfigResponse(
-                resolvedProfileId, profile != null ? profile.getName() : null, resolvedDifficulty, questions.size());
+                resolvedProfileId, profile != null ? profile.getName() : null, resolvedDifficulty, questions.size(),
+                startPage, endPage);
         return new QuizGenerateResponse(questions, config);
     }
 
     @Override
-    public String generateComprehensionQuestion(Session session) {
+    public String generateComprehensionQuestion(Session session, String pageContextText) {
         String difficulty = resolveDifficulty(session.getDifficulty());
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
 
-        int target = session.getCurrentPage() != null ? session.getCurrentPage() : session.getStartPage();
-        DocumentPage page = firstPageInRange(session, target, target)
-                .or(() -> firstPageInRange(session, session.getStartPage(), session.getEndPage()))
-                .orElseThrow(() -> new IllegalStateException(
-                        "This session has no extracted pages to build a question from."));
-
-        return questionForPage(session, page, difficulty, provider);
+        String context = pageContextText;
+        if (context == null || context.isBlank()) {
+            int target = session.getCurrentPage() != null ? session.getCurrentPage() : session.getStartPage();
+            DocumentPage page = firstPageInRange(session, target, target)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "This session has no extracted pages to build a question from."));
+            context = "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText();
+        }
+        String systemPrompt = promptAssembler.forFunction(
+                session, SlotKey.FN_QUIZ_QUESTION, difficulty, context);
+        return provider.converse(systemPrompt, List.of(),
+                "Write one quiz question using only the supplied page blocks. "
+                        + "Do not ask about any page or information outside them.").strip();
     }
 
     private java.util.Optional<DocumentPage> firstPageInRange(Session session, int start, int end) {
@@ -105,11 +115,14 @@ public class QuizServiceImpl implements QuizService {
                 session.getDocument().getId(), start, end).stream().findFirst();
     }
 
-    private String questionForPage(Session session, DocumentPage page, String difficulty, AiProvider provider) {
+    private String questionForPage(Session session, DocumentPage page, String difficulty, AiProvider provider,
+                                   int selectedStartPage, int selectedEndPage) {
         String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_QUIZ_QUESTION, difficulty,
                 "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
         return provider.converse(systemPrompt, List.of(),
-                "Write the quiz question now, following the instructions above.").strip();
+                "The reader selected pages " + selectedStartPage + "-" + selectedEndPage
+                        + ". Write one question using only the supplied Page " + page.getPageNumber()
+                        + " block. Do not ask about any other page or outside information.").strip();
     }
 
     @Override
@@ -220,6 +233,13 @@ public class QuizServiceImpl implements QuizService {
 
     private int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private void validateReadRange(Session session, int startPage, int endPage) {
+        if (startPage < session.getStartPage() || endPage > session.getEndPage() || startPage > endPage) {
+            throw new IllegalArgumentException("Quiz pages must be within the pages read so far ("
+                    + session.getStartPage() + "-" + session.getEndPage() + ")");
+        }
     }
 
     private double round2(double value) {

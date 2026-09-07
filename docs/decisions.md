@@ -60,7 +60,7 @@
 - **Context**: Quiz, Summary and Explain should be usable *inside* the chat ("ask me a question about this", "summarize before I continue") without the reader navigating to a separate panel — while the existing Quiz panel and Summary modal stay exactly as they are. The clean way to let a model choose a tool is native function/tool calling, but BooKI's `AiProvider` abstraction is a single `String converse(system, context, user)` and the four providers (`claude`, `openai`, `kimi`, `ollama`) each have a different tool-call wire format and a multi-turn tool-result loop. Adding that now would destabilise every provider (the same reason Phase 5 keeps `converse()` non-streaming). Keyword matching (`if message.contains("quiz")`) was explicitly ruled out as fragile.
 - **Decision**:
   - A small `ConversationCapability` interface — `name()`, `modelDescription()`, `execute(CapabilityInvocation)` — with one bean per capability (`quiz`, `summary`, `explain`, `mnemonic`). This is **not** an agent framework: a capability returns the reply text for one turn and nothing else.
-  - Capabilities **reuse the existing services**: `QuizCapability` → `QuizService.generateComprehensionQuestion(Session)` (extracted from the panel's per-page generator), `SummaryCapability` → `ReportService.generateSummaryText(Session, …)` (the same method behind `POST /summary`). `explain`/`mnemonic` are small prompts on top of the shared `SessionContextBuilder` — nothing existing did them.
+  - Capabilities **reuse the existing services**: `QuizCapability` → `QuizService.generateComprehensionQuestion(Session, pageContextText)`, `SummaryCapability` → `ReportService.generateSummaryText(Session, …, pageContextText)`. Their original no-context signatures were superseded by ADR-021 so capabilities use the engine's bounded or explicitly selected pages. `explain`/`mnemonic` are small prompts on top of the shared prompt assembly — nothing existing did them.
   - **Routing is provider-neutral.** For a chat turn the system prompt gets `PromptAssembler.chatRoutingSection()` (the editable `capability_routing` slot + its locked JSON contract) followed by `CapabilityRegistry.routerInstructions(enabled)` (the dynamic list of the session's enabled capabilities); when a capability clearly fits, the model replies with *only* `{"capability":"<name>"}`. `parseDirective()` accepts that only if the whole trimmed reply is that JSON, ≤160 chars, and names a registered capability — otherwise the reply is treated as a normal answer. Common chat stays **one** model call; a capability adds a second (its own specialised call).
   - **Quick-action buttons** ("Ask me", "Summarize", …) send their canned text plus an optional `capabilityHint` on the existing `POST /sessions/{id}/messages` — the engine runs that capability directly, no routing call, no separate backend path.
   - **Conversational quiz asks, it does not grade.** The reader's answer and any "give me a hint" are ordinary chat turns (the model has the question in history and the pages in context). Scored `QuizAttempt` rows — and everything Progress/Reports count — stay exclusive to the explicit `POST /sessions/{id}/quiz/answer` flow. This avoids a fragile "is the reader answering a quiz right now?" state machine.
@@ -241,3 +241,21 @@ will use SSE, which every browser supports.
   shipped General and language-support profiles remain shared and read-only.
   The General reader seed in `V1__init.sql` is the canonical scaffold copied at
   registration.
+
+## ADR-021: sessions are open-ended reading journeys
+
+- **Context**: choosing pages 10–12 when opening a session made page 12 a hard
+  navigation wall. The range was serving three unrelated purposes at once:
+  viewer limits, reading progress, and AI/quiz context.
+- **Decision**: session creation asks only where reading starts. The PDF viewer
+  can navigate the whole document; `endPage` grows monotonically to the furthest
+  page reached while `currentPage` remains the page currently displayed. Normal
+  chat receives the current page plus at most seven recent pages, still subject
+  to the character cap. A written request such as “pages 10 to 12” selects that
+  explicit range (up to 20 pages). Quiz and summary screens choose their own
+  explicit ranges within the pages read so far.
+- **Consequence**: reaching the previous end no longer stops reading, progress
+  is measured from the starting page toward the document's real final page, and
+  long sessions do not silently send the whole PDF to the model. Existing
+  `start_page`, `end_page`, and `current_page` columns are reused, so no database
+  migration is required.

@@ -45,7 +45,7 @@ In precedence order (written into the core so the model knows it):
 | 3 | **Function contract + body** — only when a capability runs | AI Profile | body only |
 | 4 | **Persona** | AI Profile | yes |
 | 5 | **Reader profile** — the reader context | Reader profile | yes |
-| — | Session facts (document, page range, current page) + the page text | session | no |
+| — | Session facts (start, furthest and current page) + a bounded recent-page window or an explicitly requested page range | session | no |
 | — | Capability routing (plain chat only) | AI Profile | body only |
 
 **Conflict rule:** when two layers disagree, the higher one wins — *except* a
@@ -68,7 +68,7 @@ the reader profile is a separate tab in that editor.
 
 The authoritative shipped wording lives in
 `backend/src/main/resources/prompts/catalog.yml`, currently catalog version
-`1.1.0`. It contains the fixed core, shared SlotPrompt defaults, tutor personas,
+`1.2.0`. It contains the fixed core, shared SlotPrompt defaults, tutor personas,
 and optional per-template prompt overrides. Overrides are layered on the shared
 defaults before a profile is seeded; the `Language & Learning Guide` uses them
 for distinct Easy, Medium and Advanced rubrics. `SlotPromptCatalog` loads and
@@ -161,7 +161,8 @@ how much scaffolding, how strict the grading — is the text in `rubric_easy/…
 The session carries a default difficulty; the quiz panel can override it per
 round (the AI Profile is always the session's). The quiz panel shows the active
 rubric inline with a deep link (`/ai-profiles/{id}?slot=rubric_<level>`) to edit
-it.
+it. A round also selects an explicit range within the pages reached so far; the
+backend echoes the effective `startPage` / `endPage` in the response.
 
 ## Language
 
@@ -178,7 +179,10 @@ Three separate things:
 
 - **Plain chat**: core + rubric(active level) + persona + reader profile
   context + `capability_routing` + the enabled capability list + session facts +
-  fenced page text. The document is always last. If the model
+  fenced page text. The normal window is the current page plus at most seven
+  preceding pages from the reading journey. A written page range in English,
+  Spanish, or French selects up to 20 document pages instead. The character cap
+  still applies, and the document is always last. If the model
   replies with exactly `{"capability":"<name>"}` for an *enabled* capability,
   that capability runs instead; otherwise its reply is the answer.
 - **Quick-action button / explicit capability**: skips routing, runs the
@@ -186,7 +190,13 @@ Three separate things:
 - **A capability call** (quiz question, grading, summary, explain, mnemonic):
   core + rubric + the function's locked frame + its editable body + persona
   + reader profile context + the relevant page(s). Grading and quiz
-  generation parse the model's reply against the locked frame's format.
+  generation parse the model's reply against the locked frame's format. Quiz
+  generation is explicitly source-limited: it may use only the supplied page
+  blocks and may not ask about another page or outside knowledge.
+
+The standalone quiz and summary screens do not inherit an opening-session end
+boundary. They choose their own explicit range within `startPage..endPage`,
+where `endPage` is the furthest page reached at request time.
 
 ## API surface
 

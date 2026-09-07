@@ -17,7 +17,6 @@ public class SessionRequest {
     @Min(1)
     private Integer startPage;
 
-    @NotNull
     @Min(1)
     private Integer endPage;
 

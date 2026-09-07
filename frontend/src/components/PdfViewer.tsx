@@ -80,7 +80,8 @@ export default function PdfViewer({ sessionId }: Props) {
   }
 
   const onGoToPage = async (page: number) => {
-    await goToPage(page);
+    if (!numPages) return;
+    await goToPage(Math.max(1, Math.min(page, numPages)));
   };
 
   return (
@@ -88,7 +89,7 @@ export default function PdfViewer({ sessionId }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-booki-surface/50 px-6 py-3 backdrop-blur">
         <div className="min-w-0 flex-1 basis-full sm:basis-auto">
           <h2 className="truncate text-sm font-bold text-white">{session.title}</h2>
-          <p className="truncate text-xs text-booki-muted">Session pages {session.startPage}-{session.endPage}</p>
+          <p className="truncate text-xs text-booki-muted">Read so far: pages {session.startPage}-{session.endPage}</p>
           {error && <p className="mt-0.5 truncate text-xs text-rose-400">{error}</p>}
         </div>
         <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
@@ -118,7 +119,7 @@ export default function PdfViewer({ sessionId }: Props) {
           <div className="flex items-center gap-2 rounded-lg bg-booki-card px-3 py-1.5">
             <button
               onClick={() => onGoToPage(session.currentPage - 1)}
-              disabled={session.currentPage <= session.startPage}
+              disabled={session.currentPage <= 1}
               className="rounded p-1 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -128,18 +129,18 @@ export default function PdfViewer({ sessionId }: Props) {
             <span className="text-xs text-white/60">Page</span>
             <input
               type="number"
-              min={session.startPage}
-              max={session.endPage}
+              min={1}
+              max={numPages || undefined}
               value={inputPage}
               onChange={(e) => setInputPage(Number(e.target.value))}
               onBlur={() => onGoToPage(inputPage)}
               onKeyDown={(e) => e.key === 'Enter' && onGoToPage(inputPage)}
               className="w-12 bg-transparent text-center text-sm font-bold text-white outline-none"
             />
-            <span className="text-xs text-white/60">/ {session.endPage}</span>
+            <span className="text-xs text-white/60">/ {numPages || '…'}</span>
             <button
               onClick={() => onGoToPage(session.currentPage + 1)}
-              disabled={session.currentPage >= session.endPage}
+              disabled={!numPages || session.currentPage >= numPages}
               className="rounded p-1 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">

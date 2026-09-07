@@ -25,9 +25,8 @@ export function useSession(sessionId: number) {
   const goToPage = useCallback(
     async (page: number) => {
       if (!session) return;
-      const clamped = Math.max(session.startPage, Math.min(page, session.endPage));
       try {
-        const updated = await updateCurrentPage(sessionId, clamped);
+        const updated = await updateCurrentPage(sessionId, page);
         setSession(updated);
         setError(null);
       } catch (err) {

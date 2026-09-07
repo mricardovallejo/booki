@@ -58,6 +58,12 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
   const answeredCount = Object.keys(results).length;
   const correctCount = Object.values(results).filter((r) => r.correct).length;
   const roundComplete = questions.length > 0 && answeredCount === questions.length;
+  const pageRangeValid = Boolean(
+    session &&
+      config.startPage >= session.startPage &&
+      config.endPage <= session.endPage &&
+      config.startPage <= config.endPage
+  );
 
   useEffect(() => {
     if (roundComplete && autoSend && reportEmail.trim() && !autoSentRef.current) {
@@ -115,8 +121,40 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
             })()}
           </Field>
 
+          {session && (
+            <div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Quiz from page">
+                  <Input
+                    type="number"
+                    min={session.startPage}
+                    max={config.endPage}
+                    value={config.startPage}
+                    onChange={(e) =>
+                      setConfig((prev) => ({ ...prev, startPage: Number(e.target.value) }))
+                    }
+                  />
+                </Field>
+                <Field label="Through page">
+                  <Input
+                    type="number"
+                    min={config.startPage}
+                    max={session.endPage}
+                    value={config.endPage}
+                    onChange={(e) =>
+                      setConfig((prev) => ({ ...prev, endPage: Number(e.target.value) }))
+                    }
+                  />
+                </Field>
+              </div>
+              <p className="mt-1 text-xs text-white/50">
+                Available pages read so far: {session.startPage}-{session.endPage}.
+              </p>
+            </div>
+          )}
+
           {(() => {
-            const pageSpan = session ? session.endPage - session.startPage + 1 : QUESTION_HARD_MAX;
+            const pageSpan = Math.max(1, config.endPage - config.startPage + 1);
             const maxQuestions = Math.max(1, Math.min(QUESTION_HARD_MAX, pageSpan));
             const setCount = (n: number) =>
               setConfig((prev) => ({
@@ -181,7 +219,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
             )}
           </div>
 
-          <Button onClick={onGenerate} disabled={generating} className="w-full">
+          <Button onClick={onGenerate} disabled={generating || !pageRangeValid} className="w-full">
             {generating ? 'Generating…' : questions.length > 0 ? 'Regenerate quiz' : 'Generate quiz'}
           </Button>
           {error && <p className="text-sm text-rose-400">{error}</p>}
@@ -195,7 +233,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
               </p>
               {activeConfig?.profileName && (
                 <p className="text-[11px] text-white/40">
-                  {activeConfig.profileName} · {activeConfig.difficulty}
+                  {activeConfig.profileName} · {activeConfig.difficulty} · pages {activeConfig.startPage}-{activeConfig.endPage}
                 </p>
               )}
             </div>

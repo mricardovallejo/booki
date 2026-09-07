@@ -15,7 +15,7 @@
 
 - **LoginPage**: sign in / sign up (email, password, optional name). The "use demo account" shortcut is gated behind `import.meta.env.DEV`, so it (and the demo credentials) are stripped from production builds.
 - **HomePage**: list of the user's PDFs, tag filtering, and the upload flow.
-- **SessionPage**: PDF reader + chat, quiz, progress, and notifications for one session.
+- **SessionPage**: open-ended PDF reader + chat, quiz, progress, and notifications for one session. The starting page is not a navigation boundary.
 - **AiProfilesPage** — "Reading setup" (`/ai-profiles`, `/ai-profiles/:id`): two tabs, **Tutor profile** and **Reader profile**, same shape — a selector + `New` / `Duplicate` / `Delete`, the editor, then a `Save changes` button at the bottom.
   - *Tutor profile* tab: the flat slot editor (persona, difficulty, function prompts, capability routing — no Advanced fold) + `Restore to original`. `New` = a fresh copy of the user's default (there is no blank template); `Duplicate` = a copy of the selected one. Selection is the route (`/ai-profiles/:id`).
   - *Reader profile* tab: `Name` / `Starting level` / shared `context`. Every account starts with an editable, default `My reader profile` copied from the General reader scaffold, so the editor has a usable form on first visit. Shipped templates such as "General reader" and "Language-support reader" remain read-only; `New` or `Duplicate` makes another editable profile.
@@ -28,17 +28,17 @@ All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `
 ## Main components (`src/components`)
 
 - `Layout`: top bar and route container for authenticated pages.
-- `PdfViewer`: renders the PDF and lets the reader move between pages.
+- `PdfViewer`: renders the PDF and lets the reader navigate the whole document. Its header shows the range reached so far; moving backward never reduces that range.
 - `ChatPanel`: the conversation with BooKI — message history, text input, voice, and the quick-action row. A quick action is hidden when its capability isn't in `session.enabledCapabilities` (`docs/prompts.md`). It owns the voice state and picks the cloud path or the browser fallback.
 - `ContextInfoButton`: the ℹ popup — the assembled prompt layers (`docs/prompts.md`). Uses `useOutsideDismiss` (below).
 - `DocumentCard`: a library card. The whole card is a full-bleed `<button>` for "open"; the corner tag/delete actions are real sibling `<button>`s stacked above it (no nested interactive elements).
 - `VoiceButton`: presentational mic button (supported / recording / busy) — all voice logic lives in `ChatPanel`.
-- `QuizPanel`: quiz setup, the question flow, and the full correction report (stats + per-attempt history + email-a-copy) all in one place — Also supports an opt-in checkbox that auto-emails the report the moment the last question in a round gets graded.
-- `ProgressPanel`: reading progress for the current session.
+- `QuizPanel`: quiz setup, the question flow, and the full correction report (stats + per-attempt history + email-a-copy) all in one place. Each round selects an explicit page range within the pages reached so far, and the result shows the effective range returned by the backend. Also supports an opt-in checkbox that auto-emails the report the moment the last question in a round gets graded.
+- `ProgressPanel`: reading progress from the session's starting page to the document's final page. Progress is based on the furthest page reached, so reviewing an earlier page does not move it backward.
 - `NotificationsBell`: contextual nudges (halfway, done, try a quiz, etc.).
-- `SessionSidebar`, `CreateSessionModal`: session creation and in-session navigation.
+- `SessionSidebar`, `CreateSessionModal`: session creation and in-session navigation. Creation asks for a starting page only; the request sends `endPage = startPage` for API compatibility, then the backend expands it as the reader advances.
 - `TagsBar`, `TagPickerModal`: filtering and assigning tags (see the backend's `Tag` entity, exposed via `/api/collections`).
-- `SendReportForm`, `SummaryModal`: generating/emailing progress or quiz reports and reading summaries.
+- `SendReportForm`, `SummaryModal`: generating/emailing progress or quiz reports and reading summaries. Summary generation selects an explicit range within the pages reached so far.
 - `DocumentCard`, `HeroSection`, `HorizontalRow`: home screen library layout.
 - `ui/`: shared low-level building blocks (buttons, form fields, etc.).
 

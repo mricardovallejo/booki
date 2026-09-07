@@ -5,6 +5,10 @@
 **Mandate:** read-only; no code changes.
 **Method:** review of the repo documentation (`docs/*.md`, `README.md`, `openapi.yaml`), manual code exploration, and analysis with specialized subagents.
 
+> **Historical snapshot:** findings, file references, and terminology below
+> describe the repository on the evaluation date. The remediation note and
+> later ADRs—especially ADR-017 through ADR-021—describe the current design.
+
 ---
 
 > **Remediation status (2026-09-05) — see ADR-016.** Addressed in 3 stages:

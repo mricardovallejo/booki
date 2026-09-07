@@ -75,10 +75,15 @@ public class SessionServiceImpl implements SessionService {
         Document document = documentRepository.findByIdAndUserId(request.getDocumentId(), userId)
                 .orElseThrow(() -> new NoSuchElementException("Document not found"));
 
-        if (request.getStartPage() > request.getEndPage()) {
+        int initialEndPage = request.getEndPage() != null ? request.getEndPage() : request.getStartPage();
+        if (request.getStartPage() > document.getPageCount()) {
+            throw new IllegalArgumentException(
+                    "startPage exceeds the document's page count (" + document.getPageCount() + ")");
+        }
+        if (request.getStartPage() > initialEndPage) {
             throw new IllegalArgumentException("startPage must be less than or equal to endPage");
         }
-        if (request.getEndPage() > document.getPageCount()) {
+        if (initialEndPage > document.getPageCount()) {
             throw new IllegalArgumentException(
                     "endPage exceeds the document's page count (" + document.getPageCount() + ")");
         }
@@ -91,7 +96,7 @@ public class SessionServiceImpl implements SessionService {
         session.setUser(document.getUser());
         session.setDocument(document);
         session.setStartPage(request.getStartPage());
-        session.setEndPage(request.getEndPage());
+        session.setEndPage(initialEndPage);
         session.setCurrentPage(request.getStartPage());
         session.setDifficulty(resolveDifficulty(request.getDifficulty()));
         session.setLanguage(promptAssembler.resolveLanguage(request.getLanguage()));
@@ -132,11 +137,15 @@ public class SessionServiceImpl implements SessionService {
     @Transactional
     public SessionResponse updateCurrentPage(Long userId, Long sessionId, Integer currentPage) {
         Session session = findOwned(userId, sessionId);
-        if (currentPage == null || currentPage < session.getStartPage() || currentPage > session.getEndPage()) {
+        int documentPageCount = session.getDocument().getPageCount();
+        if (currentPage == null || currentPage < 1 || currentPage > documentPageCount) {
             throw new IllegalArgumentException(
-                    "currentPage must be between " + session.getStartPage() + " and " + session.getEndPage());
+                    "currentPage must be between 1 and " + documentPageCount);
         }
         session.setCurrentPage(currentPage);
+        if (currentPage > session.getEndPage()) {
+            session.setEndPage(currentPage);
+        }
         sessionRepository.save(session);
         return toResponse(session);
     }

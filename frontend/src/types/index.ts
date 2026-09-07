@@ -146,6 +146,8 @@ export interface QuizConfig {
   profileName: string | null;
   difficulty: Difficulty;
   questionCount: number;
+  startPage: number;
+  endPage: number;
 }
 
 export interface QuizGenerateResult {
@@ -212,6 +214,8 @@ export type SummaryDeliverAs = 'chat' | 'pdf';
 
 export interface GenerateSummaryRequest {
   lengthPages: number;
+  startPage: number;
+  endPage: number;
   prompt?: string;
   includeCover: boolean;
   deliverAs: SummaryDeliverAs;

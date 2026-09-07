@@ -2,10 +2,15 @@
 
 ## What we're building
 
-BooKI: a cloud conversational reading assistant. PDF reading in page-range
+BooKI: a cloud conversational reading assistant. Open-ended PDF reading
 sessions; one `ConversationEngine` behind text, quick actions and voice;
 quiz/summary/explain/mnemonic as conversational capabilities. One responsive
 PWA for Android/Windows/Linux.
+
+Session invariant: `startPage` is the reading start, `endPage` is the furthest
+page reached, and `currentPage` is freely navigable. Normal AI context contains
+at most eight pages; a written range may select up to 20. Quiz and summary use
+explicit ranges within the pages reached so far.
 
 ## Fixed stack
 

@@ -14,6 +14,12 @@ public class GenerateSummaryRequest {
     @Max(10)
     private Integer lengthPages;
 
+    @Min(1)
+    private Integer startPage;
+
+    @Min(1)
+    private Integer endPage;
+
     @Size(max = 2000)
     private String prompt;
 

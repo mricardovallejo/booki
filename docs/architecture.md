@@ -32,11 +32,17 @@ typing, a quick-action button, or speaking — converges on one
 **`ConversationEngine`**, which composes that session context with conversational
 **capabilities** and an **AI provider**.
 
+Sessions are open-ended: `startPage` records where the journey began,
+`endPage` grows to the furthest page reached, and `currentPage` may move anywhere
+in the PDF. The engine sends a bounded page window by default or an explicit
+written range; quiz and summary screens select their own ranges within the pages
+reached so far.
+
 ```
   TEXT ─────────────┐
   QUICK ACTION ─────┼──▶  ConversationEngine
   VOICE ─▶ STT ─────┘         │
-                              ├─ SessionContext  (document, page range, current page,
+                              ├─ SessionContext  (document, reading progress, current page,
                               │                   language, difficulty, AI Profile
                               │                   layers, recent history — docs/prompts.md)
                               ├─ Capabilities    (quiz · summary · explain · mnemonic)

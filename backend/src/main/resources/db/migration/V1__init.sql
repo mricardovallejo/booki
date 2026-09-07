@@ -119,8 +119,6 @@ CREATE TABLE sessions (
     user_id           BIGINT NOT NULL REFERENCES users (id),
     document_id       BIGINT NOT NULL REFERENCES documents (id),
     start_page        INTEGER NOT NULL,
-    -- Tracks how far the reader has actually got (grows as pages turn);
-    -- informational only. Each AI activity carries its own page range.
     end_page          INTEGER NOT NULL,
     current_page      INTEGER NOT NULL,
     ai_profile_id     BIGINT REFERENCES ai_profiles (id) ON DELETE SET NULL,

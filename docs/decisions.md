@@ -259,3 +259,33 @@ will use SSE, which every browser supports.
   long sessions do not silently send the whole PDF to the model. Existing
   `start_page`, `end_page`, and `current_page` columns are reused, so no database
   migration is required.
+
+## ADR-022: every new account starts with the BooKI guide in its library
+
+- **Context**: a first-time user landed on an empty library with nothing to
+  open, and the landing "Learn more" button did nothing. There was also no
+  in-product explanation of what BooKI does or how to use it — only the
+  developer README. A short illustrated guide exists (`docs/booki-guide.html`
+  → `docs/booki-guide.pdf`, built by `scripts/build-guide.mjs`); the question
+  was how a user meets it.
+- **Decision**: the guide ships as a real PDF with selectable text, so BooKI
+  can read it like any other document. `AuthController.register` calls
+  `WelcomeDocumentProvisioner` once the account transaction has committed; the
+  provisioner is `@Async` (`backgroundTasks` pool, `config/AsyncConfig`), so the
+  PDF parse + blob write run off the request thread and add nothing to the
+  sign-up response — a warm registration stays ~140 ms. It imports the bundled
+  `welcome/booki-guide.pdf` via `DocumentService.importPdf(userId, title, bytes)`
+  (the shared core extracted from `uploadDocument`). Any failure is logged and
+  swallowed; it is idempotent (skips if a document with that title already
+  exists) and gated by `booki.welcome-document.enabled`
+  (`WELCOME_DOCUMENT_ENABLED`, default `true`; the integration suite sets it
+  `false` because those tests assert on empty libraries). The landing "Learn
+  more" button links to the same file served statically from
+  `frontend/public/booki-guide.pdf`.
+- **Consequence**: a new user can immediately open the guide, read it, quiz
+  themselves on it, or ask BooKI "how does this work?" — the document appears in
+  the library within ~1 s of landing on home. Already-registered accounts are
+  not backfilled; a seed dropped by a shutdown mid-task is not retried (the pool
+  drains on shutdown, so this is a narrow window). Three copies of the PDF are
+  committed (`docs/`, `frontend/public/`, `backend/src/main/resources/welcome/`)
+  and kept in sync by the build script, since deploy builds do not run it.

@@ -14,7 +14,7 @@
 ## Screens (`src/pages`)
 
 - **LoginPage**: sign in / sign up (email, password, optional name). The "use demo account" shortcut is gated behind `import.meta.env.DEV`, so it (and the demo credentials) are stripped from production builds.
-- **HomePage**: list of the user's PDFs, tag filtering, and the upload flow.
+- **HomePage**: list of the user's PDFs, tag filtering, and the upload flow. A new account's library already contains the BooKI guide (ADR-022).
 - **SessionPage**: open-ended PDF reader + chat, quiz, progress, and notifications for one session. The starting page is not a navigation boundary.
 - **AiProfilesPage** — "Reading setup" (`/ai-profiles`, `/ai-profiles/:id`): two tabs, **Tutor profile** and **Reader profile**, same shape — a selector + `New` / `Duplicate` / `Delete`, the editor, then a `Save changes` button at the bottom.
   - *Tutor profile* tab: the flat slot editor (persona, difficulty, function prompts, capability routing — no Advanced fold) + `Restore to original`. `New` = a fresh copy of the user's default (there is no blank template); `Duplicate` = a copy of the selected one. Selection is the route (`/ai-profiles/:id`).
@@ -39,7 +39,7 @@ All routes except `/login` are wrapped in `ProtectedRoute`, which redirects to `
 - `SessionSidebar`, `CreateSessionModal`: session creation and in-session navigation. Creation asks for a starting page only; the request sends `endPage = startPage` for API compatibility, then the backend expands it as the reader advances.
 - `TagsBar`, `TagPickerModal`: filtering and assigning tags (see the backend's `Tag` entity, exposed via `/api/collections`).
 - `SendReportForm`, `SummaryModal`: generating/emailing progress or quiz reports and reading summaries. Summary generation selects an explicit range within the pages reached so far.
-- `DocumentCard`, `HeroSection`, `HorizontalRow`: home screen library layout.
+- `DocumentCard`, `HeroSection`, `HorizontalRow`: home screen library layout. `HeroSection`'s "Learn more" opens the visual guide at `/booki-guide.pdf` (served from `public/`; the same PDF every new account gets in its library — ADR-022).
 - `ui/`: shared low-level building blocks (buttons, form fields, etc.).
 
 ## Data layer

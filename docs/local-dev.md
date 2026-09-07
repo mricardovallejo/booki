@@ -229,6 +229,22 @@ Uploads and reports now land in MinIO — browse them at the console
 `backend/storage/`. Drop the env vars (or set `STORAGE_DRIVER=local`) to go back
 to disk.
 
+## 6. Rebuilding the visual guide (optional)
+
+`docs/booki-guide.pdf` is generated from `docs/booki-guide.html` + `docs/images/`.
+It ships in three places — `docs/`, `frontend/public/booki-guide.pdf` (the
+landing *Learn more* link) and `backend/src/main/resources/welcome/booki-guide.pdf`
+(the document every new account gets, ADR-022). After editing the HTML, resync
+all three:
+
+```bash
+cd frontend && npm install     # once — brings in the Playwright/Chromium dep
+node scripts/build-guide.mjs    # from the repo root
+```
+
+To register accounts without the guide, run the backend with
+`WELCOME_DOCUMENT_ENABLED=false`.
+
 ## Checking what's running right now
 
 ```bash

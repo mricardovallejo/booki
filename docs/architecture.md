@@ -8,7 +8,8 @@ Multi-project monorepo:
 booki/
 ├── backend/          # Spring Boot 4 + Java 21 + Gradle
 ├── frontend/         # React + TypeScript + Vite + PWA
-├── docs/             # Technical and product memory
+├── docs/             # Technical and product memory + the visual guide (booki-guide.html/pdf)
+├── scripts/          # build-guide.mjs (renders + syncs the guide PDF), deploy secrets
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
@@ -75,7 +76,7 @@ and `docs/ai-voice.md` for the detail.
 
 - `controller` → REST controllers (incl. `VoiceController`)
 - `service` → service interfaces
-- `service/impl` → implementations; the prompt assembly lives in `prompt/PromptAssembler` (`docs/prompts.md`)
+- `service/impl` → implementations; the prompt assembly lives in `prompt/PromptAssembler` (`docs/prompts.md`). On sign-up, `ReaderProfileProvisioner` and `WelcomeDocumentProvisioner` seed a new account's reader profile and the bundled guide document (ADR-020, ADR-022).
 - `src/main/resources/prompts/catalog.yml` → versioned canonical core, defaults and tutor personas; loaded and validated by `SlotPromptCatalog`
 - `conversation` → `ConversationEngine`, `ConversationRequest/Result/Stream`
 - `conversation/capability` → `ConversationCapability` + registry + the 4 capabilities
@@ -85,7 +86,7 @@ and `docs/ai-voice.md` for the detail.
 - `security` → JWT util + filter (the filter also checks the token's user still exists)
 - `ai` → `AiProvider` + `AiProviderRegistry` + `StreamingAiProvider`
 - `dto` → request/response (write DTOs carry Bean Validation constraints; see `docs/backend.md` "Request validation")
-- `config` → Spring Security config, the global exception handler (sanitizes uncaught errors), `OutboundHttp` (provider timeouts), actuator/OpenAPI config
+- `config` → Spring Security config, the global exception handler (sanitizes uncaught errors), `OutboundHttp` (provider timeouts), `AsyncConfig` (one small background pool — welcome-guide seeding), actuator/OpenAPI config
 - `util` → cross-cutting helpers (e.g. `SecurityUtil` for the current user id)
 
 ## Frontend layers

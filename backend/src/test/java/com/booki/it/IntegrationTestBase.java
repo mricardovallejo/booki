@@ -60,7 +60,9 @@ import static org.assertj.core.api.Assertions.assertThat;
         // Resolve sessions created without an explicit provider to the fake.
         "booki.ai.default-provider=fake",
         // Keep files written by LocalStorageAdapter out of the project root.
-        "booki.storage.local-path=build/it-storage"
+        "booki.storage.local-path=build/it-storage",
+        // Sign-up should not seed the welcome guide: tests assert on empty libraries.
+        "booki.welcome-document.enabled=false"
 })
 @ActiveProfiles("test")
 @Import(IntegrationTestBase.FakeBoundaryBeans.class)

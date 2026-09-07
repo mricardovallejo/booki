@@ -26,6 +26,7 @@ explicit ranges within the pages reached so far.
 - Backend: Controller → Service (interface) → ServiceImpl → Repository. Write DTOs carry `@Valid` constraints; multi-write services are `@Transactional`; uncaught errors are sanitized. Security posture: ADR-016.
 - Frontend: `pages/` → `components/` → `api/` → `hooks/`. `npm run lint` + `tsc --noEmit` + `build` are the CI gate.
 - Prompt content: canonical versioned catalog at `backend/src/main/resources/prompts/catalog.yml`; Java keeps typed slot/output contracts. The Node mock is only a UI fixture and does not mirror production prompt quality.
+- Visual guide: `docs/booki-guide.html` + `docs/images/` → `docs/booki-guide.pdf` via `scripts/build-guide.mjs`, which also syncs the copies in `frontend/public/` (landing "Learn more") and `backend/src/main/resources/welcome/` (seeded `@Async` into every new account's library on sign-up — ADR-022, `config/AsyncConfig`, toggle `WELCOME_DOCUMENT_ENABLED`). All three PDFs are committed; rerun the script after editing the HTML.
 
 ## What NOT to do without asking
 

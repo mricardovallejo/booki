@@ -47,18 +47,23 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     @Transactional
     public DocumentResponse uploadDocument(Long userId, MultipartFile file) {
-        User user = userRepository.findById(userId).orElseThrow();
-        String originalName = file.getOriginalFilename();
-        String title = (originalName == null || originalName.isBlank()) ? "document.pdf" : originalName;
-        String safeName = title.replaceAll("[^a-zA-Z0-9.-]", "_");
-        String key = "documents/" + UUID.randomUUID() + "_" + safeName;
-
         byte[] bytes;
         try {
             bytes = file.getBytes();
         } catch (IOException e) {
             throw new IllegalArgumentException("Could not read the uploaded file", e);
         }
+        String originalName = file.getOriginalFilename();
+        String title = (originalName == null || originalName.isBlank()) ? "document.pdf" : originalName;
+        return importPdf(userId, title, bytes);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse importPdf(Long userId, String title, byte[] bytes) {
+        User user = userRepository.findById(userId).orElseThrow();
+        String safeName = title.replaceAll("[^a-zA-Z0-9.-]", "_");
+        String key = "documents/" + UUID.randomUUID() + "_" + safeName;
 
         // Reject anything that isn't a PDF by its magic bytes ("%PDF-") before it
         // reaches PDFBox — a large binary that isn't a PDF shouldn't cost a full

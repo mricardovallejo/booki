@@ -46,12 +46,17 @@ export default function HeroSection({ onUploadClick, hasDocuments }: Props) {
               Upload my first PDF
             </button>
           )}
-          <button className="flex items-center gap-2 rounded bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/20">
+          <a
+            href="/booki-guide.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/20"
+          >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Learn more
-          </button>
+          </a>
         </div>
       </div>
     </section>

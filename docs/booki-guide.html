@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BooKI — Quick Guide</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0b0b0f;
+    --surface: #16161d;
+    --card: #1f1f2a;
+    --text: #ffffff;
+    --muted: #a1a1aa;
+    --accent: #e63946;
+  }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
+  .page {
+    width: 210mm;
+    height: 297mm;
+    padding: 18mm 18mm 16mm;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+    break-after: page;
+    display: flex;
+    flex-direction: column;
+  }
+  .page:last-child { break-after: auto; }
+
+  .kicker {
+    font-size: 10pt;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  h1 { font-size: 30pt; line-height: 1.12; margin: 6mm 0 4mm; letter-spacing: -0.5px; }
+  h2 { font-size: 20pt; line-height: 1.15; margin: 2mm 0 3mm; letter-spacing: -0.3px; }
+  p { font-size: 11pt; line-height: 1.6; color: var(--muted); max-width: 165mm; }
+  p.lead { font-size: 12.5pt; color: #e7e7ea; }
+  strong { color: var(--text); font-weight: 700; }
+  .accent { color: var(--accent); }
+
+  .shot {
+    margin-top: 9mm;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    background: var(--surface);
+  }
+  .shot img { display: block; width: 100%; }
+  .shot.tall { max-height: 150mm; }
+  .shot.tall img { object-fit: cover; object-position: top; }
+
+  ul { list-style: none; margin: 3mm 0; }
+  li { font-size: 11pt; line-height: 1.55; color: #d4d4d8; padding-left: 8mm; position: relative; margin-bottom: 2.5mm; max-width: 165mm; }
+  li::before { content: ""; position: absolute; left: 0; top: 3mm; width: 4mm; height: 2px; background: var(--accent); }
+
+  .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 12mm; height: 12mm; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 800; font-size: 15pt;
+    margin-bottom: 3mm;
+  }
+  .foot {
+    position: absolute; left: 18mm; right: 18mm; bottom: 9mm;
+    display: flex; justify-content: space-between;
+    font-size: 8.5pt; letter-spacing: 1px; text-transform: uppercase; color: #52525b;
+  }
+  .logo { font-weight: 800; }
+  .logo .accent { color: var(--accent); }
+
+  /* cover */
+  .cover { align-items: flex-start; justify-content: center; }
+  .cover.end { justify-content: flex-start; padding-top: 44mm; }
+  .cover .brand { font-size: 46pt; font-weight: 800; letter-spacing: -1px; }
+  .cover .brand .accent { color: var(--accent); }
+  .cover h1 { font-size: 24pt; font-weight: 600; color: #e7e7ea; max-width: 150mm; margin-top: 8mm; }
+  .cover .rule { width: 30mm; height: 3px; background: var(--accent); margin: 10mm 0; }
+  .cover .shot { margin-top: 12mm; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; margin-top: 4mm; }
+  .mini { background: var(--card); border-radius: 8px; padding: 5mm; }
+  .mini h3 { font-size: 11pt; margin-bottom: 1.5mm; }
+  .mini p { font-size: 9.5pt; line-height: 1.45; }
+</style>
+</head>
+<body>
+
+<!-- 1. Cover -->
+<section class="page cover">
+  <div class="brand">Boo<span class="accent">KI</span></div>
+  <div class="rule"></div>
+  <h1>Read your PDFs with someone to talk to.</h1>
+  <p class="lead">A quick guide — what BooKI does, and how to use it in four steps.</p>
+  <div class="shot"><img src="images/hero.png" alt="BooKI home screen"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>booki-507302.web.app</span></div>
+</section>
+
+<!-- 2. What is BooKI -->
+<section class="page">
+  <div class="kicker">What is BooKI</div>
+  <h1>A reading companion<br>that knows your page.</h1>
+  <p class="lead">Open a PDF — a textbook, a paper, a novel, your own notes — and read at your own pace. Whenever you want, ask BooKI a question by text or voice. It answers using the pages around where you are.</p>
+  <ul>
+    <li><strong>Ask anything about the page</strong> you're on, and get an answer grounded in what you're actually reading.</li>
+    <li><strong>Quiz yourself</strong> on the pages you've already covered — answers are marked with a score and specific feedback.</li>
+    <li><strong>Get summaries and plain-language explanations</strong> without ever leaving the reader.</li>
+    <li><strong>Nothing is gated.</strong> BooKI travels along with you; it doesn't turn the book into homework.</li>
+  </ul>
+  <div class="shot tall"><img src="images/reader-chat.png" alt="The reader: PDF on the left, conversation on the right"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>Quick guide</span></div>
+</section>
+
+<!-- 3. Step 1 -->
+<section class="page">
+  <div class="step-num">1</div>
+  <div class="kicker">Step one</div>
+  <h1>Add a book.</h1>
+  <p class="lead">On the home screen, tap <strong>Upload PDF</strong> and pick any PDF. It joins your library, sorted into <strong>Recently added</strong>, your own tags, and <strong>Long reads</strong>. Search by title to jump back in later.</p>
+  <div class="shot"><img src="images/library.png" alt="Your library, with books grouped into rows"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>Add a book</span></div>
+</section>
+
+<!-- 4. Step 2 -->
+<section class="page">
+  <div class="step-num">2</div>
+  <div class="kicker">Step two</div>
+  <h1>Start a session.</h1>
+  <p class="lead">Click a book to open <strong>Create session</strong>. A session is one open-ended reading journey with its own memory of how far you've read.</p>
+  <div class="two">
+    <div class="mini"><h3>Start page</h3><p>Where you want to begin. The whole PDF stays available.</p></div>
+    <div class="mini"><h3>Difficulty</h3><p>Easy, Medium or Advanced — change it any time.</p></div>
+    <div class="mini"><h3>Tutor profile</h3><p>How BooKI teaches — its persona and style.</p></div>
+    <div class="mini"><h3>Reader profile</h3><p>Who's reading — your level, goal and subject.</p></div>
+  </div>
+  <div class="shot tall"><img src="images/create-session.png" alt="The Create session dialog"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>Start a session</span></div>
+</section>
+
+<!-- 5. Step 3 -->
+<section class="page">
+  <div class="step-num">3</div>
+  <div class="kicker">Step three</div>
+  <h1>Read, and ask.</h1>
+  <p class="lead">The PDF is on the left, the conversation on the right. Move through the pages as you like — BooKI records the furthest one you reach.</p>
+  <ul>
+    <li>Ask about <strong>"this page"</strong> and BooKI answers from the pages around you.</li>
+    <li>Name a <strong>page range</strong> and it uses that instead.</li>
+    <li>Use the quick actions — <strong>Ask me, Explain, Summarize, Memorize</strong> — for one-tap requests.</li>
+  </ul>
+  <div class="shot tall"><img src="images/chat-closeup.png" alt="A question and BooKI's contextual answer"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>Read, and ask</span></div>
+</section>
+
+<!-- 6. Talk or type -->
+<section class="page">
+  <div class="kicker">Text or voice</div>
+  <h1>Talk to it, or type.</h1>
+  <p class="lead">Tap the microphone and speak your question. BooKI transcribes it, answers in the same conversation, and can read the answer back aloud — or keep it text-only with the speaker toggle. Voice and text share one history: it's the same conversation either way.</p>
+  <div class="shot tall"><img src="images/mobile.png" alt="BooKI on a phone"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>Text or voice</span></div>
+</section>
+
+<!-- 7. Step 4 - quiz -->
+<section class="page">
+  <div class="step-num">4</div>
+  <div class="kicker">Step four</div>
+  <h1>Check yourself.</h1>
+  <p class="lead">On the <strong>Quiz</strong> tab, pick a page range you've read and BooKI writes a short quiz. Answer in your own words — each answer comes back with a percentage score and a specific note on what to add, not just right or wrong.</p>
+  <div class="shot tall"><img src="images/quiz.png" alt="A graded quiz round"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>Check yourself</span></div>
+</section>
+
+<!-- 8. Summaries -->
+<section class="page">
+  <div class="kicker">Summaries &amp; explanations</div>
+  <h1>Catch up in a<br>paragraph.</h1>
+  <p class="lead">Ask for a summary of a range of pages — it combines the book's text with your discussion so far. The result lands in the chat, or you can download it as a PDF. Tap <strong>Explain</strong> on a passage you didn't follow and BooKI unpacks it in plain language, right where you are.</p>
+  <div class="shot tall"><img src="images/summary.png" alt="The summarize dialog"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>Summaries</span></div>
+</section>
+
+<!-- 9. Profiles + progress -->
+<section class="page">
+  <div class="kicker">Make it yours</div>
+  <h1>Tune how it teaches.<br>Track how it's going.</h1>
+  <p class="lead">In <strong>Reading setup</strong>, a <strong class="accent">tutor profile</strong> is the full set of instructions a session runs on — its persona, what each difficulty level means, and how it handles quizzes, summaries and explanations. A <strong class="accent">reader profile</strong> describes who's reading — their level, goal and subject. Keep a different one per subject you study.</p>
+  <p class="lead" style="margin-top:3mm;">Every session also has a <strong>Progress</strong> tab: pages read, questions asked, quiz scores, and a report you can email or download.</p>
+  <div class="shot tall"><img src="images/progress.png" alt="A session's Progress tab: pages read, messages, quiz scores"></div>
+  <div class="foot"><span class="logo">Boo<span class="accent">KI</span></span><span>Make it yours</span></div>
+</section>
+
+<!-- 10. Recap / back cover -->
+<section class="page cover end">
+  <div class="kicker">In four steps</div>
+  <h1 style="font-size:26pt; color:#fff; margin-bottom:8mm;">That's the whole thing.</h1>
+  <ul style="margin-bottom: 10mm;">
+    <li><strong>1 · Add a book</strong> — upload any PDF.</li>
+    <li><strong>2 · Start a session</strong> — pick a page, difficulty, tutor and reader.</li>
+    <li><strong>3 · Read and ask</strong> — move through the PDF, talk to BooKI by text or voice.</li>
+    <li><strong>4 · Check yourself</strong> — run a quiz or ask for a summary.</li>
+  </ul>
+  <p class="lead">One responsive app for Android, Windows and Linux — install it, or just use it in the browser.</p>
+  <div class="rule"></div>
+  <div class="brand" style="font-size:34pt;">Boo<span class="accent">KI</span></div>
+  <p class="lead" style="margin-top:3mm;">booki-507302.web.app</p>
+</section>
+
+</body>
+</html>

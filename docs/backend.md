@@ -42,6 +42,8 @@ All routes below are under `/api` and require a `Authorization: Bearer <jwt>` he
 
 Email is normalized (trimmed + lowercased) before lookup/storage on both routes, so `Name@Example.com` and `name@example.com` are treated as the same account.
 
+On register the account is also seeded with its default tutor profiles, an editable `My reader profile` (ADR-020), and — unless `WELCOME_DOCUMENT_ENABLED=false` — the bundled BooKI guide as a document in its library (ADR-022). The guide seeding is `@Async` (`config/AsyncConfig`, the `backgroundTasks` pool), so it runs after the register transaction commits, on a background thread, and adds nothing to the sign-up response.
+
 ### Users — `/api/users`
 
 | Method | Route | Description |
@@ -58,6 +60,8 @@ Email is normalized (trimmed + lowercased) before lookup/storage on both routes,
 | GET | `/api/documents/{id}` | Get one document's metadata |
 | GET | `/api/documents/{id}/file` | Stream/view the PDF file |
 | DELETE | `/api/documents/{id}` | Delete a document |
+
+Upload parsing, blob storage and row creation live in `DocumentService.importPdf(userId, title, bytes)`; `uploadDocument` just unwraps the multipart and delegates. The same method seeds the welcome guide (ADR-022).
 
 ### AI Profiles — `/api/ai-profiles` · Reader Profiles — `/api/reader-profiles`
 
@@ -162,6 +166,7 @@ limited to `startPage..endPage`, the pages reached since this session began.
 
 - **Transactions**: service reads that walk lazy associations are `@Transactional(readOnly = true)`; multi-write operations (`createSession`, `updateCurrentPage`, `uploadDocument`, `register`, the report generators) are `@Transactional` so a mid-way failure rolls back cleanly. `uploadDocument` also deletes the just-stored object if the DB write fails. `ConversationEngine.sendMessage` and `generateSummary` are **deliberately not** transactional — they span a slow model call and persist their parts separately so a provider failure never leaves a fake reply behind. (`spring.jpa.open-in-view` is still on and currently masks any missed case; disabling it is a later step.)
 - **Outbound HTTP timeouts** (`config/OutboundHttp`): every AI/voice provider `WebClient` gets a 10 s connect timeout, a 60 s idle (no-bytes) read timeout, and a 120 s whole-call ceiling (`Mono.timeout` for blocking calls, per-chunk `Flux.timeout` for the Claude stream). A hung upstream can no longer park a request thread indefinitely; the timeout surfaces as the same `502` as any other provider failure.
+- **Background work** (`config/AsyncConfig`): `@EnableAsync` + one small bounded pool (`backgroundTasks`, core 1 / max 3 / queue 100, drains on shutdown). Its only user is the welcome-guide seeding (ADR-022) — best-effort work that must stay off the sign-up request thread. Not a general job queue; anything with delivery guarantees needs a real one.
 
 ## Request validation
 

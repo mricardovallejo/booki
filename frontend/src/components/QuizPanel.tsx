@@ -60,7 +60,6 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
 
   const answeredCount = Object.keys(results).length;
   const correctCount = Object.values(results).filter((r) => r.correct).length;
-  const roundComplete = questions.length > 0 && answeredCount === questions.length;
   // Wait until the shared activity range is known (it comes from the PDF's page
   // count), and refuse a degenerate, never-adjusted 1-page range (right when a
   // session starts) rather than silently generating a thin quiz nobody asked for.

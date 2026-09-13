@@ -1,7 +1,6 @@
 package com.booki.ai;
 
 import com.booki.domain.Document;
-import com.booki.repository.DocumentRepository;
 import com.booki.storage.StorageAdapter;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.Loader;
@@ -9,8 +8,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -18,24 +17,26 @@ import java.util.List;
 /**
  * The one place that decides, per document + provider, what an activity
  * (quiz, summary, chat) actually sends the model for a page range. A
- * document-capable provider (Claude, OpenAI) gets the whole PDF uploaded once
- * and referenced by id forever after; anything else (Kimi, Ollama) falls back
- * to plain text extracted fresh from just the requested pages — never cached,
- * since it is cheap for the small range any one turn asks for.
+ * document-capable provider (Claude, OpenAI) gets a real PDF containing only
+ * that range — physically cut from the original, never the whole book, so
+ * cost/latency scale with the range size, not the book size; anything else
+ * (Kimi, Ollama) falls back to plain text extracted fresh from the same
+ * range. Neither path caches anything: slicing/extracting is cheap and local,
+ * and re-cutting on every turn is what keeps a stale reference from ever being
+ * a concern.
  */
 @Component
 @RequiredArgsConstructor
 public class ActivityContentService {
 
-    private final DocumentRepository documentRepository;
     private final StorageAdapter storage;
 
-    @Transactional
     public ActivityContent resolve(Document document, AiProvider provider, int startPage, int endPage) {
+        byte[] fullPdf = readBytes(storage.get(document.getFilePath()));
         if (provider.supportsDocuments()) {
-            return new ActivityContent.DocumentReference(ensureUploaded(document, provider), startPage, endPage);
+            return new ActivityContent.DocumentReference(slicePdf(fullPdf, startPage, endPage), startPage, endPage);
         }
-        return new ActivityContent.PlainText(extractPlainText(document, startPage, endPage));
+        return new ActivityContent.PlainText(extractPlainText(fullPdf, startPage, endPage));
     }
 
     /** Dispatches to whichever {@link AiProvider} call fits the resolved content — the one place callers need. */
@@ -43,12 +44,12 @@ public class ActivityContentService {
                            List<AiProvider.Message> history, String userMessage) {
         return switch (content) {
             case ActivityContent.DocumentReference doc -> provider.converseWithDocument(
-                    systemPrompt, history, userMessage, doc.fileId(), doc.startPage(), doc.endPage());
+                    systemPrompt, history, userMessage, doc.pdfBytes(), doc.startPage(), doc.endPage());
             case ActivityContent.PlainText ignored -> provider.converse(systemPrompt, history, userMessage);
         };
     }
 
-    /** What to embed in the prompt's "document" section — the real text, or a note pointing at the attached file. */
+    /** What to embed in the prompt's "document" section — the real text, or a note pointing at the attached pages. */
     public String documentTextFor(ActivityContent content) {
         return switch (content) {
             case ActivityContent.DocumentReference doc ->
@@ -57,44 +58,31 @@ public class ActivityContentService {
         };
     }
 
-    private String ensureUploaded(Document document, AiProvider provider) {
-        String existing = existingFileId(document, provider);
-        if (existing != null) {
-            return existing;
-        }
-        byte[] bytes = readBytes(storage.get(document.getFilePath()));
-        String fileId = provider.uploadDocument(bytes, document.getTitle());
-        rememberFileId(document, provider, fileId);
-        documentRepository.save(document);
-        return fileId;
-    }
-
-    private static String existingFileId(Document document, AiProvider provider) {
-        return switch (provider.key()) {
-            case "claude" -> document.getClaudeFileId();
-            case "openai" -> document.getOpenaiFileId();
-            default -> null;
-        };
-    }
-
-    private static void rememberFileId(Document document, AiProvider provider, String fileId) {
-        switch (provider.key()) {
-            case "claude" -> document.setClaudeFileId(fileId);
-            case "openai" -> document.setOpenaiFileId(fileId);
-            default -> throw new IllegalStateException(
-                    "Provider '" + provider.key() + "' supports documents but has no file-id field on Document");
+    /** Physically cuts just startPage..endPage into a new, small PDF — the pages this turn actually needs, nothing else. */
+    private byte[] slicePdf(byte[] fullPdfBytes, int startPage, int endPage) {
+        try (PDDocument source = Loader.loadPDF(fullPdfBytes)) {
+            int end = Math.min(endPage, source.getNumberOfPages());
+            try (PDDocument sliced = new PDDocument()) {
+                for (int i = startPage; i <= end; i++) {
+                    sliced.importPage(source.getPage(i - 1));
+                }
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                sliced.save(out);
+                return out.toByteArray();
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not slice PDF pages " + startPage + "-" + endPage, e);
         }
     }
 
-    private String extractPlainText(Document document, int startPage, int endPage) {
-        byte[] bytes = readBytes(storage.get(document.getFilePath()));
-        try (PDDocument pdDocument = Loader.loadPDF(bytes)) {
+    private String extractPlainText(byte[] pdfBytes, int startPage, int endPage) {
+        try (PDDocument pdDocument = Loader.loadPDF(pdfBytes)) {
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setStartPage(startPage);
             stripper.setEndPage(Math.min(endPage, pdDocument.getNumberOfPages()));
             return stripper.getText(pdDocument).trim();
         } catch (IOException e) {
-            throw new IllegalStateException("Could not read stored PDF for document " + document.getId(), e);
+            throw new IllegalStateException("Could not extract text for pages " + startPage + "-" + endPage, e);
         }
     }
 

@@ -23,12 +23,6 @@ CREATE TABLE documents (
     title      VARCHAR(500) NOT NULL,
     file_path  VARCHAR(1000) NOT NULL,
     page_count INTEGER NOT NULL,
-    -- Set the first time this document is used with a document-capable AI
-    -- provider (Claude / OpenAI): the provider's own file id for the PDF,
-    -- uploaded once and referenced by id on every later call instead of
-    -- resending the bytes. NULL until then. See AiProvider#ensureUploaded.
-    claude_file_id VARCHAR(255),
-    openai_file_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

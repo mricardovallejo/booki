@@ -7,8 +7,12 @@ package com.booki.ai;
  */
 public sealed interface ActivityContent {
 
-    /** A document-capable provider: reads the whole uploaded PDF, told which pages this turn is about. */
-    record DocumentReference(String fileId, int startPage, int endPage) implements ActivityContent {
+    /**
+     * A document-capable provider: reads {@code pdfBytes} directly — physically
+     * just the {@code startPage}..{@code endPage} slice cut from the original
+     * PDF, never the whole book, so cost/latency scale with the range size.
+     */
+    record DocumentReference(byte[] pdfBytes, int startPage, int endPage) implements ActivityContent {
     }
 
     /** Fallback for a provider with no document support (Kimi, Ollama): plain text extracted from just this range. */

@@ -32,13 +32,6 @@ public class Document {
     @Column(nullable = false, name = "page_count")
     private Integer pageCount;
 
-    /** The provider's file id for this PDF, set on first use with that provider. Null until then. */
-    @Column(name = "claude_file_id")
-    private String claudeFileId;
-
-    @Column(name = "openai_file_id")
-    private String openaiFileId;
-
     @CreationTimestamp
     @Column(nullable = false, updatable = false, name = "created_at")
     private Instant createdAt;

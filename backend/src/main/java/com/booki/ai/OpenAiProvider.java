@@ -3,15 +3,12 @@ package com.booki.ai;
 import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.BodyInserters;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,54 +37,19 @@ public class OpenAiProvider extends OpenAiCompatibleProvider {
     }
 
     /**
-     * {@code POST /v1/files}, multipart with {@code purpose=user_data} — the
-     * purpose the Responses API expects for a file referenced as {@code
-     * input_file}. See platform.openai.com "PDF files" guide.
-     */
-    @Override
-    public String uploadDocument(byte[] pdfBytes, String title) {
-        MultipartBodyBuilder parts = new MultipartBodyBuilder();
-        parts.part("purpose", "user_data");
-        parts.part("file", new ByteArrayResource(pdfBytes) {
-            @Override
-            public String getFilename() {
-                return title;
-            }
-        }).contentType(MediaType.APPLICATION_PDF);
-
-        try {
-            String response = webClient.post()
-                    .uri("/files")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(BodyInserters.fromMultipartData(parts.build()))
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(OutboundHttp.CALL_TIMEOUT)
-                    .block();
-            String fileId = JSON.readTree(response).path("id").asString();
-            if (fileId == null || fileId.isBlank()) {
-                throw new AiProviderException("openai", "file upload response had no id", null);
-            }
-            return fileId;
-        } catch (AiProviderException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("OpenAI file upload failed", e);
-            throw new AiProviderException("openai", e);
-        }
-    }
-
-    /**
      * {@code POST /v1/responses} — a different endpoint and body/response shape
-     * than Chat Completions. The final user turn attaches the file by id
-     * ({@code type: input_file}) plus the text instruction; history replays as
-     * plain {@code input_text} turns. Reply text lives at
+     * than Chat Completions. The final user turn attaches the PDF inline as
+     * base64 ({@code type: input_file}, {@code file_data} as a data URI — no
+     * Files API, no upload step; {@code pdfBytes} is only ever the small slice
+     * of pages this turn needs, physically cut by {@code ActivityContentService},
+     * never the whole book) plus the text instruction; history replays as plain
+     * {@code input_text} turns. Reply text lives at
      * {@code output[].content[].text} (type {@code output_text}), not
      * {@code choices[0].message.content}.
      */
     @Override
     public String converseWithDocument(String systemPrompt, List<Message> context, String userMessage,
-                                        String fileId, int startPage, int endPage) {
+                                        byte[] pdfBytes, int startPage, int endPage) {
         List<Object> input = new ArrayList<>();
         input.add(Map.of("role", "developer", "content", List.of(
                 Map.of("type", "input_text", "text", systemPrompt))));
@@ -95,10 +57,12 @@ public class OpenAiProvider extends OpenAiCompatibleProvider {
             input.add(Map.of("role", m.role(), "content", List.of(
                     Map.of("type", "input_text", "text", m.content()))));
         }
-        String instruction = "Use only pages " + startPage + " to " + endPage
-                + " of the attached document for this. " + userMessage;
+        String instruction = "The attached document is pages " + startPage + "-" + endPage
+                + " of the book. " + userMessage;
+        String fileData = "data:application/pdf;base64," + Base64.getEncoder().encodeToString(pdfBytes);
         input.add(Map.of("role", "user", "content", List.of(
-                Map.of("type", "input_file", "file_id", fileId),
+                Map.of("type", "input_file", "filename", "pages-" + startPage + "-" + endPage + ".pdf",
+                        "file_data", fileData),
                 Map.of("type", "input_text", "text", instruction))));
 
         Map<String, Object> body = new LinkedHashMap<>();

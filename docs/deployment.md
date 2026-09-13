@@ -436,8 +436,8 @@ Run won't run two at this traffic); with 2+ it locks and the others wait.
 This project keeps a single baseline migration and rewrites it in place rather
 than layering `V2`/`V3` (ADR-011/015/017) — deliberate while there's no real
 production data worth an in-place `ALTER`. Whenever `V1__init.sql` changes
-(most recently: `document_pages` dropped, `documents.claude_file_id` /
-`openai_file_id` and `sent_reports.email_sent` added, ADR-025/027), Flyway
+(most recently: `document_pages` dropped and `sent_reports.email_sent` added,
+ADR-025/027/028), Flyway
 refuses to boot against a Neon database that already recorded the *old*
 checksum for V1 — same `FlywayValidateException: Migration checksum mismatch`
 seen locally (`docs/local-dev.md`). Before pushing a deploy that changed V1,

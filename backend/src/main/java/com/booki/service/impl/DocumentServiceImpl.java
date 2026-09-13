@@ -67,9 +67,10 @@ public class DocumentServiceImpl implements DocumentService {
             throw new IllegalArgumentException("Only PDF files are accepted");
         }
 
-        // Only page count is needed here — the AI reads the PDF itself (uploaded
-        // once per provider, on first use; see AiProvider#ensureUploaded), so
-        // BooKI never extracts or stores page text.
+        // Only page count is needed here — a document-capable provider reads
+        // the real pages directly, cut fresh to just the requested range on
+        // every turn (see ActivityContentService), so BooKI never extracts or
+        // stores page text at upload.
         int pageCount;
         try (PDDocument pdDocument = Loader.loadPDF(bytes)) {
             pageCount = pdDocument.getNumberOfPages();

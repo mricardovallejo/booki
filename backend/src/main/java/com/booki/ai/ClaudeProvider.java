@@ -4,17 +4,14 @@ import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,53 +64,16 @@ public class ClaudeProvider implements AiProvider, StreamingAiProvider {
     }
 
     /**
-     * Anthropic's Files API (out of beta, no beta header): {@code POST /v1/files}
-     * as multipart form-data with a {@code file} part, response {@code id} is
-     * the file id to reuse. See docs/build-with-claude/files.
-     */
-    @Override
-    public String uploadDocument(byte[] pdfBytes, String title) {
-        MultipartBodyBuilder parts = new MultipartBodyBuilder();
-        parts.part("file", new ByteArrayResource(pdfBytes) {
-            @Override
-            public String getFilename() {
-                return title;
-            }
-        }).contentType(MediaType.APPLICATION_PDF);
-
-        try {
-            String response = webClient.post()
-                    .uri("/files")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(BodyInserters.fromMultipartData(parts.build()))
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(OutboundHttp.CALL_TIMEOUT)
-                    .block();
-            String fileId = JSON.readTree(response).path("id").asString();
-            if (fileId == null || fileId.isBlank()) {
-                throw new AiProviderException("claude", "file upload response had no id", null);
-            }
-            return fileId;
-        } catch (AiProviderException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Claude file upload failed", e);
-            throw new AiProviderException("claude", e);
-        }
-    }
-
-    /**
      * Same request shape as {@link #converse}, except the final user message's
-     * content becomes a two-block array: the previously uploaded document
-     * (referenced by id, not resent) plus the text instruction — see
-     * {@code docs/build-with-claude/files} "Using a file in messages". The
-     * document block carries an ephemeral cache breakpoint so a multi-turn
-     * conversation over the same book is billed once, not on every turn.
+     * content becomes a two-block array: the PDF inline as base64 (see
+     * docs/build-with-claude/pdf-support — no Files API, no upload step;
+     * {@code pdfBytes} is only ever the small slice of pages this turn needs,
+     * physically cut by {@code ActivityContentService}, never the whole book)
+     * plus the text instruction.
      */
     @Override
     public String converseWithDocument(String systemPrompt, List<Message> context, String userMessage,
-                                        String fileId, int startPage, int endPage) {
+                                        byte[] pdfBytes, int startPage, int endPage) {
         List<Map<String, String>> historyMessages = new ArrayList<>();
         for (Message m : context) {
             historyMessages.add(Map.of("role", m.role(), "content", m.content()));
@@ -121,12 +81,14 @@ public class ClaudeProvider implements AiProvider, StreamingAiProvider {
 
         Map<String, Object> documentBlock = Map.of(
                 "type", "document",
-                "source", Map.of("type", "file", "file_id", fileId),
-                "cache_control", Map.of("type", "ephemeral"));
+                "source", Map.of(
+                        "type", "base64",
+                        "media_type", "application/pdf",
+                        "data", Base64.getEncoder().encodeToString(pdfBytes)));
         Map<String, Object> textBlock = Map.of(
                 "type", "text",
-                "text", "Use only pages " + startPage + " to " + endPage + " of the attached document for this. "
-                        + userMessage);
+                "text", "The attached document is pages " + startPage + "-" + endPage
+                        + " of the book. " + userMessage);
         Map<String, Object> finalUserMessage = Map.of(
                 "role", "user",
                 "content", List.of(documentBlock, textBlock));

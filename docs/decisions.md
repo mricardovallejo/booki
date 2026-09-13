@@ -364,6 +364,14 @@ will use SSE, which every browser supports.
 
 ## ADR-025: a document-capable provider reads the PDF itself — no more per-page text extraction
 
+> Superseded in part by ADR-028: the "upload once per provider, reference by
+> file id forever after" mechanism described below turned out to still bill
+> and re-process the *whole* book on every single turn (referencing an id
+> avoids resending bytes, not re-reading them) — reported directly as "loading
+> the whole book on every chat message". ADR-028 replaces it with physically
+> cutting just the requested range on every turn. The motivation below (real
+> pages over extracted text) still holds; the delivery mechanism doesn't.
+
 - **Context**: BooKI extracted every page's text at upload (`PDFTextStripper`
   into `DocumentPage.extractedText`) and sent that plain text to whichever AI
   provider a session used. For a page whose content is a scanned image, a map,
@@ -484,3 +492,51 @@ will use SSE, which every browser supports.
   nothing changes for a deployment that never configures it. The frontend's
   "(simulated)" copy in `SendReportForm`, `QuizPanel`, and `SummaryModal` now
   reflects the real per-report `simulated` flag instead of a hardcoded string.
+
+## ADR-028: a document-capable provider gets a physical slice of the range, not the whole book by reference
+
+- **Context**: ADR-025's mechanism — upload the whole PDF once per provider,
+  cache `documents.claude_file_id`/`openai_file_id`, reference the id on every
+  later turn — does avoid resending the file's *bytes*, but referencing an id
+  does not avoid the provider *re-reading* the whole book on every single
+  call: each API call is independent, so the model reprocesses every page of
+  the referenced file every time it's mentioned, regardless of how small the
+  reader's actual question is. In practice this meant every chat message —
+  including a plain "hi" — paid the cost and latency of the entire book,
+  reported directly as unacceptably slow and expensive ("cargar todo el
+  puto libro por cada chat"). A middle option (skip re-attaching once the
+  model had "already seen" a range earlier in the conversation) was designed
+  but rejected before being built: BooKI's own history replay
+  (`ConversationEngine.recentHistory`) flattens every past turn to plain text
+  in `messages`, never the original request's content blocks — so a later
+  call genuinely has zero access to the document unless it's attached again;
+  "rely on conversation memory" doesn't hold across separate, stateless API
+  calls the way it would within one continuous chat UI session.
+- **Decision**: drop the upload-and-reference mechanism entirely —
+  `documents.claude_file_id`/`openai_file_id`, `AiProvider#uploadDocument`,
+  and `ActivityContentService`'s id-caching are all removed. Instead,
+  `ActivityContentService#resolve` physically cuts the requested
+  `startPage..endPage` out of the stored PDF into a new, small PDF
+  (`PDDocument#importPage` page by page) on *every* call, for a document-
+  capable provider — never the whole book — and sends those bytes inline as
+  base64: Claude via its documented `{"type": "document", "source": {"type":
+  "base64", ...}}` block (`docs/build-with-claude/pdf-support`), OpenAI via
+  the Responses API's inline `{"type": "input_file", "file_data": "data:
+  application/pdf;base64,..."}` (no Files API upload for either anymore).
+  `AiProvider#converseWithDocument` takes `byte[] pdfBytes` instead of a file
+  id. No caching of any kind: slicing is a fast, local, mechanical operation
+  (unlike an AI call), so re-cutting on every turn is cheap enough that
+  there's nothing worth caching, and it trivially guarantees freshness.
+- **Consequence**: cost and latency now scale with the size of the range the
+  reader actually selected (`ActivityRangeBar`), not the size of the book — a
+  question about 5 pages is cheap and fast whether it's the first message or
+  the fiftieth; a deliberately wide range still costs more, but that's a
+  choice visible in the UI, not a hidden tax on every turn. Real pages
+  (tables, maps, images) are still what the model sees, so ADR-025's original
+  motivation is intact. The trade-off explicitly accepted: a follow-up
+  question about a range already shown earlier in the conversation re-sends
+  and re-pays for those same pages rather than reusing anything — judged
+  acceptable because a request scoped to the reader's chosen range is already
+  small, and building real cross-turn memory would mean replaying each past
+  turn's original content blocks (not just its flattened text), a larger
+  change than the cost of an occasional repeated slice justifies today.

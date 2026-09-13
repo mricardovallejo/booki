@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuiz } from '../hooks/useQuiz';
 import { useSession } from '../hooks/useSession';
@@ -50,13 +50,10 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
   }, [range, setConfig]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [showSetup, setShowSetup] = useState(true);
-  const [autoSend, setAutoSend] = useState(false);
   const [reportEmail, setReportEmail] = useState('');
-  const autoSentRef = useRef(false);
 
   const onGenerate = async () => {
     setAnswers({});
-    autoSentRef.current = false;
     await generate();
     setShowSetup(false);
   };
@@ -69,13 +66,6 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
   // session starts) rather than silently generating a thin quiz nobody asked for.
   const rangeTooSmall = range != null && !pinned && range.end - range.start + 1 < 2;
   const pageRangeValid = Boolean(session && range) && !rangeTooSmall;
-
-  useEffect(() => {
-    if (roundComplete && autoSend && reportEmail.trim() && !autoSentRef.current) {
-      autoSentRef.current = true;
-      send('quiz', reportEmail.trim());
-    }
-  }, [roundComplete, autoSend, reportEmail, send]);
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-5 py-4">
@@ -175,27 +165,6 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
               </Field>
             );
           })()}
-
-          <div className="rounded-lg bg-booki-bg/60 p-3">
-            <label className="flex items-center gap-2 text-xs text-white/80">
-              <input
-                type="checkbox"
-                checked={autoSend}
-                onChange={(e) => setAutoSend(e.target.checked)}
-                className="rounded border-white/20 bg-booki-card"
-              />
-              Email me a copy of the correction report when I finish this quiz
-            </label>
-            {autoSend && (
-              <Input
-                type="email"
-                value={reportEmail}
-                onChange={(e) => setReportEmail(e.target.value)}
-                placeholder="parent@email.com"
-                className="mt-2"
-              />
-            )}
-          </div>
 
           {rangeTooSmall && (
             <p className="text-xs text-amber-400">Adjust the page range above before generating a quiz.</p>

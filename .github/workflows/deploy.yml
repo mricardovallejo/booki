@@ -81,7 +81,12 @@ jobs:
           # SMTP_HOST/EMAIL_FROM leaves it disabled (reports stay "simulated"),
           # so these secrets can be left unset with no crash.
           SMTP_HOST: "${{ secrets.SMTP_HOST }}"
-          SMTP_PORT: "${{ secrets.SMTP_PORT }}"
+          # Numeric Spring property (spring.mail.port) — an unset secret
+          # resolves to "" here, not "missing", so YAML's ${SMTP_PORT:587}
+          # fallback never fires and Spring fails to bind "" to an int,
+          # crashing the whole app at startup. The || fallback here covers
+          # both "secret never created" and "secret created but left blank".
+          SMTP_PORT: "${{ secrets.SMTP_PORT || '587' }}"
           SMTP_USERNAME: "${{ secrets.SMTP_USERNAME }}"
           SMTP_PASSWORD: "${{ secrets.SMTP_PASSWORD }}"
           EMAIL_FROM: "${{ secrets.EMAIL_FROM }}"

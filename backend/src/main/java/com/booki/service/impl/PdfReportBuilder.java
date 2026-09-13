@@ -144,14 +144,14 @@ public class PdfReportBuilder {
             stream.setFont(font, size);
             stream.setNonStrokingColor(color);
             stream.newLineAtOffset(MARGIN_X, y);
-            stream.showText(text);
+            stream.showText(sanitizeForPdf(text, font));
             stream.endText();
             y -= LINE_HEIGHT;
         }
 
         void drawWrapped(String text, float size, boolean isBold, Color color) throws IOException {
             PDFont font = isBold ? bold : regular;
-            for (String line : wrap(text, font, size)) {
+            for (String line : wrap(sanitizeForPdf(text, font), font, size)) {
                 ensureSpace(LINE_HEIGHT);
                 stream.beginText();
                 stream.setFont(font, size);
@@ -173,19 +173,53 @@ public class PdfReportBuilder {
 
             PDFont font = bold;
             float textSize = 18;
-            float textWidth = font.getStringWidth(cover.initials()) / 1000 * textSize;
+            String initials = sanitizeForPdf(cover.initials(), font);
+            float textWidth = font.getStringWidth(initials) / 1000 * textSize;
             float textX = x + (size - textWidth) / 2;
             float textY = boxY + (size - textSize) / 2 + 4;
             stream.beginText();
             stream.setFont(font, textSize);
             stream.setNonStrokingColor(Color.WHITE);
             stream.newLineAtOffset(textX, textY);
-            stream.showText(cover.initials());
+            stream.showText(initials);
             stream.endText();
         }
 
         void close() throws IOException {
             stream.close();
+        }
+
+        /**
+         * The base-14 Helvetica font (WinAnsiEncoding) covers a specific,
+         * language-dependent character set — French "œ"/"Œ" and smart
+         * typography (curly quotes, en/em dash, ellipsis) ARE in it, but
+         * plenty of Unicode isn't (phonetic symbols, other scripts, emoji).
+         * AI-generated text can contain any of that, and PDFBox throws
+         * ".notdef" and aborts the whole report on the first one it can't
+         * encode. Rather than guess a codepoint range (which would wrongly
+         * reject valid French/Spanish letters), this asks the actual font,
+         * character by character, and only substitutes "?" for the ones it
+         * genuinely can't draw.
+         */
+        private static String sanitizeForPdf(String text, PDFont font) {
+            if (text == null || text.isEmpty()) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder(text.length());
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (c == '\n' || c == '\r' || c == '\t') {
+                    sb.append(c);
+                    continue;
+                }
+                try {
+                    font.encode(String.valueOf(c));
+                    sb.append(c);
+                } catch (IOException | IllegalArgumentException notEncodable) {
+                    sb.append('?');
+                }
+            }
+            return sb.toString();
         }
 
         private List<String> wrap(String text, PDFont font, float size) throws IOException {

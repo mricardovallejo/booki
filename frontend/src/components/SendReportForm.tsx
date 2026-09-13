@@ -22,7 +22,8 @@ export default function SendReportForm({ sessionId, type, label }: Props) {
     <div className="rounded-xl bg-booki-card p-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-booki-muted">{label}</p>
       <p className="mt-1 text-[11px] text-white/40">
-        Generates a real PDF. Email delivery is simulated in this demo — you can download it instead.
+        Generates a real PDF and emails it to the address below, if this server has email delivery configured
+        — you can always download it instead.
       </p>
       <div className="mt-2 flex gap-2">
         <Input
@@ -39,7 +40,7 @@ export default function SendReportForm({ sessionId, type, label }: Props) {
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
       {lastSent && lastSent.type === type && (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-400">
-          <span>Sent to {lastSent.email} (simulated)</span>
+          <span>{lastSent.simulated ? `Not actually emailed to ${lastSent.email} — email isn't configured on this server` : `Sent to ${lastSent.email}`}</span>
           <button onClick={() => download(lastSent)} className="font-bold text-white/80 hover:text-white">
             Download PDF
           </button>

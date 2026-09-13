@@ -18,8 +18,7 @@ This starts the backend on `http://localhost:8080` without needing PostgreSQL or
 ## Main entities
 
 - `User`: email, password hash, display name. Nothing else — the reader's goal / level / learning preferences live in **reader profiles** (ADR-015 removed the old `bio` + `systemPrompt`; ADR-017 made the reader context its own entity).
-- `Document`: metadata for a PDF uploaded by the user (title, file path, page count).
-- `DocumentPage`: text extracted per page of a document.
+- `Document`: metadata for a PDF uploaded by the user (title, file path, page count), plus `claudeFileId`/`openaiFileId` — set the first time this document is used with that provider (ADR-025). No page-level entity anymore: a document-capable provider reads the PDF itself; `ActivityContentService` extracts plain text on the fly, uncached, only as a fallback for a provider that can't (Kimi, Ollama).
 - `AiProfile` + `SlotPrompt`: the "master" a session runs on — persona, difficulty rubrics, per-function prompts, capability routing — plus `enabledCapabilities`. Per-user; seeded from code templates at registration. **`docs/prompts.md`** (ADR-015; the old `ProfileMaster` entity is gone).
 - `ReaderProfile`: who is reading, in one study context — `name`, free-text `context`, `readerLevel`, `isDefault`, `readOnly`. A `user` of `null` marks a shipped read-only template (`General reader` or `Language-support reader`, seeded in `V1__init.sql`) everyone sees. Not tied to any AI Profile — a `Session` picks one. ADR-017/ADR-019.
 - `ReaderProfileProvisioner`: registration creates one editable `My reader profile` from the General reader scaffold and makes it the user's default. ADR-020.
@@ -61,7 +60,7 @@ On register the account is also seeded with its default tutor profiles and an ed
 | GET | `/api/documents/{id}/file` | Stream/view the PDF file |
 | DELETE | `/api/documents/{id}` | Delete a document |
 
-Upload parsing, blob storage and row creation live in `DocumentService.importPdf(userId, title, bytes)`; `uploadDocument` just unwraps the multipart and delegates. The same method seeds the welcome guide (ADR-022). Text is extracted in a single `PDFTextStripper` pass over the whole document (split on a form feed), then the `DocumentPage` rows are written with one `saveAll` — a per-page `getText` loop re-walked the page tree each call and was O(n²) on large PDFs.
+Upload parsing, blob storage and row creation live in `DocumentService.importPdf(userId, title, bytes)`; `uploadDocument` just unwraps the multipart and delegates. The same method seeds the welcome guide (ADR-022). Import only reads the page count now (`pdDocument.getNumberOfPages()`) and stores the blob — no text extraction at upload, no per-page rows (ADR-025). Text (or, more often now, the PDF itself) only gets touched when an activity actually needs it — see `ActivityContentService` below.
 
 ### AI Profiles — `/api/ai-profiles` · Reader Profiles — `/api/reader-profiles`
 
@@ -115,8 +114,8 @@ See ADR-024.
 | GET | `/api/sessions/{id}/context` | Inspect the assembled prompt layers (core, difficulty, persona, reader profile, per-function, routing, session facts) each tagged with a `group`, plus `aiProfileName` / `readerProfileName`. See `docs/prompts.md` |
 | PATCH | `/api/sessions/{id}/current-page` | Navigate to any page in the document; moving forward also expands `endPage`, the furthest page reached |
 | GET | `/api/sessions/{id}/messages` | Conversation history |
-| POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly; a quick-action also sends the activity range as `pageStart`/`pageEnd` (plain chat omits them and stays on the reading position). `502` if the AI provider fails |
-| POST | `/api/sessions/{id}/voice` | Voice turn: multipart `audio` (+ optional `capabilityHint`). Backend transcribes → same `ConversationEngine` → optional spoken reply. Returns the persisted user + bot messages and a base64 MP3 (or `null`). `502` if transcription fails |
+| POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `pageStart`/`pageEnd` are **required** on every turn, plain chat included — the shared activity range, same one every other activity uses (ADR-026). `502` if the AI provider fails |
+| POST | `/api/sessions/{id}/voice` | Voice turn: multipart `audio` + required `pageStart`/`pageEnd` (+ optional `capabilityHint`). Backend transcribes → same `ConversationEngine` → optional spoken reply. Returns the persisted user + bot messages and a base64 MP3 (or `null`). `502` if transcription fails |
 | GET | `/api/sessions/{id}/progress` | Reading progress for the session |
 | GET | `/api/sessions/{id}/notifications` | Contextual nudges (halfway, done, say hi, try a quiz), localized per session language |
 | GET | `/api/sessions/{id}/reports` | List reports already generated/sent for this session |
@@ -163,7 +162,7 @@ See ADR-024.
 - **CORS** origins come from `booki.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`, comma-separated; default `http://localhost:5173`), applied to `/api/**` only. Allowed request headers are an explicit list (`Authorization, Content-Type, Accept, X-Requested-With`), not `*`. Credentials are allowed, so `*` origins are not an option; any origin not on the list (incl. `http://127.0.0.1:5173` by default) gets a `403`.
 - **Route access**: `/api/auth/**`, `/api/health`, `/actuator/health/**`, `OPTIONS`, and (in `local`) the swagger paths are public; **every other request requires a valid JWT** (`anyRequest().authenticated()`).
 - **Error responses**: every handler in `config/GlobalExceptionHandler` returns the same `{"error": "..."}` shape — validation (`400`), auth (`401`), not-found (`404`, generic "Resource not found"), AI/voice provider failure (`502`), and the multipart cases. An **uncaught `RuntimeException` returns a fixed neutral `500` message** ("Something went wrong on our side…"); the real exception (which can carry bucket names, class names, paths) is logged, never sent to the client. The frontend's `lib/errors.ts` relies on the `{error}` shape being everywhere.
-- **Prompt-injection defence-in-depth**: `PromptAssembler` fences the page text between `<<<BEGIN DOCUMENT>>>` / `<<<END DOCUMENT>>>`, and the core prompt states that the document and the reader's messages are material, not instructions. The uploaded file is also validated as a real PDF (`%PDF-` magic bytes) before PDFBox touches it, and the STT provider only accepts audio MIME types on a small allowlist.
+- **Prompt-injection defence-in-depth**: `PromptAssembler` fences the document section between `<<<BEGIN DOCUMENT>>>` / `<<<END DOCUMENT>>>` — the plain-text fallback (Kimi/Ollama) or a short placeholder pointing at the attached file (Claude/OpenAI, ADR-025) — and the core prompt states that the document and the reader's messages are material, not instructions. The uploaded file is also validated as a real PDF (`%PDF-` magic bytes) before PDFBox touches it, and the STT provider only accepts audio MIME types on a small allowlist.
 
 ## Resilience
 
@@ -219,13 +218,16 @@ each produce the reply text for one turn. Not an agent framework. Routing is
 instructions are appended to the system prompt, and when a capability fits the
 model replies with only `{"capability":"<name>"}`, which `CapabilityRegistry`
 recognises strictly. A quick-action button skips routing by passing
-`capabilityHint`, and also sends the activity range (`pageStart`/`pageEnd`).
-`ConversationEngine.buildContextText` uses that range (its last
-`MAX_EXPLICIT_CONTEXT_PAGES`) when present, a range typed into the message when
-that is present, else the reading-position window. `quiz` and `summary` reuse
-`QuizService.generateComprehensionQuestion(Session, pageContextText)` /
-`ReportService.generateSummaryText(Session, ..., pageContextText)`, so the
-selected page context is carried into the capability.
+`capabilityHint`; every turn (quick-action or plain chat) carries the required
+activity range (`pageStart`/`pageEnd`, ADR-026) — there is exactly one range
+concept, no reading-position fallback and no `@page` text override anymore.
+`ConversationEngine.resolveActivityContent` clamps that range to the document
+and resolves it once, through `ActivityContentService` (ADR-025), into either
+a document reference or plain text. `quiz` and `summary` reuse
+`QuizService.generateComprehensionQuestion(Session, ActivityContent)` /
+`ReportService.generateSummaryText(Session, ..., ActivityContent)`, so every
+capability gets the same resolved content the engine already computed for
+this turn.
 The conversational quiz only *asks* — scored `QuizAttempt` rows stay on the
 `POST /quiz/answer` panel flow. See ADR-008.
 
@@ -271,7 +273,7 @@ The `AiProvider` interface (package `ai`) has 4 implementations, **all always re
 
 ### Where AI is actually called vs. templated
 
-- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading (the relevant page(s) of `DocumentPage.extractedText`) plus the layered prompt `PromptAssembler` builds, with the matching `fn_*` SlotPrompt layered in for the capability calls (`docs/prompts.md`). Quiz grading asks the model for a `SCORE:` (0–1) + a teaching `FEEDBACK:` that states the answer (the `fn_answer_grading` locked frame); `QuizServiceImpl.parseGrade` derives `correct = score ≥ 0.6` so the correction report is internally consistent (ADR-023). A response that doesn't follow the format degrades to `score=0`, feedback = the raw text. (Provider *failures* no longer reach the parser — see below.)
+- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading — the actual PDF (Claude/OpenAI, uploaded once and referenced by id) or plain text extracted on the fly (Kimi/Ollama), both resolved by `ActivityContentService` (ADR-025) — plus the layered prompt `PromptAssembler` builds, with the matching `fn_*` SlotPrompt layered in for the capability calls (`docs/prompts.md`). Quiz generation asks for `questionCount` questions in **one** call, each in a `PAGE: n` / `QUESTION: ...` block spread across the range; quiz grading asks the model for a `SCORE:` (0–1) + a teaching `FEEDBACK:` that states the answer (the `fn_answer_grading` locked frame); `QuizServiceImpl.parseGrade` derives `correct = score ≥ 0.6` so the correction report is internally consistent (ADR-023). A response that doesn't follow the format degrades to `score=0` / a single whole-reply question, feedback/question = the raw text. (Provider *failures* no longer reach the parser — see below.)
 - **Progress/quiz-correction PDF reports** (`POST /sessions/{id}/reports/*`) — deliberately stay template-based, no AI call. These are factual recaps (page counts, past Q&A already graded) where a template is more reliable than an LLM restating numbers.
 
 Variables, in `.env` at the **repo root** (sibling of `.env.example`, not inside `backend/`) or the shell environment:
@@ -285,6 +287,14 @@ ANTHROPIC_MODEL=claude-sonnet-5          # optional, this is already the default
 KIMI_API_KEY=...
 OLLAMA_BASE_URL=http://localhost:11434   # optional, this is already the default
 OLLAMA_MODEL=llama3.2:1b                 # optional, this is already the default — must be `ollama pull`ed first
+
+# Real email delivery for sent reports (ADR-027) — blank host/from = disabled,
+# reports stay downloadable and SentReportResponse.simulated=true.
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+EMAIL_FROM=you@example.com
 ```
 
 `.env` isn't read by Spring Boot itself — `backend/build.gradle`'s `bootRun`/`bootRunLocal` tasks parse it and inject each `KEY=VALUE` line as a JVM environment variable before launching, so it works no matter which terminal you run `./gradlew` from. A variable already `export`ed in the real shell always wins over `.env` (same convention as dotenv tooling elsewhere) — `.env` only fills in what's missing. `.env` is gitignored (`.env.example` is the tracked template).

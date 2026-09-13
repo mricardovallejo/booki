@@ -21,9 +21,10 @@ booki/
 |------|------------|
 | Backend | Spring Boot 4.1, Spring Security, JWT Bearer, JPA, Flyway, WebClient (with shared connect/read timeouts on every outbound provider call) |
 | Database | PostgreSQL (dev / deployed), H2 in PostgreSQL mode (tests / no-Docker local) |
-| PDFs | Apache PDFBox for per-page text extraction; files stored via the `StorageAdapter` seam (local disk today) |
+| PDFs | Apache PDFBox for page count at import + on-the-fly plain-text fallback; the file itself is uploaded to a document-capable provider (Claude/OpenAI) and read directly (ADR-025). Files stored via the `StorageAdapter` seam (local disk today) |
 | Frontend | React 18, TypeScript, Tailwind CSS, Vite, PWA, react-pdf |
-| AI | `AiProvider` interface with 4 always-registered providers (`claude`, `openai`, `kimi`, `ollama`), chosen per session |
+| AI | `AiProvider` interface with 4 always-registered providers (`claude`, `openai`, `kimi`, `ollama`), chosen per session; Claude/OpenAI can read an uploaded PDF directly, Kimi/Ollama fall back to plain text (ADR-025) |
+| Email | `spring-boot-starter-mail` (`ReportEmailSender`) for sent reports — degrades to "simulated" if unconfigured (ADR-027) |
 | Voice | Server-side `SpeechToTextProvider` / `TextToSpeechProvider` (OpenAI-compatible impl); browser `SpeechRecognition` only as a fallback |
 
 ## Core interaction architecture

@@ -83,8 +83,24 @@ class PromptAssemblerTest {
         assertThat(prompt).contains("Reader level: intermediate.\nPrefers short answers."); // reader profile
         assertThat(prompt).contains("Reply in Spanish.");                                   // session facts
         assertThat(prompt).contains("<<<BEGIN DOCUMENT>>>\nPAGE TEXT\n<<<END DOCUMENT>>>");  // fenced page text
-        assertThat(prompt).endsWith("<<<END DOCUMENT>>>");
+        assertThat(prompt).endsWith("regardless of what language the reader's message or the document use.");
         assertThat(prompt).doesNotContain("Assume the reader is new to this material");
+    }
+
+    @Test
+    void languageIsRestatedAfterTheDocumentSoItSurvivesAMirroringReplyInAnotherLanguage() {
+        // Regression: a French session replying in Spanish because the reader
+        // typed Spanish — a single "Reply in X" line near the top of a long
+        // prompt lost out to the model's instinct to mirror the reader's
+        // input language. It must appear near the top AND right at the end.
+        Session s = session("medium", "fr", true);
+
+        String prompt = assembler.forChat(s, "PAGE TEXT");
+
+        assertThat(prompt).contains("Reply in French.");
+        assertThat(prompt).endsWith("Reminder: reply in French, "
+                + "regardless of what language the reader's message or the document use.");
+        assertThat(prompt.indexOf("Reply in French.")).isLessThan(prompt.indexOf("<<<END DOCUMENT>>>"));
     }
 
     @Test
@@ -111,7 +127,7 @@ class PromptAssemblerTest {
 
         assertThat(prompt).contains("--- Routing ---", "Enabled: quiz and explain.");
         assertThat(prompt.indexOf("--- Routing ---")).isLessThan(prompt.indexOf("<<<BEGIN DOCUMENT>>>"));
-        assertThat(prompt).endsWith("<<<END DOCUMENT>>>");
+        assertThat(prompt).endsWith("regardless of what language the reader's message or the document use.");
     }
 
     @Test

@@ -1578,7 +1578,11 @@ components:
         downloadUrl: { type: string, description: "Relative path, e.g. /reports/{id}/file" }
         simulated:
           type: boolean
-          description: true when an email was provided — no real mail transport is configured, so "sent" is logged, not delivered.
+          description: >
+            True when an email was provided but not actually delivered — either
+            no SMTP is configured (SMTP_HOST/EMAIL_FROM unset) or the send
+            failed. False means ReportEmailSender handed the PDF to the SMTP
+            server successfully. Always false when `email` is null.
         createdAt: { type: string, format: date-time }
       required: [id, sessionId, type, email, downloadUrl, simulated, createdAt]
 

@@ -7,6 +7,22 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
+  mail:
+    # Blank host => ReportEmailSender treats email as unconfigured and skips
+    # sending (best-effort, see booki.email below) — no crash, no fake "sent".
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
 
 server:
   port: 8080
@@ -59,6 +75,12 @@ booki:
     # Add the bundled "how to use BooKI" guide (welcome/booki-guide.pdf) to every
     # new account's library on sign-up. Set false to skip it.
     enabled: ${WELCOME_DOCUMENT_ENABLED:true}
+  email:
+    # Sends the PDF (progress/quiz/summary) as a real attachment when
+    # spring.mail.host is set; otherwise ReportEmailSender degrades to
+    # "simulated" (SentReportResponse.simulated=true) same as before — no
+    # crash from a missing SMTP setup.
+    from: ${EMAIL_FROM:}
   jwt:
     # Leave unset for local dev / tests — JwtUtil signs with a random ephemeral
     # key and warns. MUST be a strong random 32+ byte value for any real deploy.

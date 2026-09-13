@@ -12,6 +12,7 @@ import com.booki.domain.SlotKey;
 import com.booki.prompt.PromptAssembler;
 import com.booki.domain.SentReport;
 import com.booki.domain.Session;
+import com.booki.email.ReportEmailSender;
 import com.booki.dto.GenerateSummaryRequest;
 import com.booki.dto.MessageResponse;
 import com.booki.dto.SendReportRequest;
@@ -51,6 +52,7 @@ public class ReportServiceImpl implements ReportService {
     private final AiProviderRegistry aiProviderRegistry;
     private final PromptAssembler promptAssembler;
     private final StorageAdapter storage;
+    private final ReportEmailSender emailSender;
 
     private static final Map<String, String> LANGUAGE_NAMES = Map.of("en", "English", "es", "Spanish", "fr", "French");
     private static final Map<String, String> SUMMARY_HEADING = Map.of("en", "Summary", "es", "Resumen", "fr", "Résumé");
@@ -98,7 +100,7 @@ public class ReportServiceImpl implements ReportService {
                 null);
 
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "progress", email, fileName);
+        SentReport report = saveSentReport(session, "progress", email, pdf, fileName, "Progreso: " + progress.getPctRead() + "%");
         return toResponse(report);
     }
 
@@ -144,7 +146,7 @@ public class ReportServiceImpl implements ReportService {
                 null);
 
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "quiz", email, fileName);
+        SentReport report = saveSentReport(session, "quiz", email, pdf, fileName, "Nota: " + avgScore + "%");
         return toResponse(report);
     }
 
@@ -202,7 +204,7 @@ public class ReportServiceImpl implements ReportService {
 
         byte[] pdf = pdfReportBuilder.build("Summary — " + sessionTitle(session), null, sections, cover);
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "summary", email, fileName);
+        SentReport report = saveSentReport(session, "summary", email, pdf, fileName, "Resumen");
         return toResponse(report);
     }
 
@@ -280,11 +282,26 @@ public class ReportServiceImpl implements ReportService {
                 .orElseThrow(() -> new NoSuchElementException("Session not found"));
     }
 
-    private SentReport saveSentReport(Session session, String type, String email, String fileName) {
+    /**
+     * Persists the sent-report row and, if {@code email} is set, actually emails
+     * the PDF — subject is "{book} — {metric} — {date} — {reader's name}" (e.g.
+     * "Beekeeping 101 — Nota: 85% — 2026-09-13 — Alex"). {@code metric} is the
+     * one number/label specific to this report type (grade, progress %, or a
+     * plain label for a summary).
+     */
+    private SentReport saveSentReport(Session session, String type, String email, byte[] pdf, String fileName,
+                                      String metric) {
+        boolean sent = false;
+        if (email != null) {
+            String subject = session.getDocument().getTitle() + " — " + metric + " — "
+                    + java.time.LocalDate.now() + " — " + session.getUser().getName();
+            sent = emailSender.send(email, subject, pdf, fileName);
+        }
         SentReport report = new SentReport();
         report.setSession(session);
         report.setType(type);
         report.setEmail(email);
+        report.setEmailSent(sent);
         report.setFileName(fileName);
         return sentReportRepository.save(report);
     }
@@ -302,7 +319,7 @@ public class ReportServiceImpl implements ReportService {
                 report.getType(),
                 report.getEmail(),
                 "/api/reports/" + report.getId() + "/file",
-                report.getEmail() != null,
+                report.getEmail() != null && !report.isEmailSent(),
                 report.getCreatedAt()
         );
     }

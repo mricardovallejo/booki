@@ -14,7 +14,7 @@ interface Props {
 }
 
 export default function SummaryModal({ sessionId, open, onClose, onChatGenerated }: Props) {
-  const { generating, error, generate } = useSummary(sessionId);
+  const { generating, error, lastReport, generate } = useSummary(sessionId);
   const { session, refresh } = useSession(sessionId);
   const { range, pinned } = useActivityRange();
   const [lengthPages, setLengthPages] = useState(2);
@@ -153,7 +153,13 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
           {error && <p className="text-sm text-rose-400">{error}</p>}
           {done && deliverAs === 'pdf' && (
             <p className="text-sm text-emerald-400">
-              PDF generated and downloaded{email.trim() ? ` · sent to ${email.trim()} (simulated)` : ''}.
+              PDF generated and downloaded
+              {lastReport?.email
+                ? lastReport.simulated
+                  ? ` · not actually emailed to ${lastReport.email} — email isn't configured on this server`
+                  : ` · sent to ${lastReport.email}`
+                : ''}
+              .
             </p>
           )}
         </div>

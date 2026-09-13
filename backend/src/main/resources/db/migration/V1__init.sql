@@ -168,6 +168,10 @@ CREATE TABLE sent_reports (
     session_id BIGINT NOT NULL REFERENCES sessions (id),
     type       VARCHAR(20) NOT NULL,
     email      VARCHAR(255),
+    -- True iff ReportEmailSender actually handed the PDF to an SMTP server for
+    -- this row's `email`. False (with email set) means "simulated" — no SMTP
+    -- configured, or the send failed; the PDF is still downloadable.
+    email_sent BOOLEAN NOT NULL DEFAULT FALSE,
     file_name  VARCHAR(255) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

@@ -387,6 +387,8 @@ To add them by hand instead: repo → *Settings* → *Secrets and variables* →
 | GCS (Step 3) | `S3_BUCKET` `S3_ACCESS_KEY` `S3_SECRET_KEY` |
 | Service account (Step 4) | `GCP_SA_KEY` (JSON, one line) |
 | You | `JWT_SECRET` (`openssl rand -base64 32`), `OPENAI_API_KEY`, `CORS_ALLOWED_ORIGINS` = `https://<project-id>.web.app` |
+| You (optional but recommended) | `ANTHROPIC_API_KEY` — Claude is a real secondary provider (ADR-025: reads an uploaded PDF directly); a session that picks it fails without a working key. |
+| You (optional) | `SMTP_HOST` `SMTP_PORT` `SMTP_USERNAME` `SMTP_PASSWORD` `EMAIL_FROM` — real delivery for sent reports (progress/quiz/summary PDFs). Left unset, reports stay downloadable but `SentReportResponse.simulated` is `true` — no crash. |
 
 #### Step 6 — First deploy
 
@@ -428,6 +430,29 @@ deploy workflow.
 
 Flyway runs at startup — fine with one instance (`min-instances 1`, and Cloud
 Run won't run two at this traffic); with 2+ it locks and the others wait.
+
+### Redeploying after a `V1__init.sql` change
+
+This project keeps a single baseline migration and rewrites it in place rather
+than layering `V2`/`V3` (ADR-011/015/017) — deliberate while there's no real
+production data worth an in-place `ALTER`. Whenever `V1__init.sql` changes
+(most recently: `document_pages` dropped, `documents.claude_file_id` /
+`openai_file_id` and `sent_reports.email_sent` added, ADR-025/027), Flyway
+refuses to boot against a Neon database that already recorded the *old*
+checksum for V1 — same `FlywayValidateException: Migration checksum mismatch`
+seen locally (`docs/local-dev.md`). Before pushing a deploy that changed V1,
+wipe the target database so V1 reapplies clean:
+
+```sql
+-- Run against the Neon database (its SQL console, or psql) BEFORE the deploy lands.
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+```
+
+This destroys every row in the deployed database — confirm there's nothing in
+it worth keeping first. If that ever stops being true (real accounts/documents
+worth preserving), stop rewriting V1 and switch to additive `V2`/`V3`
+migrations instead.
 
 ---
 

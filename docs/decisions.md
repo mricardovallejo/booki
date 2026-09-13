@@ -25,7 +25,7 @@
 ## ADR-004: file storage stays behind a storage seam
 
 - **Context**: BooKI stores two kinds of files — uploaded PDFs and generated report/summary PDFs. It's intended to run as a cloud application, eventually on more than one instance.
-- **Decision**: all file access goes through a `StorageAdapter` interface (`com.booki.storage`) — `put(key, bytes, contentType)` / `get(key)` / `delete(key)`, addressing everything by an opaque forward-slash key (`documents/…`, `reports/…`). The key is what's persisted (`documents.file_path`, `sent_reports.file_name`), never an absolute path; reads are handed out as a Spring `Resource`, never a `File`. PDF text is still extracted per page into the database (`DocumentPage`), which is where the AI context comes from. The implementation is chosen by `booki.storage.driver`.
+- **Decision**: all file access goes through a `StorageAdapter` interface (`com.booki.storage`) — `put(key, bytes, contentType)` / `get(key)` / `delete(key)`, addressing everything by an opaque forward-slash key (`documents/…`, `reports/…`). The key is what's persisted (`documents.file_path`, `sent_reports.file_name`), never an absolute path; reads are handed out as a Spring `Resource`, never a `File`. The implementation is chosen by `booki.storage.driver`. (No page-level text extraction into the database anymore — a document-capable AI provider reads the stored PDF itself; see ADR-025.)
 - **Reasons**: the seam means the storage backend is a deployment choice, not a code change — controllers, the frontend and the DB never see it.
 - **Consequence**: `LocalStorageAdapter` (default, `driver=local`) writes under one directory (`booki.storage.local-path`, default `./storage`) and is fine for local dev and single-instance runs; it does not survive an ephemeral redeploy and is not shared between instances. See ADR-012 for the S3-compatible backend that removes that limitation.
 
@@ -321,6 +321,12 @@ will use SSE, which every browser supports.
 
 ## ADR-024: AI activities run on a reader-controlled page range, not the reading marker
 
+> Superseded in part by ADR-025 (no more per-page text extraction) and ADR-026
+> (the range now governs plain chat too, pins are exact — no more auto-growth
+> past a pin, and voice quick-actions are wired through). Read this ADR for the
+> original "why a shared range" motivation; read ADR-025/026 for what's true
+> today.
+
 - **Context**: the panel quiz and the summary modal were bounded to
   `startPage..endPage` — "the pages reached so far". Tying the AI activity scope
   to reading progress broke in use: a just-opened session has `endPage = 1`, so
@@ -355,3 +361,126 @@ will use SSE, which every browser supports.
   reload re-derives it from reading progress. Voice quick-actions still use the
   reading position (not wired through). PDF text is still extracted for every
   page at upload, now in one `PDFTextStripper` pass instead of a per-page loop.
+
+## ADR-025: a document-capable provider reads the PDF itself — no more per-page text extraction
+
+- **Context**: BooKI extracted every page's text at upload (`PDFTextStripper`
+  into `DocumentPage.extractedText`) and sent that plain text to whichever AI
+  provider a session used. For a page whose content is a scanned image, a map,
+  or a table baked into a graphic — not a real text layer — the stripper
+  returns nothing, and the session silently got "empty pages": no OCR, no
+  fallback, no warning. Two OCR-based fixes were built and discarded before
+  landing here (Tesseract via tess4j; an AI-vision call per page) — both still
+  translate the page into something lossy before the answering model ever sees
+  it, and the owner's actual test book (a history text with maps and tables)
+  needed the real page, not a translation of it.
+- **Decision**: stop extracting text at import. `DocumentServiceImpl.importPdf`
+  only reads the page count now; `document_pages` and `DocumentPage` are gone.
+  `AiProvider` gains an optional capability: `supportsDocuments()`,
+  `uploadDocument(bytes, title)`, `converseWithDocument(systemPrompt, history,
+  userMessage, fileId, startPage, endPage)`. `ClaudeProvider` and
+  `OpenAiProvider` implement it — each uploads the PDF **once** per document,
+  the first time that provider is used with it, via that provider's own Files
+  API (`documents.claude_file_id` / `documents.openai_file_id` cache the id so
+  it's never re-uploaded); every later turn just references the id and states
+  which pages this turn is about, as an instruction ("use only pages X to Y"),
+  not a hard restriction — the model has the whole book, the same as a person
+  handed the whole book and asked to focus one chapter. `OpenAiProvider` talks
+  to the Responses API (`/v1/responses`) for this specifically — Chat
+  Completions, which it still uses for plain `converse()`, has no file-input
+  shape — so it is genuinely calling two different OpenAI endpoints depending
+  on the turn. `KimiProvider` and `OllamaProvider` don't implement the
+  capability (`supportsDocuments()` stays `false`): for those two, and only
+  those two, `ActivityContentService` falls back to extracting plain text from
+  the requested range on the fly, via PDFBox, uncached — cheap for the small
+  range one turn actually asks for, no OCR of any kind. One class,
+  `ActivityContentService` (new, `com.booki.ai`), is the single place that
+  decides document-reference-vs-plain-text and dispatches the model call;
+  `QuizServiceImpl`, `ReportServiceImpl`, `ConversationEngine`, and the
+  Explain/Mnemonic capabilities all go through it, so there is exactly one
+  place this logic lives, not four.
+- **Consequence**: no more silently empty pages — every provider that can read
+  a PDF gets the real thing, tables/maps/images included; Kimi/Ollama degrade
+  to text-only, same ceiling as before this ADR, not worse. Import is now
+  effectively instant regardless of book size (page count only). Quiz
+  generation changed from N sequential per-page AI calls to **one** call asking
+  for N `PAGE:`/`QUESTION:` blocks spread across the range — fewer round trips,
+  and the model can no longer be handed a single page's text in isolation, only
+  the real range instruction. The "purest information, no translation" choice
+  is a real trade-off the owner made deliberately: it costs more per call than
+  cached plain text (an attached document is priced/processed like real input
+  every time it's referenced — Claude's document block carries an ephemeral
+  `cache_control` breakpoint to blunt this within one conversation; OpenAI has
+  no equivalent lever exposed here) and is measurably slower to answer from
+  than a short text snippet, especially the first turn on a new document
+  (upload latency) — accepted in exchange for never mis-reading a table or
+  losing a map. `documents.claude_file_id`/`openai_file_id` are workspace-wide
+  per Claude's Files API terms — never accept a file id from an untrusted
+  source; these are only ever written by `ActivityContentService` itself.
+
+## ADR-026: the activity page range governs every turn — chat and voice included
+
+- **Context**: three range-resolution rules coexisted in `ConversationEngine`
+  after ADR-024 shipped, and disagreed with each other in practice: a regex
+  matching "pages 4 to 6" typed into the message text; the shared activity
+  range for a quick-action, silently truncated to its last 20 pages; and,
+  for plain typed chat with neither of those, a sliding window of the last 8
+  pages ending at the reading position. The owner's own report — "sometimes
+  more pages, sometimes fewer, sometimes the whole book, sometimes just page
+  1" — was each of these three rules firing on different turns of the *same*
+  session. Separately, `ActivityRangeContext`'s pinned range always re-grew to
+  at least the furthest page read (`Math.max(pinned.end, reached)`), so editing
+  the end **down** below a page already read had no visible effect — reported
+  directly as "it won't let me edit the range."
+- **Decision**: delete all three chat-specific rules. `pageStart`/`pageEnd`
+  become **required** on every conversational turn — `MessageRequest`,
+  `ConversationRequest`, and the voice multipart endpoint (`VoiceController`,
+  `VoiceConversationService.processTurn`) all gained `@NotNull`/required
+  `pageStart`/`pageEnd`; there is exactly one range concept in BooKI now, no
+  per-message override, and voice quick-actions are wired through (ADR-024 had
+  left them out). `ConversationEngine.resolveActivityContent` clamps whatever
+  the frontend sends to `1..pageCount` and resolves it through
+  `ActivityContentService` — same path as Quiz/Summary. On the frontend,
+  `ActivityRangeContext`'s pinned range is now **exactly** what the reader set,
+  full stop, re-editable at any time; it no longer silently floors the end at
+  the furthest page read. `ActivityRangeBar`'s "reset" is the only way back to
+  auto-following reading progress. `ChatPanel`, `QuizPanel`, and `SummaryModal`
+  additionally refuse to run an action on a degenerate, never-adjusted 1-page
+  range (unpinned, `end - start + 1 < 2`) — the generate/send controls disable
+  with a short prompt to adjust the range above, rather than silently running
+  on a range nobody chose.
+- **Consequence**: one range, one behavior, everywhere — a wide range set once
+  is honored by chat, quiz, and summary alike, with no hidden ceiling. The
+  trade-off the owner explicitly accepted: a pinned range no longer grows on
+  its own as the reader keeps reading past it (the ADR-024 behavior); widening
+  it again is a manual edit, or "reset" to resume auto-following. `MessageRequest`
+  documents (`docs/openapi.yaml`) and this doc both needed the update — the old
+  wording ("optional... plain chat stays on the reading position") describes
+  behavior no client should rely on anymore.
+
+## ADR-027: real email delivery for sent reports, degrading to "simulated" when unconfigured
+
+- **Context**: "email" a sent report (progress/quiz/summary PDF) always just
+  set `simulated: true` — no SMTP transport existed at all, by design, until
+  the owner asked for real delivery once the harder architecture work (ADR-025/026)
+  was done.
+- **Decision**: `spring-boot-starter-mail` + a new `ReportEmailSender`
+  (`com.booki.email`) wrapping `JavaMailSender`. Configured via
+  `spring.mail.host/port/username/password` and `booki.email.from`
+  (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`EMAIL_FROM`); blank
+  `host` or `from` means disabled (`isEnabled()` false), same
+  configured-or-gracefully-degraded pattern as `OPENAI_API_KEY` or Ollama —
+  never a crash, never a fake "sent". `sent_reports` gains `email_sent`
+  (boolean); `SentReportResponse.simulated` is now `email != null &&
+  !emailSent` — true delivery status, not just "an address was given". The
+  email subject is `{book title} — {metric} — {date} — {reader's name}`, where
+  `metric` is the one number specific to the report type (quiz: `Nota: N%`;
+  progress: `Progreso: N%`; summary: the fixed label `Resumen` — a summary has
+  no numeric grade). A send failure (bad address, provider outage) is caught,
+  logged, and swallowed exactly like a disabled setup — the PDF is already
+  generated and downloadable either way.
+- **Consequence**: reports can be genuinely emailed once SMTP is configured
+  (any standard provider — Brevo's free tier is what the owner set up first);
+  nothing changes for a deployment that never configures it. The frontend's
+  "(simulated)" copy in `SendReportForm`, `QuizPanel`, and `SummaryModal` now
+  reflects the real per-report `simulated` flag instead of a hardcoded string.

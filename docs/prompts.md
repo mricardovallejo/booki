@@ -172,7 +172,13 @@ Three separate things:
 - **App UI language** — interface chrome. English only for now; out of scope.
 - **Session language** (`session.language`, en/es/fr) — what BooKI speaks in.
   The core prompt forces output into it *regardless of what language the
-  instructions are written in*.
+  instructions are written in*. Confirmed in practice that a single mention
+  near the top can lose to the model's own instinct to mirror the reader's
+  input language on a long turn (a French session replying in Spanish because
+  the reader typed Spanish) — `PromptAssembler.assemble` now repeats it as the
+  very last line of the prompt, after the document, which is where a model
+  weighs an instruction most heavily. Still a strong mitigation, not a
+  guarantee — there's no way to force this the way the page range is enforced.
 - **Slot authoring language** — factory text is English; user-edited slots can be
   any language. An AI Profile has no language of its own.
 
@@ -180,10 +186,13 @@ Three separate things:
 
 - **Plain chat**: core + rubric(active level) + persona + reader profile
   context + `capability_routing` + the enabled capability list + session facts +
-  fenced page text. The normal window is the current page plus at most seven
-  preceding pages from the reading journey. A written page range in English,
-  Spanish, or French selects up to 20 document pages instead. The character cap
-  still applies, and the document is always last. If the model
+  fenced document section, and a repeated "reply in {language}" reminder right
+  at the end (ADR-026 for the range; see "Session language" above for the
+  repeat). There is exactly one page range now — the shared activity range, required on every
+  turn — no separate reading-position window and no page range typed into the
+  message text; the document section is either the real pages (Claude/OpenAI
+  read the attached PDF directly) or plain text extracted on the fly
+  (Kimi/Ollama), and the document is always last. If the model
   replies with exactly `{"capability":"<name>"}` for an *enabled* capability,
   that capability runs instead; otherwise its reply is the answer.
 - **Quick-action button / explicit capability**: skips routing, runs the
@@ -198,9 +207,10 @@ Three separate things:
   `correct` is derived as `SCORE ≥ 0.6`, so the correction report's
   correct-count and average score stay consistent (ADR-023).
 
-The standalone quiz and summary screens do not inherit an opening-session end
-boundary. They choose their own explicit range within `startPage..endPage`,
-where `endPage` is the furthest page reached at request time.
+Quiz, summary, and chat all share one range now (`ActivityRangeContext` on the
+frontend, ADR-024/026) — `startPage`/`endPage` are required on every request,
+clamped to the document rather than defaulted from the session's own
+`startPage`/`endPage` markers (those stay a pure reading-progress indicator).
 
 ## API surface
 

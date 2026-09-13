@@ -29,6 +29,10 @@ public class SentReport {
     @Column
     private String email;
 
+    /** True iff {@code ReportEmailSender} actually delivered this to {@code email}, false = simulated. */
+    @Column(nullable = false, name = "email_sent")
+    private boolean emailSent;
+
     @Column(nullable = false, name = "file_name")
     private String fileName;
 

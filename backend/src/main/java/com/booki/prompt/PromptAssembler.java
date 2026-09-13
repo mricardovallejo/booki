@@ -133,6 +133,16 @@ public class PromptAssembler {
                 .append("<<<BEGIN DOCUMENT>>>\n")
                 .append(documentText == null ? "" : documentText)
                 .append("\n<<<END DOCUMENT>>>");
+
+        // Repeated here, after the (possibly long, possibly other-language)
+        // document text: a language rule stated only once near the top of a
+        // long prompt can lose out to a model's strong default instinct to
+        // mirror whatever language the reader's own message is written in —
+        // confirmed happening (a French session replying in Spanish because
+        // the reader typed Spanish). Restating it last, right next to where
+        // generation actually starts, is a standard mitigation for that.
+        sb.append("\n\nReminder: reply in ").append(languageName(session.getLanguage()))
+                .append(", regardless of what language the reader's message or the document use.");
         return sb.toString();
     }
 

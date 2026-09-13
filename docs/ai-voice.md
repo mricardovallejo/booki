@@ -24,8 +24,10 @@ transports are `POST /api/sessions/{id}/messages` (text) and
 
 Voice runs through the exact same assembled prompt as text — the core, the
 session's AI Profile layers (difficulty, persona, reader context, function
-instructions when a capability runs), the session facts and the page text. See
-`docs/prompts.md`.
+instructions when a capability runs), the session facts, and the document
+section (the real PDF for Claude/OpenAI, plain text for Kimi/Ollama). Voice
+turns also carry the required activity `pageStart`/`pageEnd`, same as text
+(ADR-026). See `docs/prompts.md`.
 
 Chat, the conversational capabilities, and standalone quiz/summary generation all
 use this same builder.

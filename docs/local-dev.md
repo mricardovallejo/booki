@@ -245,6 +245,17 @@ node scripts/build-guide.mjs    # from the repo root
 To register accounts without the guide, run the backend with
 `WELCOME_DOCUMENT_ENABLED=false`.
 
+## 7. Sending real report emails (optional)
+
+By default, "email" a sent report (progress/quiz/summary PDF) just marks it
+`simulated: true` — the PDF is generated and downloadable, nothing is actually
+mailed. To send it for real, set `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/
+`SMTP_PASSWORD`/`EMAIL_FROM` (e.g. a Gmail app password, or Mailgun/SendGrid's
+SMTP endpoint) before running the backend. `ReportEmailSender` checks
+`SMTP_HOST`/`EMAIL_FROM` at startup — blank means disabled, same as no
+`OPENAI_API_KEY` disables AI. No code path treats a missing SMTP setup as an
+error.
+
 ## Checking what's running right now
 
 ```bash

@@ -4,6 +4,7 @@ import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -42,8 +43,7 @@ public class OpenAiProvider extends OpenAiCompatibleProvider {
      * base64 ({@code type: input_file}, {@code file_data} as a data URI — no
      * Files API, no upload step; {@code pdfBytes} is only ever the small slice
      * of pages this turn needs, physically cut by {@code ActivityContentService},
-     * never the whole book) plus the text instruction; history replays as plain
-     * {@code input_text} turns. Reply text lives at
+     * never the whole book) plus the text instruction. Reply text lives at
      * {@code output[].content[].text} (type {@code output_text}), not
      * {@code choices[0].message.content}.
      */
@@ -54,8 +54,13 @@ public class OpenAiProvider extends OpenAiCompatibleProvider {
         input.add(Map.of("role", "developer", "content", List.of(
                 Map.of("type", "input_text", "text", systemPrompt))));
         for (Message m : context) {
+            // A replayed assistant turn must use "output_text", not "input_text" —
+            // the Responses API 400s on that combination ("Invalid value: 'input_text'.
+            // Supported values are: 'output_text' and 'refusal'"), only once a
+            // session has at least one prior BooKI reply in its history.
+            String partType = "assistant".equals(m.role()) ? "output_text" : "input_text";
             input.add(Map.of("role", m.role(), "content", List.of(
-                    Map.of("type", "input_text", "text", m.content()))));
+                    Map.of("type", partType, "text", m.content()))));
         }
         String instruction = "The attached document is pages " + startPage + "-" + endPage
                 + " of the book. " + userMessage;
@@ -92,6 +97,12 @@ public class OpenAiProvider extends OpenAiCompatibleProvider {
             throw new AiProviderException("openai", "response contained no output text", null);
         } catch (AiProviderException e) {
             throw e;
+        } catch (WebClientResponseException e) {
+            // The status/URL alone (e.getMessage()) hides *why* OpenAI rejected the
+            // request — the actual reason is in the response body, only reachable
+            // via getResponseBodyAsString().
+            log.error("OpenAI document request failed: {}", e.getResponseBodyAsString());
+            throw new AiProviderException("openai", e.getResponseBodyAsString(), e);
         } catch (Exception e) {
             log.error("OpenAI document request failed", e);
             throw new AiProviderException("openai", e);

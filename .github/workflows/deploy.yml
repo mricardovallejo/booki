@@ -99,7 +99,7 @@ jobs:
             --allow-unauthenticated \
             --min-instances 1 \
             --max-instances 2 \
-            --memory 512Mi \
+            --memory 1Gi \
             --port 8080 \
             --env-vars-file env.yaml \
             --format 'value(status.url)')

@@ -20,12 +20,17 @@ public abstract class OpenAiCompatibleProvider implements AiProvider {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
-    private final WebClient webClient;
+    protected final WebClient webClient;
     private final String model;
 
-    /** Lower-cased simple class name (e.g. "openaiprovider" -> "openai"), used to tag {@link AiProviderException}. */
+    /** Lower-cased simple class name (e.g. "openaiprovider" -> "openai") — also this provider's {@link #key()}. */
     private String providerName() {
         return getClass().getSimpleName().toLowerCase().replace("provider", "");
+    }
+
+    @Override
+    public String key() {
+        return providerName();
     }
 
     protected OpenAiCompatibleProvider(String baseUrl, String apiKey, String model) {

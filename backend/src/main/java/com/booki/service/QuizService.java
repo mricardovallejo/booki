@@ -1,5 +1,6 @@
 package com.booki.service;
 
+import com.booki.ai.ActivityContent;
 import com.booki.domain.Session;
 import com.booki.dto.GenerateQuizRequest;
 import com.booki.dto.QuizAnswerResponse;
@@ -13,10 +14,9 @@ public interface QuizService {
     QuizReportResponse getReport(Long userId, Long sessionId);
 
     /**
-     * One comprehension question about the bounded page context selected for
-     * the current turn. For the
-     * conversational quiz capability — does not persist a {@code QuizAttempt};
-     * the scored flow stays behind {@link #submitAnswer}.
+     * One comprehension question about the content resolved for the current
+     * turn's page range. For the conversational quiz capability — does not
+     * persist a {@code QuizAttempt}; the scored flow stays behind {@link #submitAnswer}.
      */
-    String generateComprehensionQuestion(Session session, String pageContextText);
+    String generateComprehensionQuestion(Session session, ActivityContent content);
 }

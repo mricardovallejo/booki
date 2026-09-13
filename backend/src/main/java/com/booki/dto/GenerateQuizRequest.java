@@ -2,6 +2,7 @@ package com.booki.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
@@ -17,9 +18,12 @@ public class GenerateQuizRequest {
     @Max(20)
     private Integer questionCount;
 
+    /** The shared activity range — required, same one every other activity uses. */
+    @NotNull
     @Min(1)
     private Integer startPage;
 
+    @NotNull
     @Min(1)
     private Integer endPage;
 }

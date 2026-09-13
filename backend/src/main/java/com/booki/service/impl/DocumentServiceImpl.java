@@ -1,11 +1,9 @@
 package com.booki.service.impl;
 
 import com.booki.domain.Document;
-import com.booki.domain.DocumentPage;
 import com.booki.domain.Session;
 import com.booki.domain.User;
 import com.booki.dto.DocumentResponse;
-import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.QuizAttemptRepository;
@@ -18,14 +16,12 @@ import com.booki.storage.StorageAdapter;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -35,7 +31,6 @@ import java.util.UUID;
 public class DocumentServiceImpl implements DocumentService {
 
     private final DocumentRepository documentRepository;
-    private final DocumentPageRepository documentPageRepository;
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
     private final QuizAttemptRepository quizAttemptRepository;
@@ -72,24 +67,12 @@ public class DocumentServiceImpl implements DocumentService {
             throw new IllegalArgumentException("Only PDF files are accepted");
         }
 
-        // Parse fully before storing anything, so an unreadable upload never
-        // leaves an object behind.
+        // Only page count is needed here — the AI reads the PDF itself (uploaded
+        // once per provider, on first use; see AiProvider#ensureUploaded), so
+        // BooKI never extracts or stores page text.
         int pageCount;
-        List<String> pageTexts;
         try (PDDocument pdDocument = Loader.loadPDF(bytes)) {
             pageCount = pdDocument.getNumberOfPages();
-            // One pass over the whole document (a per-page loop re-walks the page
-            // tree every call — O(n^2) on large PDFs). A form feed between pages
-            // lets us split the single output back into per-page text.
-            PDFTextStripper stripper = new PDFTextStripper();
-            stripper.setStartPage(1);
-            stripper.setEndPage(pageCount);
-            stripper.setPageEnd("\f");
-            String[] parts = stripper.getText(pdDocument).split("\f", -1);
-            pageTexts = new ArrayList<>(pageCount);
-            for (int i = 0; i < pageCount; i++) {
-                pageTexts.add(i < parts.length ? parts[i].trim() : "");
-            }
         } catch (IOException e) {
             throw new IllegalArgumentException("Invalid or unreadable PDF file", e);
         }
@@ -102,16 +85,6 @@ public class DocumentServiceImpl implements DocumentService {
             document.setFilePath(key);
             document.setPageCount(pageCount);
             documentRepository.save(document);
-
-            List<DocumentPage> pages = new ArrayList<>(pageCount);
-            for (int i = 0; i < pageCount; i++) {
-                DocumentPage page = new DocumentPage();
-                page.setDocument(document);
-                page.setPageNumber(i + 1);
-                page.setExtractedText(pageTexts.get(i));
-                pages.add(page);
-            }
-            documentPageRepository.saveAll(pages);
             return toResponse(document);
         } catch (RuntimeException e) {
             // The transaction will roll the rows back; drop the stored object too.
@@ -159,7 +132,6 @@ public class DocumentServiceImpl implements DocumentService {
             sentReportRepository.deleteBySessionIdIn(sessionIds);
         }
         sessionRepository.deleteByDocumentId(documentId);
-        documentPageRepository.deleteByDocumentId(documentId);
         documentRepository.delete(document);
 
         try {

@@ -35,6 +35,6 @@ public class SummaryCapability implements ConversationCapability {
     public String execute(CapabilityInvocation invocation) {
         return reportService.generateSummaryText(
                 invocation.session(), DEFAULT_LENGTH_PAGES,
-                invocation.userText(), invocation.pageContextText());
+                invocation.userText(), invocation.content());
     }
 }

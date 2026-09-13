@@ -15,7 +15,10 @@ import {
  * It is not a property of the session. By default it runs from page 1 to the
  * furthest page the reader has reached, and keeps following as they read on — so
  * a quiz never asks about a chapter they haven't opened yet. Once the reader
- * edits it, their choice sticks (but the end still grows if they read past it).
+ * edits it, their choice is exact and always editable again — reading further
+ * does NOT silently grow it back (that surprised readers trying to narrow the
+ * range below a page they'd already reached: the edit looked ignored). Press
+ * "reset" to drop back to following the reading position.
  * Scoped per session id (SessionPage remounts the provider).
  */
 export interface ActivityRange {
@@ -68,9 +71,10 @@ export function ActivityRangeProvider({ children }: { children: ReactNode }) {
     const reached = clamp(readEnd, 1, totalPages);
     // Default: everything read so far, following reading progress.
     if (!pinned) return { start: 1, end: reached };
+    // Pinned: exactly what the reader set, full stop — no silent floor at
+    // `reached`. "reset" (below) is the way back to auto-following.
     const start = clamp(pinned.start, 1, totalPages);
-    // The reader's end stays put, but never below where they have actually read.
-    const end = clamp(Math.max(pinned.end, reached), start, totalPages);
+    const end = clamp(pinned.end, start, totalPages);
     return { start, end };
   }, [pinned, totalPages, readEnd]);
 

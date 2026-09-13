@@ -16,7 +16,7 @@ interface Props {
 export default function SummaryModal({ sessionId, open, onClose, onChatGenerated }: Props) {
   const { generating, error, generate } = useSummary(sessionId);
   const { session, refresh } = useSession(sessionId);
-  const { range } = useActivityRange();
+  const { range, pinned } = useActivityRange();
   const [lengthPages, setLengthPages] = useState(2);
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState(1);
@@ -39,7 +39,10 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
 
   if (!open) return null;
 
-  const pageRangeValid = Boolean(session && range);
+  // Refuse a degenerate, never-adjusted 1-page range (right when a session
+  // starts) rather than silently summarizing a single page nobody chose.
+  const rangeTooSmall = range != null && !pinned && range.end - range.start + 1 < 2;
+  const pageRangeValid = Boolean(session && range) && !rangeTooSmall;
 
   const onGenerate = async () => {
     setDone(false);
@@ -144,6 +147,9 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
             </Field>
           )}
 
+          {rangeTooSmall && (
+            <p className="text-xs text-amber-400">Adjust the page range above before generating a summary.</p>
+          )}
           {error && <p className="text-sm text-rose-400">{error}</p>}
           {done && deliverAs === 'pdf' && (
             <p className="text-sm text-emerald-400">

@@ -1,9 +1,10 @@
 package com.booki.service.impl;
 
+import com.booki.ai.ActivityContent;
+import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
 import com.booki.domain.Document;
-import com.booki.domain.DocumentPage;
 import com.booki.domain.AiProfile;
 import com.booki.domain.Message;
 import com.booki.domain.QuizAttempt;
@@ -16,7 +17,6 @@ import com.booki.dto.MessageResponse;
 import com.booki.dto.SendReportRequest;
 import com.booki.dto.SentReportResponse;
 import com.booki.dto.SessionProgressResponse;
-import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.QuizAttemptRepository;
@@ -30,7 +30,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -43,7 +42,7 @@ public class ReportServiceImpl implements ReportService {
 
     private final SessionRepository sessionRepository;
     private final DocumentRepository documentRepository;
-    private final DocumentPageRepository documentPageRepository;
+    private final ActivityContentService activityContentService;
     private final MessageRepository messageRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final SentReportRepository sentReportRepository;
@@ -162,11 +161,15 @@ public class ReportServiceImpl implements ReportService {
             email = requireValidEmail(request.getEmail());
         }
 
+        if (request.getStartPage() == null || request.getEndPage() == null) {
+            throw new IllegalArgumentException("startPage and endPage are required");
+        }
         int pageCount = session.getDocument().getPageCount();
-        int endPage = Math.max(1, Math.min(request.getEndPage() != null ? request.getEndPage() : pageCount, pageCount));
-        int startPage = Math.max(1, Math.min(request.getStartPage() != null ? request.getStartPage() : 1, endPage));
-        String summaryText = generateSummaryText(
-                session, request.getLengthPages(), request.getPrompt(), startPage, endPage);
+        int endPage = Math.max(1, Math.min(request.getEndPage(), pageCount));
+        int startPage = Math.max(1, Math.min(request.getStartPage(), endPage));
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+        ActivityContent content = activityContentService.resolve(session.getDocument(), provider, startPage, endPage);
+        String summaryText = generateSummaryText(session, request.getLengthPages(), request.getPrompt(), content);
 
         if (!deliverAsPdf) {
             Message botMessage = new Message();
@@ -210,65 +213,25 @@ public class ReportServiceImpl implements ReportService {
         return storage.get("reports/" + report.getFileName());
     }
 
+    /** Ceiling on the book excerpt sent with a summary, so a wide range can't blow up the request — only matters for the plain-text fallback (Kimi/Ollama); a document-capable provider reads the actual PDF instead. */
+    private static final int SUMMARY_EXCERPT_CHAR_BUDGET = 12000;
+
     /**
-     * Real AI call grounded in the book pages (scaled by lengthPages) and the
-     * discussion so far, on top of the session's layered prompt with the
+     * Real AI call grounded in the resolved page content (scaled by lengthPages)
+     * and the discussion so far, on top of the session's layered prompt with the
      * {@code fn_summary} SlotPrompt.
      */
     @Override
-    public String generateSummaryText(Session session, Integer lengthPages, String customPrompt) {
-        int endPage = session.getEndPage();
-        int startPage = Math.max(session.getStartPage(), endPage - 7);
-        return generateSummaryText(session, lengthPages, customPrompt, startPage, endPage);
-    }
-
-    @Override
     public String generateSummaryText(Session session, Integer lengthPages, String customPrompt,
-                                      String pageContextText) {
+                                      ActivityContent content) {
         int pages = normalizedSummaryLength(lengthPages);
-        return generateSummaryFromExcerpt(session, pages, customPrompt,
-                pageContextText == null ? "" : pageContextText);
-    }
+        String bookExcerpt = switch (content) {
+            case ActivityContent.DocumentReference doc ->
+                    "(See the attached document, pages " + doc.startPage() + "-" + doc.endPage() + ".)";
+            case ActivityContent.PlainText text -> truncate(text.text(), SUMMARY_EXCERPT_CHAR_BUDGET);
+        };
 
-    /** Ceiling on the book excerpt sent with a summary, so a wide activity range can't blow up the request. */
-    private static final int SUMMARY_EXCERPT_CHAR_BUDGET = 12000;
-
-    private String generateSummaryText(Session session, Integer lengthPages, String customPrompt,
-                                       int startPage, int endPage) {
-        int pages = normalizedSummaryLength(lengthPages);
-        int charsPerPage = Math.round(80 + pages * 90);
-
-        List<DocumentPage> bookPages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                session.getDocument().getId(), startPage, endPage);
-        // If the range is wider than the budget allows, sample pages evenly
-        // across it rather than sending every page — the summary still covers the
-        // whole span, the request stays bounded.
-        int maxPages = Math.max(1, SUMMARY_EXCERPT_CHAR_BUDGET / charsPerPage);
-        if (bookPages.size() > maxPages) {
-            List<DocumentPage> sampled = new ArrayList<>(maxPages);
-            for (int i = 0; i < maxPages; i++) {
-                int idx = maxPages == 1 ? 0
-                        : (int) Math.round((double) i * (bookPages.size() - 1) / (maxPages - 1));
-                sampled.add(bookPages.get(Math.min(idx, bookPages.size() - 1)));
-            }
-            bookPages = sampled;
-        }
-        String bookExcerpt = bookPages.stream()
-                .map(p -> {
-                    String text = p.getExtractedText();
-                    boolean truncated = text.length() > charsPerPage;
-                    return "p." + p.getPageNumber() + ": " + text.substring(0, Math.min(charsPerPage, text.length()))
-                            + (truncated ? "…" : "");
-                })
-                .reduce((a, b) -> a + " " + b)
-                .orElse("");
-
-        return generateSummaryFromExcerpt(session, pages, customPrompt, bookExcerpt);
-    }
-
-    private String generateSummaryFromExcerpt(Session session, int pages, String customPrompt, String bookExcerpt) {
         int messageCount = Math.min(40, Math.max(2, pages * 4));
-
         List<Message> sessionMessages = messageRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
         List<Message> recent = sessionMessages.subList(Math.max(0, sessionMessages.size() - messageCount), sessionMessages.size());
         String discussion = recent.isEmpty()
@@ -290,7 +253,11 @@ public class ReportServiceImpl implements ReportService {
         }
 
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
-        return provider.converse(systemPrompt, List.of(), instruction.toString()).strip();
+        return activityContentService.converse(provider, content, systemPrompt, List.of(), instruction.toString()).strip();
+    }
+
+    private static String truncate(String text, int budget) {
+        return text.length() > budget ? text.substring(0, budget) + "…" : text;
     }
 
     private int normalizedSummaryLength(Integer lengthPages) {

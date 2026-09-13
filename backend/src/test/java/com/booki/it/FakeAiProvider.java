@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Hand-written test double for {@link AiProvider} — replaces every AI call in
@@ -27,6 +29,10 @@ public class FakeAiProvider implements AiProvider {
     /** One recorded model call. */
     public record Call(String systemPrompt, List<Message> context, String userMessage) {
     }
+
+    /** Matches QuizServiceImpl#generateQuiz's multi-question instruction (see its {@code instruction} string). */
+    private static final Pattern QUIZ_INSTRUCTION = Pattern.compile(
+            "Write exactly (\\d+) quiz questions covering pages (\\d+) to (\\d+)");
 
     private final Queue<String> scripted = new ConcurrentLinkedQueue<>();
     private final List<Call> calls = new CopyOnWriteArrayList<>();
@@ -51,11 +57,21 @@ public class FakeAiProvider implements AiProvider {
     }
 
     @Override
+    public String key() {
+        return "fake";
+    }
+
+    @Override
     public String converse(String systemPrompt, List<Message> context, String userMessage) {
         calls.add(new Call(systemPrompt, List.copyOf(context), userMessage));
         String reply = scripted.poll();
         if (reply != null) {
             return reply;
+        }
+        Matcher quiz = QUIZ_INSTRUCTION.matcher(userMessage);
+        if (quiz.find()) {
+            return multiQuestionReply(Integer.parseInt(quiz.group(1)),
+                    Integer.parseInt(quiz.group(2)), Integer.parseInt(quiz.group(3)));
         }
         // Match phrases that appear ONLY in a forFunction() system prompt (locked
         // frames / fn_* bodies), never in a plain chat turn — the capability
@@ -77,5 +93,20 @@ public class FakeAiProvider implements AiProvider {
             return "In plain words, it works like a library companion.";
         }
         return "Fake AI reply";
+    }
+
+    /** N "PAGE: x\nQUESTION: ..." blocks spread evenly across [startPage, endPage], matching what generateQuiz asked for. */
+    private static String multiQuestionReply(int questionCount, int startPage, int endPage) {
+        int span = Math.max(1, endPage - startPage);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < questionCount; i++) {
+            int page = questionCount == 1 ? startPage
+                    : startPage + (int) Math.round((double) i * span / (questionCount - 1));
+            if (i > 0) {
+                sb.append('\n');
+            }
+            sb.append("PAGE: ").append(page).append("\nQUESTION: Fake question about page ").append(page).append('?');
+        }
+        return sb.toString();
     }
 }

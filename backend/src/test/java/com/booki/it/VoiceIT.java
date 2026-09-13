@@ -115,7 +115,9 @@ class VoiceIT extends IntegrationTestBase {
     }
 
     private String voiceUrl(Long sessionId, String capabilityHint, boolean wantsAudioReply) {
-        StringBuilder url = new StringBuilder("/api/sessions/").append(sessionId).append("/voice?wantsAudioReply=").append(wantsAudioReply);
+        StringBuilder url = new StringBuilder("/api/sessions/").append(sessionId)
+                .append("/voice?wantsAudioReply=").append(wantsAudioReply)
+                .append("&pageStart=1&pageEnd=3");
         if (capabilityHint != null) {
             url.append("&capabilityHint=").append(capabilityHint);
         }

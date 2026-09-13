@@ -1,9 +1,10 @@
 package com.booki.service.impl;
 
+import com.booki.ai.ActivityContent;
+import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
 import com.booki.domain.AiProfile;
-import com.booki.domain.DocumentPage;
 import com.booki.domain.QuizAttempt;
 import com.booki.domain.Session;
 import com.booki.domain.SlotKey;
@@ -17,13 +18,13 @@ import com.booki.dto.QuizQuestionResponse;
 import com.booki.dto.QuizReportResponse;
 import com.booki.dto.SubmitQuizAnswerRequest;
 import com.booki.repository.AiProfileRepository;
-import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.QuizAttemptRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.QuizService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
@@ -43,7 +44,7 @@ import java.util.regex.Pattern;
 public class QuizServiceImpl implements QuizService {
 
     private final SessionRepository sessionRepository;
-    private final DocumentPageRepository documentPageRepository;
+    private final ActivityContentService activityContentService;
     private final AiProfileRepository aiProfileRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final AiProviderRegistry aiProviderRegistry;
@@ -53,6 +54,10 @@ public class QuizServiceImpl implements QuizService {
 
     private static final Pattern SCORE_PATTERN = Pattern.compile("SCORE:\\s*([0-9]*\\.?[0-9]+)");
     private static final Pattern FEEDBACK_PATTERN = Pattern.compile("FEEDBACK:\\s*(.+)", Pattern.DOTALL);
+
+    /** One question block per line pair in the model's reply to {@link #generateQuiz}. */
+    private static final Pattern QUESTION_BLOCK_PATTERN = Pattern.compile(
+            "PAGE:\\s*(\\d+)\\s*\\n\\s*QUESTION:\\s*(.+?)(?=\\n\\s*PAGE:\\s*\\d+|$)", Pattern.DOTALL);
 
     /**
      * A single scale drives the whole quiz report: {@code correct} is just
@@ -71,35 +76,27 @@ public class QuizServiceImpl implements QuizService {
         String resolvedDifficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
         int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 20);
+        if (request.getStartPage() == null || request.getEndPage() == null) {
+            throw new IllegalArgumentException("startPage and endPage are required");
+        }
         int pageCount = session.getDocument().getPageCount();
-        // Clamp rather than reject: a stale or oversized range from the client
-        // self-corrects instead of erroring.
-        int endPage = clamp(request.getEndPage() != null ? request.getEndPage() : pageCount, 1, pageCount);
-        int startPage = clamp(request.getStartPage() != null ? request.getStartPage() : 1, 1, endPage);
+        int endPage = clamp(request.getEndPage(), 1, pageCount);
+        int startPage = clamp(request.getStartPage(), 1, endPage);
 
         AiProfile profile = resolvedProfileId != null
                 ? aiProfileRepository.findByIdAndUserId(resolvedProfileId, userId).orElse(null) : null;
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+        ActivityContent content = activityContentService.resolve(session.getDocument(), provider, startPage, endPage);
 
-        List<DocumentPage> pages = documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                session.getDocument().getId(), startPage, endPage);
-        if (pages.isEmpty()) {
-            throw new IllegalStateException("The selected pages have no extracted text to build questions from.");
-        }
-
-        // The number of questions is independent of how many pages the range
-        // spans. Spread the questions evenly ACROSS the range (not clustered at
-        // its start) so the quiz reflects the whole selection; a 1-page range
-        // still yields as many questions as asked.
-        int n = pages.size();
-        List<QuizQuestionResponse> questions = new java.util.ArrayList<>(questionCount);
-        for (int i = 0; i < questionCount; i++) {
-            int idx = questionCount == 1 ? 0
-                    : (int) Math.round((double) i * (n - 1) / (questionCount - 1));
-            DocumentPage page = pages.get(Math.min(idx, n - 1));
-            questions.add(new QuizQuestionResponse(i + 1, page.getPageNumber(),
-                    questionForPage(session, page, resolvedDifficulty, provider, startPage, endPage)));
-        }
+        String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_QUIZ_QUESTION, resolvedDifficulty,
+                activityContentService.documentTextFor(content));
+        String instruction = "Write exactly " + questionCount + " quiz questions covering pages " + startPage
+                + " to " + endPage + ", spread across that whole range — not clustered on one page. "
+                + "Do not ask about any page or information outside that range. "
+                + "Respond with exactly " + questionCount + " blocks in this exact format, one per question:\n"
+                + "PAGE: <page number>\nQUESTION: <the question>";
+        String reply = activityContentService.converse(provider, content, systemPrompt, List.of(), instruction);
+        List<QuizQuestionResponse> questions = parseQuestions(reply, questionCount, startPage, endPage);
 
         QuizConfigResponse config = new QuizConfigResponse(
                 resolvedProfileId, profile != null ? profile.getName() : null, resolvedDifficulty, questions.size(),
@@ -107,39 +104,30 @@ public class QuizServiceImpl implements QuizService {
         return new QuizGenerateResponse(questions, config);
     }
 
+    /** Parses the model's PAGE/QUESTION blocks; falls back to one whole-reply question if it didn't follow the format. */
+    private List<QuizQuestionResponse> parseQuestions(String reply, int questionCount, int startPage, int endPage) {
+        List<QuizQuestionResponse> questions = new ArrayList<>(questionCount);
+        Matcher matcher = QUESTION_BLOCK_PATTERN.matcher(reply);
+        int i = 0;
+        while (matcher.find() && i < questionCount) {
+            int pageNumber = clamp(Integer.parseInt(matcher.group(1)), startPage, endPage);
+            questions.add(new QuizQuestionResponse(++i, pageNumber, matcher.group(2).strip()));
+        }
+        if (questions.isEmpty()) {
+            questions.add(new QuizQuestionResponse(1, startPage, reply.strip()));
+        }
+        return questions;
+    }
+
     @Override
-    public String generateComprehensionQuestion(Session session, String pageContextText) {
+    public String generateComprehensionQuestion(Session session, ActivityContent content) {
         String difficulty = resolveDifficulty(session.getDifficulty());
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
-
-        String context = pageContextText;
-        if (context == null || context.isBlank()) {
-            int target = session.getCurrentPage() != null ? session.getCurrentPage() : session.getStartPage();
-            DocumentPage page = firstPageInRange(session, target, target)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "This session has no extracted pages to build a question from."));
-            context = "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText();
-        }
         String systemPrompt = promptAssembler.forFunction(
-                session, SlotKey.FN_QUIZ_QUESTION, difficulty, context);
-        return provider.converse(systemPrompt, List.of(),
-                "Write one quiz question using only the supplied page blocks. "
+                session, SlotKey.FN_QUIZ_QUESTION, difficulty, activityContentService.documentTextFor(content));
+        return activityContentService.converse(provider, content, systemPrompt, List.of(),
+                "Write one quiz question using only the supplied page(s). "
                         + "Do not ask about any page or information outside them.").strip();
-    }
-
-    private java.util.Optional<DocumentPage> firstPageInRange(Session session, int start, int end) {
-        return documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                session.getDocument().getId(), start, end).stream().findFirst();
-    }
-
-    private String questionForPage(Session session, DocumentPage page, String difficulty, AiProvider provider,
-                                   int selectedStartPage, int selectedEndPage) {
-        String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_QUIZ_QUESTION, difficulty,
-                "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
-        return provider.converse(systemPrompt, List.of(),
-                "The reader selected pages " + selectedStartPage + "-" + selectedEndPage
-                        + ". Write one question using only the supplied Page " + page.getPageNumber()
-                        + " block. Do not ask about any other page or outside information.").strip();
     }
 
     @Override
@@ -148,30 +136,27 @@ public class QuizServiceImpl implements QuizService {
         String difficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
         String answer = request.getAnswer() == null ? "" : request.getAnswer();
-
-        DocumentPage page = documentPageRepository
-                .findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                        session.getDocument().getId(), request.getPageNumber(), request.getPageNumber())
-                .stream().findFirst()
-                .orElse(null);
+        Integer pageNumber = request.getPageNumber();
 
         boolean correct;
         double score;
         String feedback;
 
-        if (page == null) {
+        if (pageNumber == null || pageNumber < 1 || pageNumber > session.getDocument().getPageCount()) {
             correct = false;
             score = 0;
             feedback = "Page not found in this session.";
         } else {
             AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+            ActivityContent content = activityContentService.resolve(session.getDocument(), provider,
+                    pageNumber, pageNumber);
             String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_ANSWER_GRADING, difficulty,
-                    "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText());
+                    activityContentService.documentTextFor(content));
             String instruction = "Question: " + (request.getQuestion() == null ? "" : request.getQuestion()) + "\n"
                     + "Reader's answer: " + (answer.isBlank() ? "(no answer given)" : answer)
                     + "\n\nGrade the answer now, in the required format.";
 
-            String response = provider.converse(systemPrompt, List.of(), instruction);
+            String response = activityContentService.converse(provider, content, systemPrompt, List.of(), instruction);
             GradeResult grade = parseGrade(response);
             correct = grade.correct();
             score = grade.score();

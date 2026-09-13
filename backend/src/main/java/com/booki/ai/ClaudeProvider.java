@@ -4,8 +4,12 @@ import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -50,6 +54,116 @@ public class ClaudeProvider implements AiProvider, StreamingAiProvider {
     @Override
     public String model() {
         return model;
+    }
+
+    @Override
+    public String key() {
+        return "claude";
+    }
+
+    @Override
+    public boolean supportsDocuments() {
+        return true;
+    }
+
+    /**
+     * Anthropic's Files API (out of beta, no beta header): {@code POST /v1/files}
+     * as multipart form-data with a {@code file} part, response {@code id} is
+     * the file id to reuse. See docs/build-with-claude/files.
+     */
+    @Override
+    public String uploadDocument(byte[] pdfBytes, String title) {
+        MultipartBodyBuilder parts = new MultipartBodyBuilder();
+        parts.part("file", new ByteArrayResource(pdfBytes) {
+            @Override
+            public String getFilename() {
+                return title;
+            }
+        }).contentType(MediaType.APPLICATION_PDF);
+
+        try {
+            String response = webClient.post()
+                    .uri("/files")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(BodyInserters.fromMultipartData(parts.build()))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(OutboundHttp.CALL_TIMEOUT)
+                    .block();
+            String fileId = JSON.readTree(response).path("id").asString();
+            if (fileId == null || fileId.isBlank()) {
+                throw new AiProviderException("claude", "file upload response had no id", null);
+            }
+            return fileId;
+        } catch (AiProviderException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Claude file upload failed", e);
+            throw new AiProviderException("claude", e);
+        }
+    }
+
+    /**
+     * Same request shape as {@link #converse}, except the final user message's
+     * content becomes a two-block array: the previously uploaded document
+     * (referenced by id, not resent) plus the text instruction — see
+     * {@code docs/build-with-claude/files} "Using a file in messages". The
+     * document block carries an ephemeral cache breakpoint so a multi-turn
+     * conversation over the same book is billed once, not on every turn.
+     */
+    @Override
+    public String converseWithDocument(String systemPrompt, List<Message> context, String userMessage,
+                                        String fileId, int startPage, int endPage) {
+        List<Map<String, String>> historyMessages = new ArrayList<>();
+        for (Message m : context) {
+            historyMessages.add(Map.of("role", m.role(), "content", m.content()));
+        }
+
+        Map<String, Object> documentBlock = Map.of(
+                "type", "document",
+                "source", Map.of("type", "file", "file_id", fileId),
+                "cache_control", Map.of("type", "ephemeral"));
+        Map<String, Object> textBlock = Map.of(
+                "type", "text",
+                "text", "Use only pages " + startPage + " to " + endPage + " of the attached document for this. "
+                        + userMessage);
+        Map<String, Object> finalUserMessage = Map.of(
+                "role", "user",
+                "content", List.of(documentBlock, textBlock));
+
+        List<Object> messages = new ArrayList<>(historyMessages);
+        messages.add(finalUserMessage);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("max_tokens", MAX_TOKENS);
+        body.put("system", systemPrompt);
+        body.put("messages", messages);
+
+        try {
+            String response = webClient.post()
+                    .uri("/messages")
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(OutboundHttp.CALL_TIMEOUT)
+                    .block();
+            JsonNode root = JSON.readTree(response);
+            for (JsonNode block : root.path("content")) {
+                if ("text".equals(block.path("type").asString())) {
+                    String text = block.path("text").asString();
+                    if (text != null && !text.isBlank()) {
+                        return text;
+                    }
+                }
+            }
+            throw new AiProviderException("claude", "response contained no text block", null);
+        } catch (AiProviderException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Claude document request failed", e);
+            throw new AiProviderException("claude", e);
+        }
     }
 
     @Override

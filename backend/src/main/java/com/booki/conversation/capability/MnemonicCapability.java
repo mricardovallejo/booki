@@ -1,5 +1,7 @@
 package com.booki.conversation.capability;
 
+import com.booki.ai.ActivityContentService;
+import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
 import com.booki.domain.SlotKey;
 import com.booki.prompt.PromptAssembler;
@@ -16,6 +18,7 @@ public class MnemonicCapability implements ConversationCapability {
 
     private final AiProviderRegistry aiProviderRegistry;
     private final PromptAssembler promptAssembler;
+    private final ActivityContentService activityContentService;
 
     @Override
     public String name() {
@@ -31,12 +34,12 @@ public class MnemonicCapability implements ConversationCapability {
     @Override
     public String execute(CapabilityInvocation invocation) {
         String systemPrompt = promptAssembler.forFunction(
-                invocation.session(), SlotKey.FN_MNEMONIC,
-                invocation.session().getDifficulty(), invocation.pageContextText());
+                invocation.session(), SlotKey.FN_MNEMONIC, invocation.session().getDifficulty(),
+                activityContentService.documentTextFor(invocation.content()));
         String instruction = "The reader said: \"" + invocation.userText()
                 + "\". Build the memory aid for the key points of the pages above.";
-        return aiProviderRegistry.get(invocation.session().getAiProvider())
-                .converse(systemPrompt, invocation.history(), instruction)
+        AiProvider provider = aiProviderRegistry.get(invocation.session().getAiProvider());
+        return activityContentService.converse(provider, invocation.content(), systemPrompt, invocation.history(), instruction)
                 .strip();
     }
 }

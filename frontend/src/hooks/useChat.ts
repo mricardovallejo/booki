@@ -27,9 +27,9 @@ export function useChat(sessionId: number, onActivity?: () => void) {
   const send = useCallback(
     async (
       text: string,
+      pageRange: { start: number; end: number },
       inputType: 'TEXT' | 'VOICE' = 'TEXT',
-      capabilityHint?: CapabilityHint,
-      pageRange?: { start: number; end: number }
+      capabilityHint?: CapabilityHint
     ) => {
       if (!text.trim()) return;
       setSending(true);
@@ -53,13 +53,14 @@ export function useChat(sessionId: number, onActivity?: () => void) {
   const sendVoice = useCallback(
     async (
       audio: Blob,
+      pageRange: { start: number; end: number },
       capabilityHint?: CapabilityHint,
       wantsAudioReply = true
     ): Promise<VoiceTurnResult | null> => {
       setSending(true);
       setError(null);
       try {
-        const result = await sendVoiceTurn(sessionId, audio, capabilityHint, wantsAudioReply);
+        const result = await sendVoiceTurn(sessionId, audio, pageRange, capabilityHint, wantsAudioReply);
         await refresh();
         onActivity?.();
         return result;

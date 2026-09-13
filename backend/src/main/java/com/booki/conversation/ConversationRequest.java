@@ -14,6 +14,10 @@ import com.booki.domain.Message;
  *                       capability directly, skipping the routing model call.
  *                       When {@code null} the model decides (see
  *                       {@code CapabilityRegistry}).
+ * @param pageStart      the shared activity range — required on every turn,
+ *                       plain chat included; there is exactly one range concept
+ *                       in BooKI, no per-message override.
+ * @param pageEnd        see {@code pageStart}.
  */
 public record ConversationRequest(
         Long userId,
@@ -31,13 +35,8 @@ public record ConversationRequest(
     }
 
     /** Turn with no explicit capability hint — the model routes. */
-    public ConversationRequest(Long userId, Long sessionId, String text, Message.InputType inputType) {
-        this(userId, sessionId, text, inputType, null, null, null);
-    }
-
-    /** Turn with a capability hint but no explicit page range (voice, tests). */
     public ConversationRequest(Long userId, Long sessionId, String text, Message.InputType inputType,
-                               String capabilityHint) {
-        this(userId, sessionId, text, inputType, capabilityHint, null, null);
+                               Integer pageStart, Integer pageEnd) {
+        this(userId, sessionId, text, inputType, null, pageStart, pageEnd);
     }
 }

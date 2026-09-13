@@ -1,5 +1,6 @@
 package com.booki.conversation.capability;
 
+import com.booki.ai.ActivityContent;
 import com.booki.ai.AiProvider;
 import com.booki.domain.Session;
 
@@ -9,14 +10,14 @@ import java.util.List;
  * Everything a {@link ConversationCapability} needs for one turn, already
  * resolved and ownership-checked by {@code ConversationEngine}.
  *
- * @param session          the reading session (its provider, language, reading progress, difficulty, tutor profile)
- * @param userText         the reader's latest message
- * @param history          recent conversation, chronological, for capabilities that want it (explain / mnemonic)
- * @param pageContextText  the session's bounded recent-page text
+ * @param session   the reading session (its provider, language, reading progress, difficulty, tutor profile)
+ * @param userText  the reader's latest message
+ * @param history   recent conversation, chronological, for capabilities that want it (explain / mnemonic)
+ * @param content   the shared activity range's content, resolved once per turn — see {@code ActivityContentService}
  */
 public record CapabilityInvocation(
         Session session,
         String userText,
         List<AiProvider.Message> history,
-        String pageContextText) {
+        ActivityContent content) {
 }

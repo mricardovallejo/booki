@@ -21,10 +21,13 @@ public class MessageRequest {
     private String capabilityHint;
 
     /**
-     * Optional page range for a quick-action capability (quiz / summary / explain
-     * / mnemonic). The frontend sends the shared activity range with these; plain
-     * chat leaves them null and the turn stays anchored on the reading position.
+     * The shared activity range (same one Quiz/Summary use) — required on
+     * every turn, plain chat included. There is exactly one range concept in
+     * BooKI; no per-message override.
      */
+    @NotNull
     private Integer pageStart;
+
+    @NotNull
     private Integer pageEnd;
 }

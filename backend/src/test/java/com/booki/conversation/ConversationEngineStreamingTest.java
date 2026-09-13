@@ -1,5 +1,8 @@
 package com.booki.conversation;
 
+import com.booki.ai.ActivityContent;
+import com.booki.ai.ActivityContentService;
+import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
 import com.booki.ai.StreamingAiProvider;
@@ -9,7 +12,6 @@ import com.booki.conversation.capability.ConversationCapability;
 import com.booki.domain.Document;
 import com.booki.domain.Message;
 import com.booki.domain.Session;
-import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.domain.Capability;
@@ -27,6 +29,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -45,8 +48,9 @@ class ConversationEngineStreamingTest {
 
     @Mock private SessionRepository sessionRepository;
     @Mock private MessageRepository messageRepository;
-    @Mock private DocumentPageRepository documentPageRepository;
+    @Mock private ActivityContentService activityContentService;
     @Mock private AiProviderRegistry aiProviderRegistry;
+    @Mock private AiProvider aiProvider;
     @Mock private PromptAssembler promptAssembler;
     @Mock private CapabilityRegistry capabilityRegistry;
     @Mock private Session session;
@@ -56,8 +60,8 @@ class ConversationEngineStreamingTest {
 
     @BeforeEach
     void setUp() {
-        engine = new ConversationEngine(sessionRepository, messageRepository, documentPageRepository,
-                aiProviderRegistry, promptAssembler, capabilityRegistry, 20, 24000);
+        engine = new ConversationEngine(sessionRepository, messageRepository, activityContentService,
+                aiProviderRegistry, promptAssembler, capabilityRegistry, 20);
 
         when(sessionRepository.findByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(Optional.of(session));
         lenient().when(session.getId()).thenReturn(SESSION_ID);
@@ -71,12 +75,18 @@ class ConversationEngineStreamingTest {
 
         when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
-        lenient().when(documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(any(), any(), any()))
-                .thenReturn(List.of());
+        lenient().when(aiProviderRegistry.get(any())).thenReturn(aiProvider);
+        lenient().when(activityContentService.resolve(any(), any(), anyInt(), anyInt()))
+                .thenReturn(new ActivityContent.PlainText(""));
+        lenient().when(activityContentService.documentTextFor(any())).thenReturn("");
         lenient().when(promptAssembler.forChat(any(), anyString(), anyString())).thenReturn("system-prompt");
         lenient().when(promptAssembler.enabledCapabilities(any())).thenReturn(EnumSet.allOf(Capability.class));
         lenient().when(capabilityRegistry.routerInstructions(any())).thenReturn("");
         lenient().when(capabilityRegistry.maxDirectiveLength()).thenReturn(160);
+    }
+
+    private static ConversationRequest request(String text) {
+        return new ConversationRequest(USER_ID, SESSION_ID, text, Message.InputType.TEXT, 1, 3);
     }
 
     private void providerEmits(String... events) {
@@ -98,7 +108,7 @@ class ConversationEngineStreamingTest {
         providerEmits("Hello", " there");
 
         RecordingStream out = new RecordingStream();
-        engine.converseStreaming(new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.TEXT), out);
+        engine.converseStreaming(request("hi"), out);
 
         assertThat(out.deltas).containsExactly("Hello", " there");
         assertThat(out.completed).isNotNull();
@@ -113,7 +123,7 @@ class ConversationEngineStreamingTest {
         providerEmits("{oops not json} rest of the answer keeps going well beyond the directive length cap so it flushes");
 
         RecordingStream out = new RecordingStream();
-        engine.converseStreaming(new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.TEXT), out);
+        engine.converseStreaming(request("hi"), out);
 
         assertThat(String.join("", out.deltas)).startsWith("{oops not json}");
         assertThat(out.completed.botMessage().getMessage()).startsWith("{oops not json}");
@@ -127,7 +137,7 @@ class ConversationEngineStreamingTest {
         providerEmits("{\"capability\":", "\"quiz\"}");
 
         RecordingStream out = new RecordingStream();
-        engine.converseStreaming(new ConversationRequest(USER_ID, SESSION_ID, "quiz me", Message.InputType.TEXT), out);
+        engine.converseStreaming(request("quiz me"), out);
 
         assertThat(out.deltas).containsExactly("What is X?");
         assertThat(out.deltas).noneMatch(d -> d.contains("{"));
@@ -140,7 +150,8 @@ class ConversationEngineStreamingTest {
 
         RecordingStream out = new RecordingStream();
         engine.converseStreaming(
-                new ConversationRequest(USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary"), out);
+                new ConversationRequest(USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary", 1, 3),
+                out);
 
         assertThat(out.deltas).containsExactly("Your recap.");
         assertThat(out.completed.botMessage().getMessage()).isEqualTo("Your recap.");
@@ -157,7 +168,7 @@ class ConversationEngineStreamingTest {
         }).when(aiProviderRegistry).converseStreaming(any(), anyString(), anyList(), anyString(), any());
 
         RecordingStream out = new RecordingStream();
-        engine.converseStreaming(new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.TEXT), out);
+        engine.converseStreaming(request("hi"), out);
 
         assertThat(out.error).isInstanceOf(ConversationFailedException.class);
         assertThat(out.completed).isNull();

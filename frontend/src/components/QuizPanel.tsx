@@ -43,7 +43,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
     report
   } = useQuiz(sessionId, session, onActivity);
   const { sending, lastSent, error: reportError, send, download } = useSessionReports(sessionId);
-  const { range } = useActivityRange();
+  const { range, pinned } = useActivityRange();
   // The shared activity range (set above the PDF) drives which pages the quiz uses.
   useEffect(() => {
     if (range) setConfig((prev) => ({ ...prev, startPage: range.start, endPage: range.end }));
@@ -65,8 +65,10 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
   const correctCount = Object.values(results).filter((r) => r.correct).length;
   const roundComplete = questions.length > 0 && answeredCount === questions.length;
   // Wait until the shared activity range is known (it comes from the PDF's page
-  // count) so we never generate a quiz on a stale 1-1 default.
-  const pageRangeValid = Boolean(session && range);
+  // count), and refuse a degenerate, never-adjusted 1-page range (right when a
+  // session starts) rather than silently generating a thin quiz nobody asked for.
+  const rangeTooSmall = range != null && !pinned && range.end - range.start + 1 < 2;
+  const pageRangeValid = Boolean(session && range) && !rangeTooSmall;
 
   useEffect(() => {
     if (roundComplete && autoSend && reportEmail.trim() && !autoSentRef.current) {
@@ -195,6 +197,9 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
             )}
           </div>
 
+          {rangeTooSmall && (
+            <p className="text-xs text-amber-400">Adjust the page range above before generating a quiz.</p>
+          )}
           <Button onClick={onGenerate} disabled={generating || !pageRangeValid} className="w-full">
             {generating ? 'Generating…' : questions.length > 0 ? 'Regenerate quiz' : 'Generate quiz'}
           </Button>

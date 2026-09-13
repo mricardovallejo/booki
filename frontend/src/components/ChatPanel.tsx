@@ -87,7 +87,15 @@ interface Props {
 export default function ChatPanel({ sessionId, onActivity }: Props) {
   const { messages, sending, error, send, sendVoice, refresh } = useChat(sessionId, onActivity);
   const { session } = useSession(sessionId);
-  const { range } = useActivityRange();
+  const { range, pinned } = useActivityRange();
+  // The shared range governs every activity now, chat included — see
+  // ActivityRangeContext. Still null briefly while the PDF's page count loads;
+  // degenerate (a single page, never adjusted) right when a session starts,
+  // before the reader has fixed a range or read past page one. Gate sending
+  // rather than silently run on a 1-page range nobody chose.
+  const rangeReady = range != null;
+  const rangeTooSmall = range != null && !pinned && range.end - range.start + 1 < 2;
+  const canSend = rangeReady && !rangeTooSmall;
   const lang: SessionLanguage = session?.language ?? 'en';
   const enabledCapabilities = session?.enabledCapabilities ?? ['quiz', 'summary', 'explain', 'mnemonic'];
   const quickActions = QUICK_ACTIONS.filter((a) => enabledCapabilities.includes(a.hint));
@@ -133,12 +141,13 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
   };
 
   const onVoicePress = async () => {
+    if (!range) return;
     setVoiceError(null);
     if (cloudVoice) {
       if (recorder.recording) {
         const clip = await recorder.stop();
         if (clip) {
-          const result = await sendVoice(clip, undefined, wantsAudioReply);
+          const result = await sendVoice(clip, range, undefined, wantsAudioReply);
           if (result?.audioBase64) playReply(result.audioBase64, result.audioContentType);
         } else {
           setVoiceError("BooKI didn't catch any audio. Try again.");
@@ -157,24 +166,28 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
       return;
     }
     const transcript = await fallbackVoice.start();
-    if (transcript) await send(transcript, 'VOICE');
+    if (transcript) await send(transcript, range, 'VOICE');
     else setVoiceError("BooKI couldn't hear you. Check your microphone and try again.");
   };
 
-  // Quick actions are "functions" — they run on the shared activity range, not
-  // the reading position. Free-text chat below stays anchored on the page.
-  const runQuickAction = (action: QuickAction) =>
-    send(action.text[lang], 'TEXT', action.hint, range ?? undefined);
+  // Every activity — quick action, chat, voice — runs on the one shared
+  // activity range now (see ActivityRangeContext); there is no separate
+  // "reading position" window for plain chat anymore.
+  const runQuickAction = (action: QuickAction) => {
+    if (!range) return;
+    send(action.text[lang], range, 'TEXT', action.hint);
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const onSend = async () => {
+    if (!range) return;
     const value = text;
     setText('');
     setVoiceError(null);
-    await send(value, 'TEXT');
+    await send(value, range, 'TEXT');
   };
 
   return (
@@ -252,13 +265,18 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
       <div className="border-t border-white/10 p-4">
         {error && <p className="mb-2 text-xs text-rose-400">{error}</p>}
         {voiceError && <p className="mb-2 text-xs text-rose-400">{voiceError}</p>}
+        {rangeTooSmall && (
+          <p className="mb-2 text-xs text-amber-400">
+            Adjust the page range above before asking BooKI anything.
+          </p>
+        )}
         {quickActions.length > 0 && (
           <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
             {quickActions.map((action) => (
               <button
                 key={action.hint}
                 onClick={() => runQuickAction(action)}
-                disabled={sending}
+                disabled={sending || !canSend}
                 className="font-menu shrink-0 rounded-full bg-white/5 px-3 py-1 text-[10px] tracking-wide text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
               >
                 {action.label[lang]}
@@ -270,7 +288,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
           <VoiceButton
             supported={voiceSupported}
             active={voiceActive}
-            busy={sending}
+            busy={sending || !canSend}
             onPress={onVoicePress}
             size="sm"
           />
@@ -283,12 +301,12 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSend()}
             placeholder="Write to BooKI…"
-            disabled={sending}
+            disabled={sending || !canSend}
             className="flex-1 bg-transparent py-2 text-sm text-white placeholder-white/40 outline-none"
           />
           <button
             onClick={onSend}
-            disabled={sending || !text.trim()}
+            disabled={sending || !canSend || !text.trim()}
             className="rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20 disabled:opacity-40"
           >
             {sending ? (

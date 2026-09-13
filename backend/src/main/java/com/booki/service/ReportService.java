@@ -1,5 +1,6 @@
 package com.booki.service;
 
+import com.booki.ai.ActivityContent;
 import com.booki.domain.Session;
 import com.booki.dto.GenerateSummaryRequest;
 import com.booki.dto.SendReportRequest;
@@ -16,13 +17,11 @@ public interface ReportService {
     Resource downloadReportFile(Long userId, Long reportId);
 
     /**
-     * The AI summary text for a session — book pages (scaled by {@code lengthPages})
-     * plus the discussion so far, on the shared three-layer prompt. Shared by the
-     * {@code POST /summary} endpoint and the conversational summary capability;
-     * the caller decides whether to persist it, wrap it in a PDF, or both.
+     * The AI summary text for a session — the resolved page content (scaled by
+     * {@code lengthPages}) plus the discussion so far, on the shared three-layer
+     * prompt. Shared by the {@code POST /summary} endpoint and the conversational
+     * summary capability; the caller decides whether to persist it, wrap it in a
+     * PDF, or both.
      */
-    String generateSummaryText(Session session, Integer lengthPages, String customPrompt);
-
-    /** Generate a conversational summary from the page context already selected for this turn. */
-    String generateSummaryText(Session session, Integer lengthPages, String customPrompt, String pageContextText);
+    String generateSummaryText(Session session, Integer lengthPages, String customPrompt, ActivityContent content);
 }

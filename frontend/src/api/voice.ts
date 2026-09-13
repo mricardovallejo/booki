@@ -24,6 +24,7 @@ export interface VoiceTurnResult {
 export const sendVoiceTurn = (
   sessionId: number,
   audio: Blob,
+  pageRange: { start: number; end: number },
   capabilityHint?: CapabilityHint,
   wantsAudioReply = true
 ) => {
@@ -31,6 +32,8 @@ export const sendVoiceTurn = (
   form.append('audio', audio, 'turn.webm');
   if (capabilityHint) form.append('capabilityHint', capabilityHint);
   form.append('wantsAudioReply', String(wantsAudioReply));
+  form.append('pageStart', String(pageRange.start));
+  form.append('pageEnd', String(pageRange.end));
   return api
     .post<VoiceTurnResult>(ENDPOINTS.sessions.voice(sessionId), form, {
       headers: { 'Content-Type': undefined }

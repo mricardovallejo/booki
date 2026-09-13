@@ -119,6 +119,8 @@ class SessionConversationIT extends IntegrationTestBase {
 
         MessageRequest message = new MessageRequest();
         message.setMessage("What are these pages about?");
+        message.setPageStart(1);
+        message.setPageEnd(3);
         ResponseEntity<MessageResponse> reply = rest.exchange("/api/sessions/" + sessionId + "/messages", HttpMethod.POST,
                 new HttpEntity<>(message, auth(user.token())), MessageResponse.class);
 
@@ -147,6 +149,8 @@ class SessionConversationIT extends IntegrationTestBase {
         MessageRequest message = new MessageRequest();
         message.setMessage("Ask me something");
         message.setCapabilityHint("quiz");
+        message.setPageStart(1);
+        message.setPageEnd(3);
         ResponseEntity<MessageResponse> reply = rest.exchange("/api/sessions/" + sessionId + "/messages", HttpMethod.POST,
                 new HttpEntity<>(message, auth(user.token())), MessageResponse.class);
 
@@ -162,6 +166,8 @@ class SessionConversationIT extends IntegrationTestBase {
         MessageRequest badType = new MessageRequest();
         badType.setMessage("hi");
         badType.setInputType("VIDEO");
+        badType.setPageStart(1);
+        badType.setPageEnd(3);
         ResponseEntity<Map<String, String>> invalid = rest.exchange("/api/sessions/" + sessionId + "/messages", HttpMethod.POST,
                 new HttpEntity<>(badType, auth(user.token())), errorType());
         assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -169,6 +175,8 @@ class SessionConversationIT extends IntegrationTestBase {
 
         MessageRequest ok = new MessageRequest();
         ok.setMessage("hi");
+        ok.setPageStart(1);
+        ok.setPageEnd(3);
         ResponseEntity<Map<String, String>> foreign = rest.exchange("/api/sessions/" + sessionId + "/messages", HttpMethod.POST,
                 new HttpEntity<>(ok, auth(other.token())), errorType());
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -201,11 +209,13 @@ class SessionConversationIT extends IntegrationTestBase {
         MessageRequest conversationalQuiz = new MessageRequest();
         conversationalQuiz.setMessage("Quiz me on pages 2 to 3");
         conversationalQuiz.setCapabilityHint("quiz");
+        conversationalQuiz.setPageStart(2);
+        conversationalQuiz.setPageEnd(3);
         rest.exchange("/api/sessions/" + sessionId + "/messages", HttpMethod.POST,
                 new HttpEntity<>(conversationalQuiz, auth(user.token())), MessageResponse.class);
         assertThat(fakeAi.calls().getLast().systemPrompt())
-                .contains("[Page 2]", "[Page 3]")
-                .doesNotContain("[Page 1]");
+                .contains("Page two text about hives", "Page three text about honey")
+                .doesNotContain("Page one text about bees");
 
         GenerateQuizRequest quiz = new GenerateQuizRequest();
         quiz.setDifficulty("easy");
@@ -231,8 +241,8 @@ class SessionConversationIT extends IntegrationTestBase {
                 new HttpEntity<>(summary, auth(user.token())), MessageResponse.class);
         assertThat(summaryResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(fakeAi.calls().getLast().systemPrompt())
-                .contains("p.2:", "p.3:")
-                .doesNotContain("p.1:");
+                .contains("Page two text about hives", "Page three text about honey")
+                .doesNotContain("Page one text about bees");
     }
 
     @Test
@@ -273,6 +283,8 @@ class SessionConversationIT extends IntegrationTestBase {
 
         MessageRequest message = new MessageRequest();
         message.setMessage("hello there");
+        message.setPageStart(1);
+        message.setPageEnd(1);
         rest.exchange("/api/sessions/" + sessionId + "/messages", HttpMethod.POST,
                 new HttpEntity<>(message, auth(user.token())), MessageResponse.class);
         patchPage(user, sessionId, 3);

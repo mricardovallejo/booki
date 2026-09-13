@@ -41,8 +41,9 @@ public class VoiceConversationService {
     @Value("${booki.voice.max-audio-bytes:10485760}")
     private long maxAudioBytes;
 
-    public VoiceTurnResult processTurn(Long userId, Long sessionId, byte[] audio,
-                                       String contentType, String capabilityHint, boolean wantsAudioReply) {
+    public VoiceTurnResult processTurn(Long userId, Long sessionId, byte[] audio, String contentType,
+                                       String capabilityHint, boolean wantsAudioReply,
+                                       Integer pageStart, Integer pageEnd) {
         log.info("Voice turn received sessionId={} audioBytes={} wantsAudioReply={}",
                 sessionId, audio == null ? 0 : audio.length, wantsAudioReply);
         Session session = sessionRepository.findByIdAndUserId(sessionId, userId)
@@ -67,7 +68,7 @@ public class VoiceConversationService {
         }
 
         ConversationResult result = conversationEngine.converse(new ConversationRequest(
-                userId, sessionId, transcript, Message.InputType.VOICE, capabilityHint));
+                userId, sessionId, transcript, Message.InputType.VOICE, capabilityHint, pageStart, pageEnd));
 
         // TTS is best-effort, and skippable: the text reply is already persisted
         // and returned either way, so a reader who wants text-only replies (e.g.

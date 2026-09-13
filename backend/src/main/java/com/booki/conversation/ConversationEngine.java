@@ -1,5 +1,7 @@
 package com.booki.conversation;
 
+import com.booki.ai.ActivityContent;
+import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
@@ -7,10 +9,8 @@ import com.booki.ai.StreamingAiProvider;
 import com.booki.conversation.capability.CapabilityInvocation;
 import com.booki.conversation.capability.CapabilityRegistry;
 import com.booki.conversation.capability.ConversationCapability;
-import com.booki.domain.DocumentPage;
 import com.booki.domain.Message;
 import com.booki.domain.Session;
-import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.domain.Capability;
@@ -26,8 +26,6 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * The single orchestrator for every conversational turn in BooKI, whatever its
@@ -54,39 +52,29 @@ public class ConversationEngine {
 
     private static final String UNAVAILABLE =
             "The reading assistant is temporarily unavailable. Please try again in a moment.";
-    private static final int MAX_CONTEXT_PAGES = 8;
-    private static final int MAX_EXPLICIT_CONTEXT_PAGES = 20;
-    private static final Pattern PAGE_RANGE = Pattern.compile(
-            "(?iu)\\b(?:pages?|páginas?|paginas?)\\s*(\\d+)\\s*"
-                    + "(?:-|–|—|to|through|a|à|hasta)\\s*"
-                    + "(?:(?:the|la|las|le|les)\\s+)?"
-                    + "(?:pages?|páginas?|paginas?)?\\s*(\\d+)");
 
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
-    private final DocumentPageRepository documentPageRepository;
+    private final ActivityContentService activityContentService;
     private final AiProviderRegistry aiProviderRegistry;
     private final PromptAssembler promptAssembler;
     private final CapabilityRegistry capabilityRegistry;
     private final int historyWindow;
-    private final int maxContextChars;
 
     public ConversationEngine(SessionRepository sessionRepository,
                               MessageRepository messageRepository,
-                              DocumentPageRepository documentPageRepository,
+                              ActivityContentService activityContentService,
                               AiProviderRegistry aiProviderRegistry,
                               PromptAssembler promptAssembler,
                               CapabilityRegistry capabilityRegistry,
-                              @Value("${booki.conversation.history-window:20}") int historyWindow,
-                              @Value("${booki.conversation.max-context-chars:24000}") int maxContextChars) {
+                              @Value("${booki.conversation.history-window:20}") int historyWindow) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
-        this.documentPageRepository = documentPageRepository;
+        this.activityContentService = activityContentService;
         this.aiProviderRegistry = aiProviderRegistry;
         this.promptAssembler = promptAssembler;
         this.capabilityRegistry = capabilityRegistry;
         this.historyWindow = Math.max(1, historyWindow);
-        this.maxContextChars = Math.max(1000, maxContextChars);
     }
 
     public ConversationResult converse(ConversationRequest request) {
@@ -100,11 +88,12 @@ public class ConversationEngine {
 
         Message userMessage = persist(session, Message.Speaker.USER, request.inputType(), request.text());
 
-        String pageContext = buildContextText(session, request);
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+        ActivityContent content = resolveActivityContent(session, request, provider);
 
         String answer;
         try {
-            answer = generateAnswer(request, session, history, pageContext);
+            answer = generateAnswer(request, session, history, provider, content);
         } catch (AiProviderException e) {
             // The user's turn stays in history; we simply don't fabricate a reply.
             throw new ConversationFailedException(UNAVAILABLE, e);
@@ -112,6 +101,23 @@ public class ConversationEngine {
 
         Message botMessage = persist(session, Message.Speaker.BOOKI, Message.InputType.TEXT, answer);
         return new ConversationResult(userMessage, botMessage);
+    }
+
+    /**
+     * The shared activity range (same one Quiz/Summary use — see
+     * {@code ActivityRangeContext} on the frontend) is required on every turn,
+     * chat included: there is exactly one range concept in BooKI, no per-message
+     * override. Resolves to either an uploaded-document reference or, for a
+     * provider with no document support, plain text extracted from that range.
+     */
+    private ActivityContent resolveActivityContent(Session session, ConversationRequest request, AiProvider provider) {
+        if (request.pageStart() == null || request.pageEnd() == null) {
+            throw new IllegalArgumentException("pageStart and pageEnd are required");
+        }
+        int pageCount = session.getDocument().getPageCount();
+        int start = Math.max(1, Math.min(request.pageStart(), pageCount));
+        int end = Math.max(start, Math.min(request.pageEnd(), pageCount));
+        return activityContentService.resolve(session.getDocument(), provider, start, end);
     }
 
     /**
@@ -135,8 +141,9 @@ public class ConversationEngine {
 
         List<AiProvider.Message> history = recentHistory(session.getId());
         Message userMessage = persist(session, Message.Speaker.USER, request.inputType(), request.text());
-        String pageContext = buildContextText(session, request);
-        CapabilityInvocation invocation = new CapabilityInvocation(session, request.text(), history, pageContext);
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+        ActivityContent content = resolveActivityContent(session, request, provider);
+        CapabilityInvocation invocation = new CapabilityInvocation(session, request.text(), history, content);
 
         Optional<ConversationCapability> hinted = hintedCapability(request, session);
         if (hinted.isPresent()) {
@@ -153,9 +160,14 @@ public class ConversationEngine {
             return;
         }
 
-        String systemPrompt = promptAssembler.forChat(session, pageContext,
+        String systemPrompt = promptAssembler.forChat(session, activityContentService.documentTextFor(content),
                 capabilityRegistry.routerInstructions(promptAssembler.enabledCapabilities(session)));
 
+        // Native token streaming has no document-attached variant yet (only
+        // ClaudeProvider streams at all, via StreamingAiProvider) — a
+        // DocumentReference here still gets the range instruction in the prompt,
+        // just not the file itself. Unreachable from any transport today (no
+        // HTTP endpoint calls this — see ADR-010); revisit if that changes.
         aiProviderRegistry.converseStreaming(session.getAiProvider(), systemPrompt, history, request.text(),
                 new DirectiveGatingStream(out, invocation, userMessage, session));
     }
@@ -275,10 +287,9 @@ public class ConversationEngine {
      *       directive, that capability runs, else its reply is the answer.</li>
      * </ul>
      */
-    private String generateAnswer(ConversationRequest request, Session session,
-                                  List<AiProvider.Message> history, String pageContext) {
-        CapabilityInvocation invocation =
-                new CapabilityInvocation(session, request.text(), history, pageContext);
+    private String generateAnswer(ConversationRequest request, Session session, List<AiProvider.Message> history,
+                                  AiProvider provider, ActivityContent content) {
+        CapabilityInvocation invocation = new CapabilityInvocation(session, request.text(), history, content);
 
         Optional<ConversationCapability> hinted = hintedCapability(request, session);
         if (hinted.isPresent()) {
@@ -286,21 +297,19 @@ public class ConversationEngine {
         }
 
         Set<Capability> enabled = promptAssembler.enabledCapabilities(session);
-        String systemPrompt = promptAssembler.forChat(session, pageContext,
+        String systemPrompt = promptAssembler.forChat(session, activityContentService.documentTextFor(content),
                 capabilityRegistry.routerInstructions(enabled));
-        String providerName = aiProviderRegistry.resolveName(session.getAiProvider());
-        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
         long startedAt = System.currentTimeMillis();
         String reply;
         try {
-            reply = provider.converse(systemPrompt, history, request.text());
+            reply = activityContentService.converse(provider, content, systemPrompt, history, request.text());
         } catch (RuntimeException e) {
             log.warn("AI call failed provider={} model={} durationMs={}",
-                    providerName, provider.model(), System.currentTimeMillis() - startedAt);
+                    provider.key(), provider.model(), System.currentTimeMillis() - startedAt);
             throw e;
         }
         log.info("AI call completed provider={} model={} durationMs={}",
-                providerName, provider.model(), System.currentTimeMillis() - startedAt);
+                provider.key(), provider.model(), System.currentTimeMillis() - startedAt);
 
         return routedCapability(reply, enabled)
                 .map(capability -> capability.execute(invocation))
@@ -318,94 +327,6 @@ public class ConversationEngine {
                         m.getSpeaker() == Message.Speaker.USER ? "user" : "assistant",
                         m.getMessage()))
                 .toList();
-    }
-
-    /**
-     * An explicitly requested range (up to 20 pages), or the current page and
-     * up to seven recently read pages. Selection prioritizes the newest page
-     * and restores reading order before sending. A session may span the whole
-     * document, but a normal chat turn must not send the whole PDF.
-     */
-    private String buildContextText(Session session, ConversationRequest request) {
-        String userText = request.text();
-        int documentPageCount = session.getDocument().getPageCount();
-        int currentPage = session.getCurrentPage() != null
-                ? session.getCurrentPage() : session.getStartPage();
-        int contextStart;
-        int contextEnd;
-        Optional<int[]> explicitRange = explicitPageRange(userText, documentPageCount);
-        Optional<int[]> activityRange = activityPageRange(request, documentPageCount);
-        if (explicitRange.isPresent()) {
-            // A range typed into the message ("pages 4-6") always wins.
-            contextStart = explicitRange.get()[0];
-            contextEnd = explicitRange.get()[1];
-        } else if (activityRange.isPresent()) {
-            // A quick-action button carries the shared activity range; take the
-            // last MAX_EXPLICIT_CONTEXT_PAGES of it so a wide range stays bounded.
-            contextEnd = activityRange.get()[1];
-            contextStart = Math.max(activityRange.get()[0], contextEnd - MAX_EXPLICIT_CONTEXT_PAGES + 1);
-        } else {
-            contextStart = currentPage >= session.getStartPage()
-                    ? Math.max(session.getStartPage(), currentPage - MAX_CONTEXT_PAGES + 1)
-                    : currentPage;
-            contextEnd = currentPage;
-        }
-        List<DocumentPage> pages = documentPageRepository
-                .findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(
-                        session.getDocument().getId(), contextStart, contextEnd);
-
-        List<String> selected = new ArrayList<>();
-        int usedChars = 0;
-        for (int i = pages.size() - 1; i >= 0; i--) {
-            DocumentPage page = pages.get(i);
-            String block = "[Page " + page.getPageNumber() + "]\n" + page.getExtractedText();
-            int separatorChars = selected.isEmpty() ? 0 : 2;
-            if (usedChars + separatorChars + block.length() > maxContextChars) {
-                if (selected.isEmpty()) {
-                    String marker = "\n[Current page truncated to fit the AI context limit.]";
-                    int textLimit = Math.max(0, maxContextChars - marker.length());
-                    selected.add(block.substring(0, Math.min(textLimit, block.length())) + marker);
-                }
-                break;
-            }
-            selected.add(block);
-            usedChars += separatorChars + block.length();
-        }
-        Collections.reverse(selected);
-        return String.join("\n\n", selected);
-    }
-
-    /** The activity page range a quick action sent alongside the turn, clamped to the document. */
-    private Optional<int[]> activityPageRange(ConversationRequest request, int documentPageCount) {
-        Integer start = request.pageStart();
-        Integer end = request.pageEnd();
-        if (start == null || end == null) {
-            return Optional.empty();
-        }
-        int s = Math.max(1, Math.min(start, documentPageCount));
-        int e = Math.max(s, Math.min(end, documentPageCount));
-        return Optional.of(new int[]{s, e});
-    }
-
-    private Optional<int[]> explicitPageRange(String userText, int documentPageCount) {
-        if (userText == null || userText.isBlank()) {
-            return Optional.empty();
-        }
-        Matcher matcher = PAGE_RANGE.matcher(userText);
-        if (!matcher.find()) {
-            return Optional.empty();
-        }
-        try {
-            int startPage = Integer.parseInt(matcher.group(1));
-            int endPage = Integer.parseInt(matcher.group(2));
-            if (startPage < 1 || endPage < startPage || endPage > documentPageCount
-                    || endPage - startPage + 1 > MAX_EXPLICIT_CONTEXT_PAGES) {
-                return Optional.empty();
-            }
-            return Optional.of(new int[]{startPage, endPage});
-        } catch (NumberFormatException ignored) {
-            return Optional.empty();
-        }
     }
 
     private Message persist(Session session, Message.Speaker speaker, Message.InputType inputType, String text) {

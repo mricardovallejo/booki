@@ -1,5 +1,7 @@
 package com.booki.conversation;
 
+import com.booki.ai.ActivityContent;
+import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
@@ -8,7 +10,6 @@ import com.booki.conversation.capability.ConversationCapability;
 import com.booki.domain.Document;
 import com.booki.domain.Message;
 import com.booki.domain.Session;
-import com.booki.repository.DocumentPageRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.domain.Capability;
@@ -29,6 +30,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -46,7 +48,7 @@ class ConversationEngineTest {
 
     @Mock private SessionRepository sessionRepository;
     @Mock private MessageRepository messageRepository;
-    @Mock private DocumentPageRepository documentPageRepository;
+    @Mock private ActivityContentService activityContentService;
     @Mock private AiProviderRegistry aiProviderRegistry;
     @Mock private PromptAssembler promptAssembler;
     @Mock private CapabilityRegistry capabilityRegistry;
@@ -61,14 +63,19 @@ class ConversationEngineTest {
 
     @BeforeEach
     void setUp() {
-        engine = new ConversationEngine(sessionRepository, messageRepository, documentPageRepository,
-                aiProviderRegistry, promptAssembler, capabilityRegistry, 20, 24000);
+        engine = new ConversationEngine(sessionRepository, messageRepository, activityContentService,
+                aiProviderRegistry, promptAssembler, capabilityRegistry, 20);
 
         when(sessionRepository.findByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(Optional.of(session));
         lenientSession();
         when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
-        lenient().when(documentPageRepository.findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(any(), any(), any()))
-                .thenReturn(List.of());
+        lenient().when(activityContentService.resolve(any(), any(), anyInt(), anyInt()))
+                .thenReturn(new ActivityContent.PlainText(""));
+        lenient().when(activityContentService.documentTextFor(any())).thenReturn("");
+        // Bridges the mocked resolver straight to the AiProvider mock, so tests
+        // can keep asserting against aiProvider.converse(...) as before.
+        lenient().when(activityContentService.converse(any(), any(), anyString(), anyList(), anyString()))
+                .thenAnswer(inv -> aiProvider.converse(inv.getArgument(2), inv.getArgument(3), inv.getArgument(4)));
         lenient().when(promptAssembler.forChat(any(), anyString(), anyString())).thenReturn("system-prompt");
         lenient().when(promptAssembler.enabledCapabilities(any())).thenReturn(EnumSet.allOf(Capability.class));
         lenient().when(aiProviderRegistry.get(any())).thenReturn(aiProvider);
@@ -87,6 +94,10 @@ class ConversationEngineTest {
         lenient().when(document.getPageCount()).thenReturn(100);
     }
 
+    private static ConversationRequest request(String text) {
+        return new ConversationRequest(USER_ID, SESSION_ID, text, Message.InputType.TEXT, 1, 3);
+    }
+
     @Test
     void sendsMostRecentMessagesInChronologicalOrder() {
         // Repository returns newest-first (matches findBy...OrderByCreatedAtDesc).
@@ -97,7 +108,7 @@ class ConversationEngineTest {
         when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(newestFirst);
         when(aiProvider.converse(anyString(), anyList(), anyString())).thenReturn("BooKI reply");
 
-        engine.converse(new ConversationRequest(USER_ID, SESSION_ID, "current question", Message.InputType.TEXT));
+        engine.converse(request("current question"));
 
         verify(aiProvider).converse(eq("system-prompt"), historyCaptor.capture(), eq("current question"));
         List<AiProvider.Message> history = historyCaptor.getValue();
@@ -113,7 +124,7 @@ class ConversationEngineTest {
         when(aiProvider.converse(anyString(), anyList(), anyString())).thenReturn("the answer");
 
         ConversationResult result = engine.converse(
-                new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.VOICE));
+                new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.VOICE, 1, 3));
 
         verify(messageRepository, times(2)).save(savedMessageCaptor.capture());
         List<Message> saved = savedMessageCaptor.getAllValues();
@@ -124,15 +135,22 @@ class ConversationEngineTest {
     }
 
     @Test
-    void anExplicitPageRangeInTheMessageOverridesTheRecentPageWindow() {
+    void resolvesActivityContentFromTheRequestsPageRangeNotTheReadingPosition() {
         when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
-        when(aiProvider.converse(anyString(), anyList(), anyString())).thenReturn("a question");
+        when(aiProvider.converse(anyString(), anyList(), anyString())).thenReturn("an answer");
 
-        engine.converse(new ConversationRequest(
-                USER_ID, SESSION_ID, "Ask me about page 10 to the 12", Message.InputType.TEXT));
+        engine.converse(new ConversationRequest(USER_ID, SESSION_ID, "tell me about this", Message.InputType.TEXT, 10, 12));
 
-        verify(documentPageRepository)
-                .findByDocumentIdAndPageNumberBetweenOrderByPageNumberAsc(42L, 10, 12);
+        verify(activityContentService).resolve(document, aiProvider, 10, 12);
+    }
+
+    @Test
+    void missingPageRangeIsRejected() {
+        when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> engine.converse(
+                new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.TEXT, null, null)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -141,8 +159,7 @@ class ConversationEngineTest {
         when(aiProvider.converse(anyString(), anyList(), anyString()))
                 .thenThrow(new AiProviderException("claude", new RuntimeException("boom")));
 
-        assertThatThrownBy(() -> engine.converse(
-                new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.TEXT)))
+        assertThatThrownBy(() -> engine.converse(request("hi")))
                 .isInstanceOf(ConversationFailedException.class);
 
         // Only the user's turn was persisted — no fabricated BooKI reply.
@@ -158,8 +175,7 @@ class ConversationEngineTest {
         when(capabilityRegistry.parseDirective("{\"capability\":\"quiz\"}")).thenReturn(Optional.of("quiz"));
         when(capabilityRegistry.find("quiz")).thenReturn(Optional.of(quiz));
 
-        ConversationResult result = engine.converse(
-                new ConversationRequest(USER_ID, SESSION_ID, "quiz me", Message.InputType.TEXT));
+        ConversationResult result = engine.converse(request("quiz me"));
 
         assertThat(result.botMessage().getMessage()).isEqualTo("What is the capital of France?");
     }
@@ -171,7 +187,7 @@ class ConversationEngineTest {
         when(capabilityRegistry.find("summary")).thenReturn(Optional.of(summary));
 
         ConversationResult result = engine.converse(new ConversationRequest(
-                USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary"));
+                USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary", 1, 3));
 
         assertThat(result.botMessage().getMessage()).isEqualTo("Here is your recap.");
         verify(aiProvider, never()).converse(anyString(), anyList(), anyString());
@@ -184,7 +200,7 @@ class ConversationEngineTest {
         when(capabilityRegistry.find("bogus")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> engine.converse(new ConversationRequest(
-                USER_ID, SESSION_ID, "do a thing", Message.InputType.TEXT, "bogus")))
+                USER_ID, SESSION_ID, "do a thing", Message.InputType.TEXT, "bogus", 1, 3)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

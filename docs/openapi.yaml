@@ -11,8 +11,8 @@ info:
 
 
     Every write body is `@Valid`-checked: free-text fields have length caps
-    (persona/reader-context slots ≤ 8000, names ≤ 120, prompts ≤ 2000),
-    `difficulty` ∈ `easy|medium|hard`, `deliverAs` ∈ `chat|pdf`, `lengthPages`
+    (persona/App Profile slots/reader context ≤ 8000, names ≤ 120, prompts ≤
+    2000), `difficulty` ∈ `easy|medium|hard`, `deliverAs` ∈ `chat|pdf`, `lengthPages`
     ∈ 1–10, email fields must be well-formed. A violation is
     `400 {"error": "field: message"}`. An uncaught server error is a
     `500 {"error": "Something went wrong on our side. Please try again."}` —
@@ -41,12 +41,24 @@ tags:
     description: User-defined labels for organizing the library. A document can belong to any number of tags.
   - name: AI Profiles
     description: >
-      The "master" a session runs on — persona, the difficulty rubrics, the
-      per-function prompts, capability routing — plus `enabledCapabilities`.
+      The "master" a session runs on — a name and a persona, nothing else.
       Every account is seeded with an editable copy of each shipped template
-      (one flagged `isDefault`). The BooKI core is fixed and never part of a
-      profile. Who is reading is a separate **Reader Profile** (see that tag);
-      a session picks one of each. Full model: `docs/prompts.md`, ADR-015 + ADR-017.
+      (one flagged `isDefault`). What each difficulty level means, how BooKI's
+      functions behave, capability routing, and which capabilities are enabled
+      are all account-wide (see the **App Profile** tag and the `Users` `me`
+      endpoints) — not part of any one profile. The BooKI core is fixed and
+      never part of a profile. Who is reading is a separate **Reader Profile**
+      (see that tag); a session picks one tutor and one reader. Full model:
+      `docs/prompts.md`, ADR-015 + ADR-017 + ADR-029.
+  - name: App Profile
+    description: >
+      Account-wide, not tied to any one AI Profile: what each difficulty level
+      means (read only when generating or grading a quiz question — chat,
+      voice, and summaries never read it), and how BooKI's five functions
+      (quiz question, answer grading, summary, explain, mnemonic) and
+      capability routing behave. One editable set of 9 slots per account,
+      seeded from the shipped catalog at registration. See `docs/prompts.md`,
+      ADR-029.
   - name: Reader Profiles
     description: >
       Who is reading, in one study context ("Languages", "Sciences",
@@ -164,8 +176,10 @@ paths:
       summary: Update the current user's profile
       operationId: updateCurrentUser
       description: >
-        Account details only (the display name). The reader's learning context
-        lives in reader profiles (see the Reader Profiles tag), not on the user.
+        The display name and/or `enabledCapabilities` — the account-wide set
+        (see the App Profile tag), not per AI Profile. The reader's learning
+        context lives in reader profiles (see the Reader Profiles tag), not
+        on the user.
       requestBody:
         content:
           application/json:
@@ -173,6 +187,9 @@ paths:
               type: object
               properties:
                 name: { type: string }
+                enabledCapabilities:
+                  type: array
+                  items: { type: string, enum: [quiz, summary, explain, mnemonic] }
       responses:
         "200":
           description: Updated profile
@@ -394,7 +411,7 @@ paths:
       description: >
         The current user's own AI Profiles — every account is seeded at
         registration with one editable copy of each shipped template (one flagged
-        `isDefault`). Summaries omit `slots`; fetch one profile for its slots.
+        `isDefault`). Summaries omit `persona`; fetch one profile for its persona.
       responses:
         "200":
           description: OK
@@ -409,7 +426,7 @@ paths:
   /ai-profiles/{id}:
     get:
       tags: [AI Profiles]
-      summary: Get one AI Profile with its prompt slots
+      summary: Get one AI Profile
       operationId: getAiProfile
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
@@ -426,8 +443,9 @@ paths:
       summary: Update one of my AI Profiles
       operationId: updateAiProfile
       description: >
-        Edits the profile name, `enabledCapabilities`, and/or slot bodies. Only
-        the editable `content` of a slot can change — the locked frame is fixed.
+        Edits the profile name and/or persona. Difficulty, function prompts,
+        routing, and enabled capabilities are account-wide — see the App
+        Profile tag and `PATCH /users/me`, not this endpoint.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
       requestBody:
@@ -437,21 +455,7 @@ paths:
               type: object
               properties:
                 name: { type: string, maxLength: 120 }
-                enabledCapabilities:
-                  type: array
-                  items: { $ref: "#/components/schemas/CapabilityHint" }
-                  description: >
-                    Which capabilities this profile allows. A capability left out
-                    is off for the session: never auto-triggered, and its
-                    quick-action button is hidden in the chat.
-                slots:
-                  type: array
-                  items:
-                    type: object
-                    required: [key, text]
-                    properties:
-                      key: { type: string }
-                      text: { type: string }
+                persona: { type: string, maxLength: 8000 }
       responses:
         "200":
           description: Updated
@@ -483,8 +487,8 @@ paths:
       summary: Duplicate an AI Profile
       operationId: duplicateAiProfile
       description: >
-        Creates a copy owned by the current user, with every SlotPrompt's `text`
-        and `originalText` seeded from the source. The copy tracks the same
+        Creates a copy owned by the current user, with `persona`/
+        `personaOriginal` seeded from the source. The copy tracks the same
         shipped template, so it can still be restored to the original.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
@@ -507,28 +511,17 @@ paths:
   /ai-profiles/{id}/revert:
     post:
       tags: [AI Profiles]
-      summary: Restore one slot's original text
-      operationId: revertAiProfileSlot
-      description: Sets the given SlotPrompt's `text` back to its `originalText`.
+      summary: Restore this profile's persona to its original text
+      operationId: revertAiProfilePersona
+      description: Sets `persona` back to `personaOriginal`. No request body.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [key]
-              properties:
-                key: { type: string }
       responses:
         "200":
           description: Updated
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AiProfile" }
-        "400":
-          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -538,8 +531,8 @@ paths:
       summary: Restore the whole profile to its original template
       operationId: restoreAiProfile
       description: >
-        Resets every SlotPrompt's `text` and `enabledCapabilities` to the
-        shipped template this profile is a copy of. The profile name is kept.
+        Resets `persona` to the shipped template this profile is a copy of.
+        The profile name is kept.
       parameters:
         - $ref: "#/components/parameters/AiProfileId"
       responses:
@@ -552,6 +545,91 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /app-profile:
+    get:
+      tags: [App Profile]
+      summary: Get the account-wide App Profile (all 9 slots)
+      operationId: listAppProfile
+      description: >
+        What each difficulty level means, how BooKI's five functions behave,
+        and the capability-routing instruction — the same regardless of which
+        AI Profile (tutor) is active. Seeded from the shipped catalog at
+        registration.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AppProfileSlot" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [App Profile]
+      summary: Update one or more App Profile slots
+      operationId: updateAppProfile
+      description: A slot key missing from the list is left unchanged.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slots:
+                  type: array
+                  items:
+                    type: object
+                    required: [key, text]
+                    properties:
+                      key: { type: string, maxLength: 40 }
+                      text: { type: string, maxLength: 8000 }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AppProfileSlot" }
+
+  /app-profile/{key}/revert:
+    post:
+      tags: [App Profile]
+      summary: Restore one App Profile slot's original text
+      operationId: revertAppProfileSlot
+      description: Sets the given slot's `text` back to its `originalText`. No request body.
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+          example: fn_quiz_question
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AppProfileSlot" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /app-profile/restore:
+    post:
+      tags: [App Profile]
+      summary: Restore every App Profile slot to its shipped default
+      operationId: restoreAppProfile
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AppProfileSlot" }
 
   /reader-profiles:
     get:
@@ -717,12 +795,13 @@ paths:
       summary: Inspect the layered prompt context for this session
       operationId: getSessionContext
       description: >
-        Transparency endpoint: the ordered layers that shape BooKI's answers for
-        this session — the fixed BooKI core, the session's AI Profile
-        contributions (difficulty rubric for the active level, persona,
-        per-function, routing) and the reader profile's context. Also returns
-        `aiProfileName` and `readerProfileName`. Surfaced in the "Context" info
-        button.
+        Transparency endpoint: the ordered layers that shape BooKI's answers
+        for this session — the fixed BooKI core, the session's AI Profile
+        persona, the account-wide App Profile's per-function and routing
+        content, and the reader profile's context. The active difficulty
+        rubric is not one of these layers — it is read only inside quiz
+        question/grading calls, never for chat. Also returns `aiProfileName`
+        and `readerProfileName`. Surfaced in the "Context" info button.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
@@ -931,7 +1010,10 @@ paths:
               properties:
                 difficulty:
                   allOf: [{ $ref: "#/components/schemas/Difficulty" }]
-                  description: Overrides the session difficulty for this round only. The session's AI Profile is always used.
+                  description: >
+                    Overrides the session difficulty for this round only.
+                    What the level actually means comes from the account-wide
+                    App Profile, not the session's AI Profile.
                 questionCount: { type: integer, minimum: 1, maximum: 20, default: 3 }
                 startPage: { type: integer, minimum: 1, description: "First page for this quiz round — the shared activity range. Clamped to the document." }
                 endPage: { type: integer, minimum: 1, description: "Last page for this quiz round. Clamped to the document." }
@@ -1295,7 +1377,11 @@ components:
         email: { type: string, format: email }
         name: { type: string }
         createdAt: { type: string, format: date-time }
-      required: [id, email, name, createdAt]
+        enabledCapabilities:
+          type: array
+          description: Account-wide — not per AI Profile. See the App Profile tag.
+          items: { type: string, enum: [quiz, summary, explain, mnemonic] }
+      required: [id, email, name, createdAt, enabledCapabilities]
 
     AuthResponse:
       type: object
@@ -1349,45 +1435,52 @@ components:
 
     AiProfileSummary:
       type: object
-      description: An AI Profile without its SlotPrompts (list view).
+      description: >
+        An AI Profile without its persona (list view). Enabled capabilities
+        live on `User`, not here — see the App Profile tag.
       properties:
         id: { type: integer }
         name: { type: string }
         isDefault:
           type: boolean
           description: True for the one profile pre-selected when creating a session.
-        enabledCapabilities:
-          type: array
-          items: { $ref: "#/components/schemas/CapabilityHint" }
-          description: The capabilities this profile allows (subset of the four).
         updatedAt: { type: string, format: date-time }
-      required: [id, name, isDefault, enabledCapabilities, updatedAt]
+      required: [id, name, isDefault, updatedAt]
 
     AiProfile:
       allOf:
         - $ref: "#/components/schemas/AiProfileSummary"
         - type: object
+          description: >
+            A name and a persona — nothing else. Difficulty, function
+            prompts, routing, and enabled capabilities are all account-wide
+            (see the App Profile tag and `User`), not part of this.
           properties:
-            slots:
-              type: array
-              items: { $ref: "#/components/schemas/AiProfileSlot" }
-          required: [slots]
+            persona: { type: string }
+            personaOriginal:
+              type: string
+              description: The shipped baseline for the Edited/Original badge and restore.
+            personaModified:
+              type: boolean
+              description: Computed — `persona != personaOriginal`. Not stored.
+          required: [persona, personaOriginal, personaModified]
 
-    AiProfileSlot:
+    AppProfileSlot:
       type: object
       description: >
-        One SlotPrompt in a profile. `text` is the editable body; the locked frame
-        (`lockedPreamble` / `lockedPostamble`, either may be null) is fixed
-        because the app depends on its shape. `originalText` is the shipped
-        baseline used for the Edited/Original badge and restore.
+        One row of the account-wide App Profile: a difficulty rubric, a
+        function prompt, or the capability-routing instruction. `text` is the
+        editable body; the locked frame (`lockedPreamble` / `lockedPostamble`,
+        either may be null) is fixed because the app depends on its shape.
+        `originalText` is the shipped baseline used for the Edited/Original
+        badge and restore.
       properties:
         key:
           type: string
           enum:
-            - persona
-            - rubric_easy
-            - rubric_medium
-            - rubric_hard
+            - easy
+            - medium
+            - hard
             - fn_quiz_question
             - fn_answer_grading
             - fn_summary
@@ -1397,7 +1490,7 @@ components:
         label: { type: string }
         group:
           type: string
-          enum: [persona, difficulty, functions, routing]
+          enum: [difficulty, functions, routing]
         lockedPreamble: { type: string, nullable: true }
         lockedPostamble: { type: string, nullable: true }
         text: { type: string }
@@ -1422,7 +1515,7 @@ components:
         enabledCapabilities:
           type: array
           items: { $ref: "#/components/schemas/CapabilityHint" }
-          description: Resolved from the session's AI Profile. Drives which quick-action buttons show.
+          description: The account's enabled capabilities (see the App Profile tag). Drives which quick-action buttons show.
         language: { $ref: "#/components/schemas/SessionLanguage" }
         aiProvider:
           type: string
@@ -1455,14 +1548,17 @@ components:
               key: { type: string }
               group:
                 type: string
-                enum: [core, difficulty, persona, reader, functions, routing, session]
+                enum: [core, persona, reader, functions, routing, session]
               label: { type: string }
               editable:
                 type: boolean
-                description: False for the fixed parts (core, session facts); true for AI Profile layers.
+                description: False for the fixed parts (core, session facts); true otherwise.
               source:
                 type: string
-                description: Where the layer comes from, e.g. "App", "Session", or 'AI profile "Patient Tutor"'.
+                description: >
+                  Where the layer comes from, e.g. "App", "Session", "App
+                  Profile" (functions/routing — account-wide), or
+                  'AI profile "Patient Tutor"' (persona).
               content: { type: string, nullable: true }
             required: [key, group, label, editable, source, content]
       required: [aiProfileId, aiProfileName, language, difficulty, enabledCapabilities, layers]

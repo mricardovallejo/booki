@@ -231,7 +231,7 @@ public class ReportServiceImpl implements ReportService {
     /**
      * Real AI call grounded in the resolved page content (scaled by lengthPages)
      * and the discussion so far, on top of the session's layered prompt with the
-     * {@code fn_summary} SlotPrompt.
+     * {@code fn_summary} App Profile slot.
      */
     @Override
     public String generateSummaryText(Session session, Integer lengthPages, String customPrompt,

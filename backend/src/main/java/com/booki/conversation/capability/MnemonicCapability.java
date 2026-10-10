@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * "Help me remember this." Builds a memory aid for the key ideas in the session's
- * pages on the session's layered prompt with the {@code fn_mnemonic} SlotPrompt.
+ * pages on the session's layered prompt with the {@code fn_mnemonic} App Profile slot.
  */
 @Component
 @RequiredArgsConstructor

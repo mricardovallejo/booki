@@ -17,9 +17,10 @@ This starts the backend on `http://localhost:8080` without needing PostgreSQL or
 
 ## Main entities
 
-- `User`: email, password hash, display name. Nothing else — the reader's goal / level / learning preferences live in **reader profiles** (ADR-015 removed the old `bio` + `systemPrompt`; ADR-017 made the reader context its own entity).
+- `User`: email, password hash, display name, and `enabledCapabilities` (account-wide, which of quiz/summary/explain/mnemonic BooKI may use). The reader's goal / level / learning preferences live in **reader profiles** (ADR-015 removed the old `bio` + `systemPrompt`; ADR-017 made the reader context its own entity).
 - `Document`: metadata for a PDF uploaded by the user (title, file path, page count). No page-level entity anymore: a document-capable provider reads a real slice of the PDF — physically cut to just the requested range, fresh on every turn, never the whole book (ADR-025/028); `ActivityContentService` extracts plain text the same way, uncached, only as a fallback for a provider that can't read PDFs (Kimi, Ollama).
-- `AiProfile` + `SlotPrompt`: the "master" a session runs on — persona, difficulty rubrics, per-function prompts, capability routing — plus `enabledCapabilities`. Per-user; seeded from code templates at registration. **`docs/prompts.md`** (ADR-015; the old `ProfileMaster` entity is gone).
+- `AiProfile`: the "master" a session runs on — just `name` + `personaText` (+ its `personaOriginalText` snapshot). Per-user; seeded from code templates at registration. Difficulty, per-function prompts, capability routing and `enabledCapabilities` are **not** here — they moved account-wide (ADR-029). **`docs/prompts.md`** (ADR-015; the old `ProfileMaster` entity is gone).
+- `AppProfileSlot`: one of 9 account-wide, user-editable text slots (`AppProfileSlotKey`: `EASY`/`MEDIUM`/`HARD` difficulty rubrics, 5 `FN_*` function prompts, `CAPABILITY_ROUTING`) — `text` + its `originalText` snapshot. The same regardless of which `AiProfile` a session uses. Seeded at registration, backfilled for new keys. ADR-029.
 - `ReaderProfile`: who is reading, in one study context — `name`, free-text `context`, `readerLevel`, `isDefault`, `readOnly`. A `user` of `null` marks a shipped read-only template (`General reader` or `Language-support reader`, seeded in `V1__init.sql`) everyone sees. Not tied to any AI Profile — a `Session` picks one. ADR-017/ADR-019.
 - `ReaderProfileProvisioner`: registration creates one editable `My reader profile` from the General reader scaffold and makes it the user's default. ADR-020.
 - `Tag`: a per-user label a document can be filed under (many-to-many with `Document`); exposed via the `/api/collections` endpoints for historical reasons — see note below.
@@ -47,8 +48,8 @@ On register the account is also seeded with its default tutor profiles and an ed
 
 | Method | Route | Description |
 |--------|------|-------------|
-| GET | `/api/users/me` | Get the current user's profile |
-| PATCH | `/api/users/me` | Update the display name (the only editable user field — learning preferences live in reader profiles) |
+| GET | `/api/users/me` | Get the current user's profile, incl. `enabledCapabilities` |
+| PATCH | `/api/users/me` | Update the display name and/or `enabledCapabilities` (learning preferences themselves live in reader profiles) |
 
 ### Documents — `/api/documents`
 
@@ -62,22 +63,28 @@ On register the account is also seeded with its default tutor profiles and an ed
 
 Upload parsing, blob storage and row creation live in `DocumentService.importPdf(userId, title, bytes)`; `uploadDocument` just unwraps the multipart and delegates. The same method seeds the welcome guide (ADR-022). Import only reads the page count now (`pdDocument.getNumberOfPages()`) and stores the blob — no text extraction at upload, no per-page rows (ADR-025). Text (or, more often now, the PDF itself) only gets touched when an activity actually needs it — see `ActivityContentService` below.
 
-### AI Profiles — `/api/ai-profiles` · Reader Profiles — `/api/reader-profiles`
+### AI Profiles — `/api/ai-profiles` · App Profile — `/api/app-profile` · Reader Profiles — `/api/reader-profiles`
 
-The AI Profile (the UI calls it a **tutor profile**) holds the persona,
-difficulty, per-function prompts and routing; the reader profile is who is
-reading. A session picks one of each. Full model in **`docs/prompts.md`**; the
-endpoints:
+The AI Profile (the UI calls it a **tutor profile**) holds only the persona.
+Difficulty, per-function prompts and capability routing are account-wide — the
+**App Profile** — the same no matter which AiProfile a session uses (ADR-029).
+The reader profile is who is reading. A session picks one AiProfile and one
+reader profile; the App Profile is simply read from the account. Full model in
+**`docs/prompts.md`**; the endpoints:
 
 | Method | Route | Description |
 |--------|------|-------------|
-| GET | `/api/ai-profiles` | The user's profiles (seeded at registration, one flagged default) — no slots |
-| GET | `/api/ai-profiles/{id}` | One profile with its SlotPrompts |
-| PATCH | `/api/ai-profiles/{id}` | Name / `enabledCapabilities` / slot `text` |
+| GET | `/api/ai-profiles` | The user's profiles (seeded at registration, one flagged default) — no persona |
+| GET | `/api/ai-profiles/{id}` | One profile with its persona |
+| PATCH | `/api/ai-profiles/{id}` | `name` / `persona` / `isDefault` |
 | POST | `/api/ai-profiles/{id}/duplicate` | Autonomous copy (`{name?}`) |
-| POST | `/api/ai-profiles/{id}/revert` | One SlotPrompt back to its original (`{key}`) |
-| POST | `/api/ai-profiles/{id}/restore` | Whole profile back to its shipped template |
+| POST | `/api/ai-profiles/{id}/revert` | Persona back to its original — no body |
+| POST | `/api/ai-profiles/{id}/restore` | Persona back to its shipped template; name kept |
 | DELETE | `/api/ai-profiles/{id}` | Delete (`400` if it's the only one) |
+| GET | `/api/app-profile` | The account's 9 App Profile slots (difficulty × 3, function prompts × 5, routing) |
+| PUT | `/api/app-profile` | `{slots: [{key, text}]}` — a key missing from the request is left unchanged |
+| POST | `/api/app-profile/{key}/revert` | One slot back to its shipped default — no body |
+| POST | `/api/app-profile/restore` | Every slot back to its shipped default |
 | GET | `/api/reader-profiles` | Shipped read-only reader templates + the user's own |
 | POST | `/api/reader-profiles` | Create (`{name, context?, readerLevel?, fromId?}`) |
 | PATCH | `/api/reader-profiles/{id}` | `name` / `context` / `readerLevel` (`""` clears) / `isDefault:true` — `404` on shipped templates |
@@ -111,7 +118,7 @@ See ADR-024.
 |--------|------|-------------|
 | POST | `/api/sessions` | Create a session (document, starting page, difficulty, language, `aiProfileId?`, `readerProfileId?`). `endPage` is optional for compatibility and defaults to `startPage`. Omit either profile id to use the user's default |
 | GET | `/api/sessions/{id}` | Load a session |
-| GET | `/api/sessions/{id}/context` | Inspect the assembled prompt layers (core, difficulty, persona, reader profile, per-function, routing, session facts) each tagged with a `group`, plus `aiProfileName` / `readerProfileName`. See `docs/prompts.md` |
+| GET | `/api/sessions/{id}/context` | Inspect the assembled chat prompt layers (core, persona, reader profile, per-function, routing, session facts) each tagged with a `group`, plus `aiProfileName` / `readerProfileName`. Difficulty is not included — it's read only for quiz question/grading, never chat. See `docs/prompts.md` |
 | PATCH | `/api/sessions/{id}/current-page` | Navigate to any page in the document; moving forward also expands `endPage`, the furthest page reached |
 | GET | `/api/sessions/{id}/messages` | Conversation history |
 | POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `pageStart`/`pageEnd` are **required** on every turn, plain chat included — the shared activity range, same one every other activity uses (ADR-026). `502` if the AI provider fails |
@@ -178,13 +185,13 @@ Every write endpoint has `@Valid` on its `@RequestBody`. Free-text fields carry 
 
 ### Prompt catalog
 
-The authoritative fixed core, editable starting texts, shipped tutor personas,
-and optional per-template prompt overrides are in
-`src/main/resources/prompts/catalog.yml`, not Java or environment variables.
-`SlotPromptCatalog` validates the versioned catalog at startup.
-`SlotKey` keeps machine-dependent output contracts typed in Java. The optional
-`BOOKI_PROMPT_CATALOG` variable changes only the resource location for controlled
-experiments. See `docs/prompts.md` and ADR-019.
+The authoritative fixed core, the account-wide App Profile defaults (difficulty
+rubrics, function prompts, routing), the default enabled capabilities, and
+shipped tutor personas are in `src/main/resources/prompts/catalog.yml`, not Java
+or environment variables. `SlotPromptCatalog` validates the versioned catalog
+at startup. `AppProfileSlotKey` keeps machine-dependent output contracts typed
+in Java. The optional `BOOKI_PROMPT_CATALOG` variable changes only the resource
+location for controlled experiments. See `docs/prompts.md` and ADR-019/ADR-029.
 
 ### `ConversationEngine` (package `conversation`)
 
@@ -196,8 +203,9 @@ through `ConversationEngine.converse(ConversationRequest)`. It:
    (`booki.conversation.history-window`, default 20), in chronological order;
 3. persists the user turn;
 4. assembles the system prompt via `PromptAssembler` (the layered
-   core → rubric → persona → reader context → session facts — see `docs/prompts.md`)
-   plus page context and the capability router filtered to the profile's enabled
+   core → [difficulty rubric, quiz functions only] → [function contract] →
+   persona → reader context → routing → session facts — see `docs/prompts.md`)
+   plus page context and the capability router filtered to the account's enabled
    set. By default, page context is the current page and up to seven preceding
    pages from this reading journey. An explicit written request such as
    `pages 10 to 12` selects that document range instead (maximum 20 pages). In
@@ -273,7 +281,7 @@ The `AiProvider` interface (package `ai`) has 4 implementations, **all always re
 
 ### Where AI is actually called vs. templated
 
-- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading — the actual pages (Claude/OpenAI: the requested range physically cut from the PDF and sent inline, fresh each turn — ADR-028) or plain text extracted on the fly (Kimi/Ollama), both resolved by `ActivityContentService` (ADR-025) — plus the layered prompt `PromptAssembler` builds, with the matching `fn_*` SlotPrompt layered in for the capability calls (`docs/prompts.md`). Quiz generation asks for `questionCount` questions in **one** call, each in a `PAGE: n` / `QUESTION: ...` block spread across the range; quiz grading asks the model for a `SCORE:` (0–1) + a teaching `FEEDBACK:` that states the answer (the `fn_answer_grading` locked frame); `QuizServiceImpl.parseGrade` derives `correct = score ≥ 0.6` so the correction report is internally consistent (ADR-023). A response that doesn't follow the format degrades to `score=0` / a single whole-reply question, feedback/question = the raw text. (Provider *failures* no longer reach the parser — see below.)
+- **Chat, quiz question generation, quiz grading, summary generation** — all real AI calls, grounded in the session's reading — the actual pages (Claude/OpenAI: the requested range physically cut from the PDF and sent inline, fresh each turn — ADR-028) or plain text extracted on the fly (Kimi/Ollama), both resolved by `ActivityContentService` (ADR-025) — plus the layered prompt `PromptAssembler` builds, with the matching `fn_*` App Profile slot layered in for the capability calls (`docs/prompts.md`). Quiz generation asks for `questionCount` questions in **one** call, each in a `PAGE: n` / `QUESTION: ...` block spread across the range; quiz grading asks the model for a `SCORE:` (0–1) + a teaching `FEEDBACK:` that states the answer (the `fn_answer_grading` locked frame); `QuizServiceImpl.parseGrade` derives `correct = score ≥ 0.6` so the correction report is internally consistent (ADR-023). A response that doesn't follow the format degrades to `score=0` / a single whole-reply question, feedback/question = the raw text. (Provider *failures* no longer reach the parser — see below.)
 - **Progress/quiz-correction PDF reports** (`POST /sessions/{id}/reports/*`) — deliberately stay template-based, no AI call. These are factual recaps (page counts, past Q&A already graded) where a template is more reliable than an LLM restating numbers.
 
 Variables, in `.env` at the **repo root** (sibling of `.env.example`, not inside `backend/`) or the shell environment:

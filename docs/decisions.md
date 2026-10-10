@@ -540,3 +540,54 @@ will use SSE, which every browser supports.
   small, and building real cross-turn memory would mean replaying each past
   turn's original content blocks (not just its flattened text), a larger
   change than the cost of an occasional repeated slice justifies today.
+
+## ADR-029: difficulty, function prompts, routing, and capabilities move off AiProfile to an account-wide App Profile
+
+- **Context**: AiProfile (ADR-015/017's "tutor profile") carried four kinds
+  of content: a persona, three difficulty rubrics, five function prompts
+  (`fn_quiz_question`, `fn_answer_grading`, `fn_summary`, `fn_explain`,
+  `fn_mnemonic`), a capability-routing instruction, and `enabledCapabilities`.
+  Every one of the five shipped templates (`catalog.yml`) used the *identical*
+  difficulty rubrics, function prompts, and capabilities — only `persona`
+  ever varied by template. In practice, duplicating or editing a tutor
+  profile to change its difficulty/function behavior had no discoverable
+  effect from a different tutor's perspective, and editing one tutor's copy
+  silently left every other tutor unaffected — the opposite of what users
+  expected ("why doesn't switching tutors change anything?"). Difficulty
+  rubrics were also read by every activity (chat, quiz, summary, voice),
+  diluting the tutor's persona with competing instructions on every turn even
+  though only quiz generation/grading ever needed them.
+- **Decision**: `AiProfile` is reduced to exactly a name and a persona
+  (`personaText`/`personaOriginalText`); the `ai_profile_slot_prompts` table
+  and the generic `SlotPrompt`/`SlotKey` machinery are deleted outright. A new
+  account-wide entity, `AppProfileSlot` (table `app_profile_slots`, one row
+  per `AppProfileSlotKey`: `EASY`/`MEDIUM`/`HARD` plus the five `FN_*` keys
+  plus `CAPABILITY_ROUTING`), holds everything that never varied by tutor —
+  seeded from `catalog.yml`'s `difficulty`/`shared` blocks at registration,
+  editable from a new "App Profile" screen/tab, with its own
+  `GET/PUT /api/app-profile`, `POST /api/app-profile/{key}/revert`,
+  `POST /api/app-profile/restore`. `PromptAssembler` now reads the difficulty
+  rubric only for `FN_QUIZ_QUESTION`/`FN_ANSWER_GRADING` (never chat, voice,
+  or summary), and reads function prompts/routing from the account via
+  `session.getUser()`, not `session.getAiProfile()`. `enabledCapabilities`
+  moves the same way, from `AiProfile` to `User` (`users.enabled_capabilities`,
+  same `CapabilitySetConverter`), exposed via the existing
+  `GET/PATCH /api/users/me` instead of the AI Profile endpoints.
+  `catalog.yml` templates now define only `persona` (`capabilities:` and the
+  template-level `overrides:` mechanism are gone — no template used them for
+  anything but the difficulty rubrics this ADR already moved); catalog
+  version bumped to `1.5.0`.
+- **Consequence**: a tutor profile is now a one-field edit (persona) with no
+  left-hand slot navigation; "App Profile" is one screen, the same regardless
+  of which tutor is active, with three groups (Difficulty levels / Function
+  prompts / Capability routing). `UpdateAiProfileRequest` drops `slots` and
+  `enabledCapabilities`, gaining a plain `persona` string;
+  `AiProfileResponse`/`AiProfileSummaryResponse` drop `slots`/
+  `enabledCapabilities`, gaining `persona`/`personaOriginal`/
+  `personaModified`. The one-time cost: `language_learning_guide`'s template
+  previously overrode its own difficulty-rubric wording — that per-template
+  customization is gone, difficulty now means the same thing for every tutor,
+  which was the explicit goal. Quiz/`SubmitQuizAnswerRequest`'s cosmetic
+  `aiProfileId` override (never actually changed which profile's content
+  reached the model — ADR-015's rubric lookup always used the session's own
+  profile) is removed for the same reason.

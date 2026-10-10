@@ -47,8 +47,8 @@ reader-controlled **activity page range** (client-side, shared, defaults to
   QUICK ACTION ─────┼──▶  ConversationEngine
   VOICE ─▶ STT ─────┘         │
                               ├─ SessionContext  (document, reading progress, current page,
-                              │                   language, difficulty, AI Profile
-                              │                   layers, recent history — docs/prompts.md)
+                              │                   language, AI Profile persona, account-wide
+                              │                   App Profile layers, recent history — docs/prompts.md)
                               ├─ Capabilities    (quiz · summary · explain · mnemonic)
                               ├─ AiProvider      (claude / openai / kimi / ollama)
                               │

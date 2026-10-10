@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 /**
  * "I didn't understand this part." Re-explains the relevant idea from the
  * session's pages on the session's layered prompt with the {@code fn_explain}
- * SlotPrompt.
+ * App Profile slot.
  */
 @Component
 @RequiredArgsConstructor

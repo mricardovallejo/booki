@@ -7,8 +7,7 @@ import { API_BASE_IS_SECURE } from '../config/endpoints';
 import { useAuth } from '../context/AuthContext';
 import { useActivityRange } from '../context/ActivityRangeContext';
 import { useSession } from '../hooks/useSession';
-import { useDocument } from '../hooks/useDocument';
-import { toDisplayPage, toPhysicalPage } from '../lib/pagination';
+import { formatDisplayPage, isFrontMatter, toDisplayPage, toPhysicalPage } from '../lib/pagination';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -22,8 +21,7 @@ interface Props {
 export default function PdfViewer({ sessionId }: Props) {
   const { token } = useAuth();
   const { session, error, goToPage } = useSession(sessionId);
-  const { document } = useDocument(session?.documentId);
-  const { initTotalPages, setReadEnd, pageMode } = useActivityRange();
+  const { initTotalPages, setReadEnd, pageMode, paginationOffset } = useActivityRange();
   const [numPages, setNumPages] = useState(0);
   const [inputPage, setInputPage] = useState(1);
   const [pageContainerNode, setPageContainerNode] = useState<HTMLDivElement | null>(null);
@@ -36,12 +34,16 @@ export default function PdfViewer({ sessionId }: Props) {
   // in the activity range bar always means the SAME physical page. Showing
   // only one or the other previously let two different physical pages both
   // display as "12" and look like a match. See ADR-030.
-  const offset = document?.paginationOffset ?? null;
+  const offset = paginationOffset;
   const mode = pageMode;
 
+  // Front matter has no printed number: leave the input empty (0) rather
+  // than showing 0 or a negative page; the "(PDF n)" hint still says where we are.
   const currentPage = session?.currentPage;
   useEffect(() => {
-    if (currentPage != null) setInputPage(toDisplayPage(currentPage, mode, offset));
+    if (currentPage != null) {
+      setInputPage(isFrontMatter(currentPage, mode, offset) ? 0 : toDisplayPage(currentPage, mode, offset));
+    }
   }, [currentPage, mode, offset]);
 
   // Feed the shared activity-range state: document length + reading progress.
@@ -110,8 +112,11 @@ export default function PdfViewer({ sessionId }: Props) {
   // The free-text input holds whatever unit is currently displayed
   // (physical or printed); convert to physical before navigating — react-pdf
   // and the session's own currentPage always operate in physical terms.
-  const onGoToDisplayedPage = (displayedPage: number) =>
-    onGoToPhysicalPage(toPhysicalPage(displayedPage, mode, offset));
+  const onGoToDisplayedPage = (displayedPage: number) => {
+    // Empty input (front matter, or a cleared field) = nothing to navigate to.
+    if (displayedPage < 1) return;
+    return onGoToPhysicalPage(toPhysicalPage(displayedPage, mode, offset));
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -119,7 +124,7 @@ export default function PdfViewer({ sessionId }: Props) {
         <div className="min-w-0 flex-1 basis-full sm:basis-auto">
           <h2 className="truncate text-sm font-bold text-white">{session.title}</h2>
           <p className="truncate text-xs text-booki-muted">
-            Read so far: pages {toDisplayPage(session.startPage, mode, offset)}-{toDisplayPage(session.endPage, mode, offset)}
+            Read so far: pages {formatDisplayPage(session.startPage, mode, offset)}-{formatDisplayPage(session.endPage, mode, offset)}
           </p>
           {error && <p className="mt-0.5 truncate text-xs text-rose-400">{error}</p>}
         </div>
@@ -162,9 +167,10 @@ export default function PdfViewer({ sessionId }: Props) {
             </span>
             <input
               type="number"
-              min={toDisplayPage(1, mode, offset)}
+              min={mode === 'editorial' ? 1 : toDisplayPage(1, mode, offset)}
               max={numPages ? toDisplayPage(numPages, mode, offset) : undefined}
-              value={inputPage}
+              value={inputPage || ''}
+              placeholder="–"
               onChange={(e) => setInputPage(Number(e.target.value))}
               onBlur={() => onGoToDisplayedPage(inputPage)}
               onKeyDown={(e) => e.key === 'Enter' && onGoToDisplayedPage(inputPage)}
@@ -216,7 +222,7 @@ export default function PdfViewer({ sessionId }: Props) {
         </div>
         <p className="mt-4 text-center text-xs text-booki-muted">
           {mode === 'editorial'
-            ? `Printed page ${toDisplayPage(session.currentPage, mode, offset)} of ${toDisplayPage(numPages, mode, offset)} · PDF page ${session.currentPage} of ${numPages}`
+            ? `${isFrontMatter(session.currentPage, mode, offset) ? 'Front matter (before printed page 1)' : `Printed page ${toDisplayPage(session.currentPage, mode, offset)} of ${toDisplayPage(numPages, mode, offset)}`} · PDF page ${session.currentPage} of ${numPages}`
             : `PDF total: ${numPages} pages · Current session page: ${session.currentPage}`}
         </p>
       </div>

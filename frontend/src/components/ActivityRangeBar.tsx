@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useActivityRange } from '../context/ActivityRangeContext';
 import { toDisplayPage, toPhysicalPage } from '../lib/pagination';
-import type { Document, PageMode } from '../types';
+import type { PageMode } from '../types';
 
 /**
  * Number field you can actually edit on mobile: it holds a free-text draft while
@@ -68,8 +68,7 @@ function RangeStepper({
 }
 
 interface Props {
-  /** Null while the document is still loading — the mode toggle and "detect pagination" stay hidden until then. */
-  document: Document | null;
+  /** Undefined while the document is still loading — "detect pagination" stays hidden until then. */
   onDetectPagination?: () => Promise<void>;
 }
 
@@ -79,14 +78,22 @@ interface Props {
  * context is always physical; this is the one place that converts it to/from
  * the reader's chosen display mode (physical or editorial/printed pages).
  */
-export default function ActivityRangeBar({ document, onDetectPagination }: Props) {
-  const { range, totalPages, pinned, setRange, resetRange, pageMode, setPageMode } = useActivityRange();
+export default function ActivityRangeBar({ onDetectPagination }: Props) {
+  const {
+    range,
+    totalPages,
+    firstPage,
+    pinned,
+    setRange,
+    resetRange,
+    pageMode: mode,
+    setPageMode,
+    paginationOffset: offset
+  } = useActivityRange();
   const [detecting, setDetecting] = useState(false);
   if (!range || totalPages <= 0) return null;
 
-  const offset = document?.paginationOffset ?? null;
   const hasOffset = offset != null;
-  const mode: PageMode = hasOffset ? pageMode : 'physical';
 
   const detect = async () => {
     if (!onDetectPagination || detecting) return;
@@ -106,14 +113,14 @@ export default function ActivityRangeBar({ document, onDetectPagination }: Props
       <span className="inline-flex items-center gap-1.5">
         <RangeStepper
           value={toDisplayPage(range.start, mode, offset)}
-          min={toDisplayPage(1, mode, offset)}
+          min={toDisplayPage(firstPage, mode, offset)}
           max={toDisplayPage(totalPages, mode, offset)}
           onChange={(v) => setRange({ start: toPhysicalPage(v, mode, offset), end: range.end })}
         />
         <span>–</span>
         <RangeStepper
           value={toDisplayPage(range.end, mode, offset)}
-          min={toDisplayPage(1, mode, offset)}
+          min={toDisplayPage(firstPage, mode, offset)}
           max={toDisplayPage(totalPages, mode, offset)}
           onChange={(v) => setRange({ start: range.start, end: toPhysicalPage(v, mode, offset) })}
         />

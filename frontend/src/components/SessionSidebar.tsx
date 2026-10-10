@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../config/routes';
 import { detectPagination } from '../api/documents';
@@ -11,6 +11,7 @@ import ContextInfoButton from './ContextInfoButton';
 import { useSessionContext } from '../hooks/useSessionContext';
 import { useSession } from '../hooks/useSession';
 import { useDocument } from '../hooks/useDocument';
+import { useActivityRange } from '../context/ActivityRangeContext';
 
 interface Props {
   sessionId: number;
@@ -28,6 +29,12 @@ export default function SessionSidebar({ sessionId }: Props) {
   const { context } = useSessionContext(sessionId);
   const { session } = useSession(sessionId);
   const { document, refresh: refreshDocument } = useDocument(session?.documentId);
+  // Publish the offset to the shared activity-range state, so the PDF viewer
+  // picks up a detection/refresh here immediately — not only after a reload.
+  const { setPaginationOffset } = useActivityRange();
+  useEffect(() => {
+    setPaginationOffset(document?.paginationOffset ?? null);
+  }, [document, setPaginationOffset]);
   const [tab, setTab] = useState<Tab>('chat');
   const [refreshKey, setRefreshKey] = useState(0);
   // On mobile the panel is a drawer that floats OVER the PDF instead of
@@ -95,8 +102,9 @@ export default function SessionSidebar({ sessionId }: Props) {
       </div>
 
       <ActivityRangeBar
-        document={document}
-        onDetectPagination={session ? () => detectPagination(session.documentId).then(() => refreshDocument()) : undefined}
+        onDetectPagination={
+          session && document ? () => detectPagination(session.documentId).then(() => refreshDocument()) : undefined
+        }
       />
 
       <div className="flex border-b border-white/10 px-5">

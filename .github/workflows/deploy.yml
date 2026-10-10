@@ -65,7 +65,7 @@ jobs:
           DB_PASSWORD: "${{ secrets.DB_PASSWORD }}"
           DB_SSLMODE: "require"
           JWT_SECRET: "${{ secrets.JWT_SECRET }}"
-          AI_PROVIDER: "claude"
+          AI_PROVIDER: "openai"
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
           # Claude is a real secondary provider now (ADR-025: it reads an
           # uploaded PDF directly) — a session that picks it needs a working key.

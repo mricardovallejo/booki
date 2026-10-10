@@ -1,8 +1,10 @@
 package com.booki.controller;
 
 import com.booki.dto.DocumentResponse;
+import com.booki.dto.UpdateDocumentPaginationRequest;
 import com.booki.service.DocumentService;
 import com.booki.util.SecurityUtil;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -50,5 +52,16 @@ public class DocumentController {
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         documentService.deleteDocument(SecurityUtil.currentUserId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/pagination/detect")
+    public ResponseEntity<DocumentResponse> detectPagination(@PathVariable Long id) {
+        return ResponseEntity.ok(documentService.detectPagination(SecurityUtil.currentUserId(), id));
+    }
+
+    @PatchMapping("/{id}/pagination")
+    public ResponseEntity<DocumentResponse> updatePagination(@PathVariable Long id,
+                                                               @Valid @RequestBody UpdateDocumentPaginationRequest request) {
+        return ResponseEntity.ok(documentService.setPaginationOffset(SecurityUtil.currentUserId(), id, request.getOffset()));
     }
 }

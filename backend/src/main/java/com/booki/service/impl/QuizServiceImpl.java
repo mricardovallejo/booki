@@ -4,8 +4,11 @@ import com.booki.ai.ActivityContent;
 import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.ai.PageRangeResolver;
 import com.booki.domain.AiProfile;
+import com.booki.domain.PageMode;
 import com.booki.domain.QuizAttempt;
+import com.booki.domain.QuizRequest;
 import com.booki.domain.Session;
 import com.booki.domain.AppProfileSlotKey;
 import com.booki.prompt.PromptAssembler;
@@ -18,6 +21,7 @@ import com.booki.dto.QuizQuestionResponse;
 import com.booki.dto.QuizReportResponse;
 import com.booki.dto.SubmitQuizAnswerRequest;
 import com.booki.repository.QuizAttemptRepository;
+import com.booki.repository.QuizRequestRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.QuizService;
 import lombok.RequiredArgsConstructor;
@@ -45,8 +49,10 @@ public class QuizServiceImpl implements QuizService {
     private final SessionRepository sessionRepository;
     private final ActivityContentService activityContentService;
     private final QuizAttemptRepository quizAttemptRepository;
+    private final QuizRequestRepository quizRequestRepository;
     private final AiProviderRegistry aiProviderRegistry;
     private final PromptAssembler promptAssembler;
+    private final PageRangeResolver pageRangeResolver;
 
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
 
@@ -76,12 +82,10 @@ public class QuizServiceImpl implements QuizService {
         String resolvedDifficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
         int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 20);
-        if (request.getStartPage() == null || request.getEndPage() == null) {
-            throw new IllegalArgumentException("startPage and endPage are required");
-        }
-        int pageCount = session.getDocument().getPageCount();
-        int endPage = clamp(request.getEndPage(), 1, pageCount);
-        int startPage = clamp(request.getStartPage(), 1, endPage);
+        PageRangeResolver.PhysicalRange range = pageRangeResolver.resolve(
+                session.getDocument(), request.getStartPage(), request.getEndPage(), PageMode.ofWire(request.getPageMode()));
+        int startPage = range.start();
+        int endPage = range.end();
 
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
 
@@ -103,9 +107,18 @@ public class QuizServiceImpl implements QuizService {
             questions.get(i).setId(i + 1);
         }
 
+        QuizRequest quizRequest = new QuizRequest();
+        quizRequest.setSession(session);
+        quizRequest.setStartPage(startPage);
+        quizRequest.setEndPage(endPage);
+        quizRequest.setDifficulty(resolvedDifficulty);
+        quizRequest.setQuestionCount(questions.size());
+        quizRequest.setPageMode(PageMode.ofWire(request.getPageMode()));
+        quizRequestRepository.save(quizRequest);
+
         QuizConfigResponse config = new QuizConfigResponse(
                 resolvedProfileId, profile != null ? profile.getName() : null, resolvedDifficulty, questions.size(),
-                startPage, endPage);
+                startPage, endPage, quizRequest.getId());
         return new QuizGenerateResponse(questions, config);
     }
 
@@ -202,6 +215,10 @@ public class QuizServiceImpl implements QuizService {
 
         QuizAttempt attempt = new QuizAttempt();
         attempt.setSession(session);
+        if (request.getQuizRequestId() != null) {
+            quizRequestRepository.findByIdAndSessionId(request.getQuizRequestId(), session.getId())
+                    .ifPresent(attempt::setQuizRequest);
+        }
         attempt.setPageNumber(request.getPageNumber());
         attempt.setQuestion(request.getQuestion() == null ? "" : request.getQuestion());
         attempt.setAnswer(answer);

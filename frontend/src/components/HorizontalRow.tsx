@@ -8,9 +8,10 @@ interface Props {
   onSelect?: (doc: Document) => void;
   onOrganize?: (doc: Document) => void;
   onDelete?: (doc: Document) => void;
+  onSettings?: (doc: Document) => void;
 }
 
-export default function HorizontalRow({ title, documents, onSelect, onOrganize, onDelete }: Props) {
+export default function HorizontalRow({ title, documents, onSelect, onOrganize, onDelete, onSettings }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -41,7 +42,14 @@ export default function HorizontalRow({ title, documents, onSelect, onOrganize, 
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {documents.map((doc) => (
-              <DocumentCard key={doc.id} document={doc} onSelect={onSelect} onOrganize={onOrganize} onDelete={onDelete} />
+              <DocumentCard
+                key={doc.id}
+                document={doc}
+                onSelect={onSelect}
+                onOrganize={onOrganize}
+                onDelete={onDelete}
+                onSettings={onSettings}
+              />
             ))}
           </div>
           <button

@@ -1,12 +1,15 @@
 package com.booki.service.impl;
 
+import com.booki.ai.PaginationDetectionService;
 import com.booki.domain.Document;
+import com.booki.domain.PaginationStatus;
 import com.booki.domain.Session;
 import com.booki.domain.User;
 import com.booki.dto.DocumentResponse;
 import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.QuizAttemptRepository;
+import com.booki.repository.QuizRequestRepository;
 import com.booki.repository.SentReportRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.repository.TagRepository;
@@ -34,10 +37,12 @@ public class DocumentServiceImpl implements DocumentService {
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
     private final QuizAttemptRepository quizAttemptRepository;
+    private final QuizRequestRepository quizRequestRepository;
     private final SentReportRepository sentReportRepository;
     private final TagRepository tagRepository;
     private final UserRepository userRepository;
     private final StorageAdapter storage;
+    private final PaginationDetectionService paginationDetectionService;
 
     @Override
     @Transactional
@@ -130,6 +135,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (!sessionIds.isEmpty()) {
             messageRepository.deleteBySessionIdIn(sessionIds);
             quizAttemptRepository.deleteBySessionIdIn(sessionIds);
+            quizRequestRepository.deleteBySessionIdIn(sessionIds);
             sentReportRepository.deleteBySessionIdIn(sessionIds);
         }
         sessionRepository.deleteByDocumentId(documentId);
@@ -141,6 +147,27 @@ public class DocumentServiceImpl implements DocumentService {
             // Object already gone or storage unavailable; the DB rows are the
             // source of truth and they are already deleted.
         }
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse detectPagination(Long userId, Long documentId) {
+        Document document = findOwned(userId, documentId);
+        PaginationDetectionService.Result result = paginationDetectionService.detect(document);
+        document.setPaginationOffset(result.offset());
+        document.setPaginationStatus(result.detected() ? PaginationStatus.AUTO_DETECTED : PaginationStatus.DETECTION_FAILED);
+        documentRepository.save(document);
+        return toResponse(document);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse setPaginationOffset(Long userId, Long documentId, Integer offset) {
+        Document document = findOwned(userId, documentId);
+        document.setPaginationOffset(offset);
+        document.setPaginationStatus(offset == null ? PaginationStatus.UNKNOWN : PaginationStatus.MANUAL);
+        documentRepository.save(document);
+        return toResponse(document);
     }
 
     /** PDF files start with "%PDF-" (allowing a few leading bytes some tools prepend). */
@@ -169,6 +196,8 @@ public class DocumentServiceImpl implements DocumentService {
         response.setTitle(document.getTitle());
         response.setPageCount(document.getPageCount());
         response.setCreatedAt(document.getCreatedAt());
+        response.setPaginationOffset(document.getPaginationOffset());
+        response.setPaginationStatus(document.getPaginationStatus().wire());
         return response;
     }
 }

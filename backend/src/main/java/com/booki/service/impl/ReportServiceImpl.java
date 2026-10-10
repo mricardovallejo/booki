@@ -4,14 +4,18 @@ import com.booki.ai.ActivityContent;
 import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.ai.PageRangeResolver;
 import com.booki.domain.Document;
 import com.booki.domain.AiProfile;
 import com.booki.domain.Message;
+import com.booki.domain.PageMode;
 import com.booki.domain.QuizAttempt;
+import com.booki.domain.QuizRequest;
 import com.booki.domain.AppProfileSlotKey;
 import com.booki.prompt.PromptAssembler;
 import com.booki.domain.SentReport;
 import com.booki.domain.Session;
+import com.booki.email.EmailList;
 import com.booki.email.ReportEmailSender;
 import com.booki.dto.GenerateSummaryRequest;
 import com.booki.dto.MessageResponse;
@@ -21,6 +25,7 @@ import com.booki.dto.SessionProgressResponse;
 import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.QuizAttemptRepository;
+import com.booki.repository.QuizRequestRepository;
 import com.booki.repository.SentReportRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.ReportService;
@@ -34,8 +39,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -46,17 +51,18 @@ public class ReportServiceImpl implements ReportService {
     private final ActivityContentService activityContentService;
     private final MessageRepository messageRepository;
     private final QuizAttemptRepository quizAttemptRepository;
+    private final QuizRequestRepository quizRequestRepository;
     private final SentReportRepository sentReportRepository;
     private final SessionProgressCalculator progressCalculator;
     private final PdfReportBuilder pdfReportBuilder;
     private final AiProviderRegistry aiProviderRegistry;
     private final PromptAssembler promptAssembler;
+    private final PageRangeResolver pageRangeResolver;
     private final StorageAdapter storage;
     private final ReportEmailSender emailSender;
 
     private static final Map<String, String> LANGUAGE_NAMES = Map.of("en", "English", "es", "Spanish", "fr", "French");
     private static final Map<String, String> SUMMARY_HEADING = Map.of("en", "Summary", "es", "Resumen", "fr", "Résumé");
-    private static final Pattern EMAIL_RE = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     @Override
     @Transactional(readOnly = true)
@@ -100,9 +106,9 @@ public class ReportServiceImpl implements ReportService {
                 null);
 
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "progress", email, pdf, fileName,
+        SavedReport saved = saveSentReport(session, "progress", email, pdf, fileName,
                 "Progreso: " + progress.getPctRead() + "%", session.getStartPage(), session.getEndPage());
-        return toResponse(report);
+        return toResponse(saved);
     }
 
     @Override
@@ -111,9 +117,31 @@ public class ReportServiceImpl implements ReportService {
         Session session = findOwned(userId, sessionId);
         String email = requireValidEmail(request.getEmail());
 
-        List<QuizAttempt> attempts = quizAttemptRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
-        if (attempts.isEmpty()) {
+        List<QuizAttempt> allAttempts = quizAttemptRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
+        if (allAttempts.isEmpty()) {
             throw new IllegalArgumentException("No quiz answers to report yet for this session");
+        }
+
+        // Prefer the round the caller named, else the session's most recent
+        // round, else (fully legacy data, no QuizRequest ever recorded) fall
+        // back to the old best-effort reconstruction from attempts alone.
+        QuizRequest quizRequest = request.getQuizRequestId() != null
+                ? quizRequestRepository.findByIdAndSessionId(request.getQuizRequestId(), session.getId()).orElse(null)
+                : null;
+        if (quizRequest == null) {
+            quizRequest = quizRequestRepository.findTopBySessionIdOrderByCreatedAtDesc(session.getId()).orElse(null);
+        }
+
+        Long quizRequestId = quizRequest != null ? quizRequest.getId() : null;
+        List<QuizAttempt> attempts = quizRequestId != null
+                ? allAttempts.stream()
+                        .filter(a -> a.getQuizRequest() != null && quizRequestId.equals(a.getQuizRequest().getId()))
+                        .toList()
+                : allAttempts;
+        if (attempts.isEmpty()) {
+            // The named/most-recent round has no answers yet — report on everything instead of an empty PDF.
+            attempts = allAttempts;
+            quizRequest = null;
         }
 
         Document document = documentRepository.findById(session.getDocument().getId()).orElse(null);
@@ -122,14 +150,28 @@ public class ReportServiceImpl implements ReportService {
 
         // The actual range these quiz questions covered — not the session's own
         // (auto-growing) start/end page, which can diverge from it.
-        int startPage = attempts.stream().mapToInt(QuizAttempt::getPageNumber).min().orElse(session.getStartPage());
-        int endPage = attempts.stream().mapToInt(QuizAttempt::getPageNumber).max().orElse(session.getEndPage());
+        int coveredStart = attempts.stream().mapToInt(QuizAttempt::getPageNumber).min().orElse(session.getStartPage());
+        int coveredEnd = attempts.stream().mapToInt(QuizAttempt::getPageNumber).max().orElse(session.getEndPage());
+
+        List<String> sessionLines = new java.util.ArrayList<>();
+        sessionLines.add("Document: " + (document != null ? document.getTitle() : "Unknown"));
+        if (quizRequest != null) {
+            sessionLines.add("Requested pages: " + quizRequest.getStartPage() + "-" + quizRequest.getEndPage());
+            if (quizRequest.getStartPage() != coveredStart || quizRequest.getEndPage() != coveredEnd) {
+                sessionLines.add("Pages actually covered: " + coveredStart + "-" + coveredEnd);
+            }
+            sessionLines.add("Requested questions: " + quizRequest.getQuestionCount() + " · Answered: " + attempts.size());
+            sessionLines.add("Requested difficulty: " + quizRequest.getDifficulty());
+        } else {
+            sessionLines.add("Pages covered (requested range not recorded): " + coveredStart + "-" + coveredEnd);
+            sessionLines.add("Answered: " + attempts.size());
+        }
+
+        int startPage = quizRequest != null ? quizRequest.getStartPage() : coveredStart;
+        int endPage = quizRequest != null ? quizRequest.getEndPage() : coveredEnd;
 
         List<PdfReportBuilder.Section> sections = new java.util.ArrayList<>();
-        sections.add(new PdfReportBuilder.Section("Session", List.of(
-                "Document: " + (document != null ? document.getTitle() : "Unknown"),
-                "Pages: " + startPage + "-" + endPage
-        )));
+        sections.add(new PdfReportBuilder.Section("Session", sessionLines));
         sections.add(new PdfReportBuilder.Section("Quiz summary", List.of(
                 attempts.size() + " answered · " + correctCount + " correct · " + avgScore + "% average score"
         )));
@@ -152,9 +194,9 @@ public class ReportServiceImpl implements ReportService {
                 null);
 
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "quiz", email, pdf, fileName,
+        SavedReport saved = saveSentReport(session, "quiz", email, pdf, fileName,
                 "Nota: " + avgScore + "%", startPage, endPage);
-        return toResponse(report);
+        return toResponse(saved);
     }
 
     // Not @Transactional: generateSummaryText makes a slow model call, and a
@@ -170,12 +212,10 @@ public class ReportServiceImpl implements ReportService {
             email = requireValidEmail(request.getEmail());
         }
 
-        if (request.getStartPage() == null || request.getEndPage() == null) {
-            throw new IllegalArgumentException("startPage and endPage are required");
-        }
-        int pageCount = session.getDocument().getPageCount();
-        int endPage = Math.max(1, Math.min(request.getEndPage(), pageCount));
-        int startPage = Math.max(1, Math.min(request.getStartPage(), endPage));
+        PageRangeResolver.PhysicalRange range = pageRangeResolver.resolve(
+                session.getDocument(), request.getStartPage(), request.getEndPage(), PageMode.ofWire(request.getPageMode()));
+        int startPage = range.start();
+        int endPage = range.end();
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
         ActivityContent content = activityContentService.resolve(session.getDocument(), provider, startPage, endPage);
         String summaryText = generateSummaryText(session, request.getLengthPages(), request.getPrompt(), content);
@@ -214,8 +254,8 @@ public class ReportServiceImpl implements ReportService {
 
         byte[] pdf = pdfReportBuilder.build("Summary — " + sessionTitle(session, startPage, endPage), null, sections, cover);
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "summary", email, pdf, fileName, "Resumen", startPage, endPage);
-        return toResponse(report);
+        SavedReport saved = saveSentReport(session, "summary", email, pdf, fileName, "Resumen", startPage, endPage);
+        return toResponse(saved);
     }
 
     @Override
@@ -276,11 +316,12 @@ public class ReportServiceImpl implements ReportService {
         return Math.min(10, Math.max(1, lengthPages != null ? lengthPages : 2));
     }
 
+    /** @return the normalized, "; "-joined form of one or more addresses (see {@link EmailList}). */
     private String requireValidEmail(String email) {
-        if (email == null || !EMAIL_RE.matcher(email).matches()) {
-            throw new IllegalArgumentException("A valid email is required");
+        if (!EmailList.isValid(email)) {
+            throw new IllegalArgumentException("A valid email (or ';'-separated list of emails) is required");
         }
-        return email;
+        return EmailList.normalize(email);
     }
 
     private String sessionTitle(Session session) {
@@ -303,13 +344,19 @@ public class ReportServiceImpl implements ReportService {
      * one number/label specific to this report type (grade, progress %, or a
      * plain label for a summary).
      */
-    private SentReport saveSentReport(Session session, String type, String email, byte[] pdf, String fileName,
-                                      String metric, Integer startPage, Integer endPage) {
+    private record SavedReport(SentReport report, String emailError) {
+    }
+
+    private SavedReport saveSentReport(Session session, String type, String email, byte[] pdf, String fileName,
+                                       String metric, Integer startPage, Integer endPage) {
         boolean sent = false;
+        String emailError = null;
         if (email != null) {
             String subject = session.getDocument().getTitle() + " — " + metric + " — "
                     + java.time.LocalDate.now() + " — " + session.getUser().getName();
-            sent = emailSender.send(email, subject, pdf, fileName);
+            ReportEmailSender.Result result = emailSender.send(email, subject, pdf, fileName);
+            sent = result.sent();
+            emailError = result.errorMessage();
         }
         SentReport report = new SentReport();
         report.setSession(session);
@@ -319,7 +366,7 @@ public class ReportServiceImpl implements ReportService {
         report.setFileName(fileName);
         report.setStartPage(startPage);
         report.setEndPage(endPage);
-        return sentReportRepository.save(report);
+        return new SavedReport(sentReportRepository.save(report), emailError);
     }
 
     private String writeReportFile(byte[] pdf) {
@@ -328,6 +375,7 @@ public class ReportServiceImpl implements ReportService {
         return fileName;
     }
 
+    /** Historical rows carry no transient send error — only a just-sent report (see the other overload) can. */
     private SentReportResponse toResponse(SentReport report) {
         return new SentReportResponse(
                 report.getId(),
@@ -338,7 +386,14 @@ public class ReportServiceImpl implements ReportService {
                 report.getEmail() != null && !report.isEmailSent(),
                 report.getStartPage(),
                 report.getEndPage(),
-                report.getCreatedAt()
+                report.getCreatedAt(),
+                null
         );
+    }
+
+    private SentReportResponse toResponse(SavedReport saved) {
+        SentReportResponse response = toResponse(saved.report());
+        response.setEmailError(saved.emailError());
+        return response;
     }
 }

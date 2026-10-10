@@ -15,4 +15,8 @@ public class UserResponse {
     private Instant createdAt;
     /** Which conversational capabilities (quiz/summary/explain/mnemonic) this account allows — account-wide, not per tutor profile. */
     private List<String> enabledCapabilities;
+    /** What this user explicitly set, if anything — null means "using the app's global default". */
+    private String defaultReportEmail;
+    /** defaultReportEmail if set, else the app's global default, else null — what SendReportForm should prefill. */
+    private String effectiveReportEmail;
 }

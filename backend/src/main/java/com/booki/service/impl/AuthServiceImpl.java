@@ -5,6 +5,7 @@ import com.booki.domain.User;
 import com.booki.dto.AuthRequest;
 import com.booki.dto.AuthResponse;
 import com.booki.dto.UserResponse;
+import com.booki.email.ReportRecipientResolver;
 import com.booki.prompt.SlotPromptCatalog;
 import com.booki.repository.AiProfileRepository;
 import com.booki.repository.AppProfileSlotRepository;
@@ -33,6 +34,7 @@ public class AuthServiceImpl implements AuthService {
     private final SlotPromptCatalog slotPromptCatalog;
     private final ReaderProfileProvisioner readerProfileProvisioner;
     private final ApplicationEventPublisher events;
+    private final ReportRecipientResolver reportRecipientResolver;
 
     @Override
     @Transactional
@@ -81,7 +83,8 @@ public class AuthServiceImpl implements AuthService {
         String token = jwtUtil.generateToken(user.getEmail(), user.getId());
         List<String> capabilities = user.getEnabledCapabilities().stream().sorted().map(Capability::wire).toList();
         UserResponse userResponse = new UserResponse(
-                user.getId(), user.getEmail(), user.getName(), user.getCreatedAt(), capabilities);
+                user.getId(), user.getEmail(), user.getName(), user.getCreatedAt(), capabilities,
+                user.getDefaultReportEmail(), reportRecipientResolver.resolveDefault(user));
         return new AuthResponse(token, userResponse);
     }
 }

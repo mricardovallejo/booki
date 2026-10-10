@@ -58,7 +58,10 @@ class SessionConversationIT extends IntegrationTestBase {
     }
 
     @Test
-    void createSessionRejectsInvalidRangesProviderAndForeignDocuments() {
+    void createSessionClampsOutOfRangePagesInsteadOfRejectingThem() {
+        // The reading range is no longer locked in at session creation — an
+        // out-of-bounds or inverted range is clamped, the same way every other
+        // page range in BooKI degrades, not rejected. See ADR-030.
         AuthData user = register(uniqueEmail("bad-sess"));
         AuthData other = register(uniqueEmail("bad-sess-other"));
         Long documentId = uploadThreePageDocument(user);
@@ -66,13 +69,15 @@ class SessionConversationIT extends IntegrationTestBase {
 
         assertThat(postSession(user, foreignDocumentId, 1, 3, "fake").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
-        ResponseEntity<Map<String, String>> inverted = postSession(user, documentId, 3, 1, "fake", errorType());
-        assertThat(inverted.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(inverted.getBody().get("error")).isEqualTo("startPage must be less than or equal to endPage");
+        ResponseEntity<SessionResponse> inverted = postSession(user, documentId, 3, 1, "fake");
+        assertThat(inverted.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(inverted.getBody().getStartPage()).isEqualTo(1);
+        assertThat(inverted.getBody().getEndPage()).isEqualTo(1);
 
-        ResponseEntity<Map<String, String>> tooWide = postSession(user, documentId, 1, 99, "fake", errorType());
-        assertThat(tooWide.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(tooWide.getBody().get("error")).contains("endPage exceeds the document's page count");
+        ResponseEntity<SessionResponse> tooWide = postSession(user, documentId, 1, 99, "fake");
+        assertThat(tooWide.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(tooWide.getBody().getStartPage()).isEqualTo(1);
+        assertThat(tooWide.getBody().getEndPage()).isEqualTo(3);
 
         ResponseEntity<Map<String, String>> unknownProvider = postSession(user, documentId, 1, 3, "gpt-99", errorType());
         assertThat(unknownProvider.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -240,6 +245,80 @@ class SessionConversationIT extends IntegrationTestBase {
                 "/api/sessions/" + sessionId + "/summary", HttpMethod.POST,
                 new HttpEntity<>(summary, auth(user.token())), MessageResponse.class);
         assertThat(summaryResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(fakeAi.calls().getLast().systemPrompt())
+                .contains("Page two text about hives", "Page three text about honey")
+                .doesNotContain("Page one text about bees");
+    }
+
+    @Test
+    void quizReportReflectsTheRequestedRoundNotJustAnsweredAttempts() {
+        AuthData user = register(uniqueEmail("quiz-report"));
+        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 1);
+        patchPage(user, sessionId, 3);
+
+        GenerateQuizRequest quiz = new GenerateQuizRequest();
+        quiz.setDifficulty("hard");
+        quiz.setQuestionCount(3);
+        quiz.setStartPage(1);
+        quiz.setEndPage(3);
+        ResponseEntity<QuizGenerateResponse> quizResponse = rest.exchange(
+                "/api/sessions/" + sessionId + "/quiz", HttpMethod.POST,
+                new HttpEntity<>(quiz, auth(user.token())), QuizGenerateResponse.class);
+        Long quizRequestId = quizResponse.getBody().getConfig().getQuizRequestId();
+        assertThat(quizRequestId).isNotNull();
+
+        // Only ONE of the three requested questions gets answered — before the
+        // fix, the report's page range was derived solely from answered
+        // attempts (so it would have shown just this one page instead of the
+        // full requested 1-3 range). See ADR-030.
+        com.booki.dto.SubmitQuizAnswerRequest answer = new com.booki.dto.SubmitQuizAnswerRequest();
+        answer.setPageNumber(2);
+        answer.setQuestion("What is on page 2?");
+        answer.setAnswer("hives");
+        answer.setDifficulty("hard");
+        answer.setQuizRequestId(quizRequestId);
+        rest.exchange("/api/sessions/" + sessionId + "/quiz/answer", HttpMethod.POST,
+                new HttpEntity<>(answer, auth(user.token())), com.booki.dto.QuizAnswerResponse.class);
+
+        // More than one recipient (e.g. a parent and a tutor) — see ADR-030.
+        com.booki.dto.SendReportRequest report = new com.booki.dto.SendReportRequest();
+        report.setEmail("parent@example.com; tutor@example.com");
+        ResponseEntity<com.booki.dto.SentReportResponse> reportResponse = rest.exchange(
+                "/api/sessions/" + sessionId + "/reports/quiz", HttpMethod.POST,
+                new HttpEntity<>(report, auth(user.token())), com.booki.dto.SentReportResponse.class);
+
+        assertThat(reportResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        com.booki.dto.SentReportResponse body = reportResponse.getBody();
+        assertThat(body.getEmail()).isEqualTo("parent@example.com; tutor@example.com");
+        assertThat(body.getStartPage()).isEqualTo(1);
+        assertThat(body.getEndPage()).isEqualTo(3);
+        // No SMTP configured in the test profile — delivery fails, but with a
+        // reason now surfaced instead of silently swallowed (ADR-030).
+        assertThat(body.isSimulated()).isTrue();
+        assertThat(body.getEmailError()).isNotBlank();
+    }
+
+    @Test
+    void editorialPageModeConvertsUsingTheDocumentsManualOffset() {
+        AuthData user = register(uniqueEmail("editorial"));
+        Long documentId = uploadThreePageDocument(user);
+        Long sessionId = createSession(user, documentId, 1, 1);
+
+        // Printed page 1 is physical page 2 (one page of front matter) — set by
+        // hand, same as a user would in the book's settings. See ADR-030.
+        com.booki.dto.UpdateDocumentPaginationRequest offset = new com.booki.dto.UpdateDocumentPaginationRequest();
+        offset.setOffset(1);
+        rest.exchange("/api/documents/" + documentId + "/pagination", HttpMethod.PATCH,
+                new HttpEntity<>(offset, auth(user.token())), com.booki.dto.DocumentResponse.class);
+
+        MessageRequest message = new MessageRequest();
+        message.setMessage("Explain editorial pages 1 to 2");
+        message.setPageStart(1);
+        message.setPageEnd(2);
+        message.setPageMode("editorial");
+        rest.exchange("/api/sessions/" + sessionId + "/messages", HttpMethod.POST,
+                new HttpEntity<>(message, auth(user.token())), MessageResponse.class);
+
         assertThat(fakeAi.calls().getLast().systemPrompt())
                 .contains("Page two text about hives", "Page three text about honey")
                 .doesNotContain("Page one text about bees");

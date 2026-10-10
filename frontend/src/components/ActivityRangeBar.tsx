@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useActivityRange } from '../context/ActivityRangeContext';
+import { toDisplayPage, toPhysicalPage } from '../lib/pagination';
+import type { Document, PageMode } from '../types';
 
 /**
  * Number field you can actually edit on mobile: it holds a free-text draft while
@@ -65,13 +67,37 @@ function RangeStepper({
   );
 }
 
+interface Props {
+  /** Null while the document is still loading — the mode toggle and "detect pagination" stay hidden until then. */
+  document: Document | null;
+  onDetectPagination?: () => Promise<void>;
+}
+
 /**
  * The activity page range, above the Chat/Quiz/Progress tabs because it governs
- * all of them (except plain chat). Does not limit reading.
+ * all of them (except plain chat). Does not limit reading. `range` from the
+ * context is always physical; this is the one place that converts it to/from
+ * the reader's chosen display mode (physical or editorial/printed pages).
  */
-export default function ActivityRangeBar() {
-  const { range, totalPages, pinned, setRange, resetRange } = useActivityRange();
+export default function ActivityRangeBar({ document, onDetectPagination }: Props) {
+  const { range, totalPages, pinned, setRange, resetRange, pageMode, setPageMode } = useActivityRange();
+  const [detecting, setDetecting] = useState(false);
   if (!range || totalPages <= 0) return null;
+
+  const offset = document?.paginationOffset ?? null;
+  const hasOffset = offset != null;
+  const mode: PageMode = hasOffset ? pageMode : 'physical';
+
+  const detect = async () => {
+    if (!onDetectPagination || detecting) return;
+    setDetecting(true);
+    try {
+      await onDetectPagination();
+    } finally {
+      setDetecting(false);
+    }
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-white/10 bg-booki-bg/40 px-5 py-2 text-xs text-white/60">
       <span title="The pages the quiz, summaries and chat actions use. Does not limit reading.">
@@ -79,20 +105,50 @@ export default function ActivityRangeBar() {
       </span>
       <span className="inline-flex items-center gap-1.5">
         <RangeStepper
-          value={range.start}
-          min={1}
-          max={totalPages}
-          onChange={(v) => setRange({ start: v, end: range.end })}
+          value={toDisplayPage(range.start, mode, offset)}
+          min={toDisplayPage(1, mode, offset)}
+          max={toDisplayPage(totalPages, mode, offset)}
+          onChange={(v) => setRange({ start: toPhysicalPage(v, mode, offset), end: range.end })}
         />
         <span>–</span>
         <RangeStepper
-          value={range.end}
-          min={1}
-          max={totalPages}
-          onChange={(v) => setRange({ start: range.start, end: v })}
+          value={toDisplayPage(range.end, mode, offset)}
+          min={toDisplayPage(1, mode, offset)}
+          max={toDisplayPage(totalPages, mode, offset)}
+          onChange={(v) => setRange({ start: range.start, end: toPhysicalPage(v, mode, offset) })}
         />
-        <span className="text-white/35">/ {totalPages}</span>
+        <span className="text-white/35">/ {toDisplayPage(totalPages, mode, offset)}</span>
       </span>
+
+      {hasOffset ? (
+        <span className="inline-flex overflow-hidden rounded-md ring-1 ring-white/15" title="Switch between the PDF's physical pages and this book's own printed page numbers.">
+          {(['physical', 'editorial'] as PageMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setPageMode(m)}
+              className={`px-2 py-1 text-[11px] font-bold capitalize transition ${
+                mode === m ? 'bg-booki-accent text-white' : 'text-white/60 hover:bg-white/10'
+              }`}
+            >
+              {m === 'physical' ? 'PDF' : 'Printed'}
+            </button>
+          ))}
+        </span>
+      ) : (
+        onDetectPagination && (
+          <button
+            type="button"
+            onClick={detect}
+            disabled={detecting}
+            className="text-white/40 underline-offset-2 hover:text-white/70 hover:underline disabled:opacity-40"
+            title="Figure out this book's printed page numbers, so you can reference pages the way the book itself does."
+          >
+            {detecting ? 'Detecting…' : 'Use printed page numbers'}
+          </button>
+        )
+      )}
+
       {pinned ? (
         <button
           type="button"

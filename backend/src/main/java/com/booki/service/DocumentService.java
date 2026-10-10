@@ -20,4 +20,15 @@ public interface DocumentService {
     DocumentResponse getDocument(Long userId, Long documentId);
     Resource getDocumentFile(Long userId, Long documentId);
     void deleteDocument(Long userId, Long documentId);
+
+    /**
+     * Runs pagination detection unconditionally — unlike the lazy fallback in
+     * {@code PageRangeResolver}, this always calls the AI and overwrites
+     * whatever offset/status the document had (the frontend confirms with the
+     * user first when a MANUAL value would be replaced). See ADR-030.
+     */
+    DocumentResponse detectPagination(Long userId, Long documentId);
+
+    /** Sets (or, with {@code offset == null}, clears) the pagination offset by hand. Always wins over auto-detection. */
+    DocumentResponse setPaginationOffset(Long userId, Long documentId, Integer offset);
 }

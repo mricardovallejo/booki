@@ -20,4 +20,7 @@ public class SubmitQuizAnswerRequest {
 
     @Pattern(regexp = "easy|medium|hard")
     private String difficulty;
+
+    /** Links this answer back to the quiz round it belongs to, for an accurate report. Optional — older clients just degrade to the legacy best-effort report. */
+    private Long quizRequestId;
 }

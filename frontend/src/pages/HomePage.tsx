@@ -3,6 +3,7 @@ import { useDocuments } from '../hooks/useDocuments';
 import { useTags } from '../hooks/useTags';
 import { useScrollToHash } from '../hooks/useScrollToHash';
 import CreateSessionModal from '../components/CreateSessionModal';
+import DocumentSettingsModal from '../components/DocumentSettingsModal';
 import TagPickerModal from '../components/TagPickerModal';
 import TagsBar from '../components/TagsBar';
 import HeroSection from '../components/HeroSection';
@@ -14,11 +15,12 @@ import type { Document } from '../types';
 
 export default function HomePage() {
   useScrollToHash();
-  const { documents, isUploading, upload, remove: removeDocument } = useDocuments();
+  const { documents, isUploading, upload, remove: removeDocument, refresh: refreshDocuments } = useDocuments();
   const { tags, error: tagsError, create, rename, remove: removeTag, toggleDocument } = useTags();
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [organizingDocument, setOrganizingDocument] = useState<Document | null>(null);
   const [deletingDocument, setDeletingDocument] = useState<Document | null>(null);
+  const [settingsDocument, setSettingsDocument] = useState<Document | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +140,7 @@ export default function HomePage() {
           onSelect={setSelectedDocument}
           onOrganize={setOrganizingDocument}
           onDelete={setDeletingDocument}
+          onSettings={setSettingsDocument}
         />
       ) : (
         <>
@@ -147,6 +150,7 @@ export default function HomePage() {
             onSelect={setSelectedDocument}
             onOrganize={setOrganizingDocument}
             onDelete={setDeletingDocument}
+            onSettings={setSettingsDocument}
           />
 
           {tags.map((tag) => {
@@ -159,6 +163,7 @@ export default function HomePage() {
                 onSelect={setSelectedDocument}
                 onOrganize={setOrganizingDocument}
                 onDelete={setDeletingDocument}
+                onSettings={setSettingsDocument}
               />
             );
           })}
@@ -169,6 +174,7 @@ export default function HomePage() {
             onSelect={setSelectedDocument}
             onOrganize={setOrganizingDocument}
             onDelete={setDeletingDocument}
+            onSettings={setSettingsDocument}
           />
         </>
       )}
@@ -194,6 +200,15 @@ export default function HomePage() {
       )}
 
       <CreateSessionModal document={selectedDocument} onClose={() => setSelectedDocument(null)} />
+
+      <DocumentSettingsModal
+        document={settingsDocument}
+        onClose={() => setSettingsDocument(null)}
+        onUpdated={(doc) => {
+          setSettingsDocument(doc);
+          refreshDocuments();
+        }}
+      />
 
       <TagPickerModal
         document={organizingDocument}

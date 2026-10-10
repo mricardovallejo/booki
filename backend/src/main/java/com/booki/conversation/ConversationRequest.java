@@ -1,6 +1,7 @@
 package com.booki.conversation;
 
 import com.booki.domain.Message;
+import com.booki.domain.PageMode;
 
 /**
  * A single inbound conversational turn, decoupled from how it arrived.
@@ -18,6 +19,8 @@ import com.booki.domain.Message;
  *                       plain chat included; there is exactly one range concept
  *                       in BooKI, no per-message override.
  * @param pageEnd        see {@code pageStart}.
+ * @param pageMode       whether pageStart/pageEnd are physical or editorial page
+ *                       numbers; null means physical (see ADR-030).
  */
 public record ConversationRequest(
         Long userId,
@@ -26,17 +29,21 @@ public record ConversationRequest(
         Message.InputType inputType,
         String capabilityHint,
         Integer pageStart,
-        Integer pageEnd) {
+        Integer pageEnd,
+        PageMode pageMode) {
 
     public ConversationRequest {
         if (inputType == null) {
             inputType = Message.InputType.TEXT;
         }
+        if (pageMode == null) {
+            pageMode = PageMode.PHYSICAL;
+        }
     }
 
     /** Turn with no explicit capability hint — the model routes. */
     public ConversationRequest(Long userId, Long sessionId, String text, Message.InputType inputType,
-                               Integer pageStart, Integer pageEnd) {
-        this(userId, sessionId, text, inputType, null, pageStart, pageEnd);
+                               Integer pageStart, Integer pageEnd, PageMode pageMode) {
+        this(userId, sessionId, text, inputType, null, pageStart, pageEnd, pageMode);
     }
 }

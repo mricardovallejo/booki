@@ -47,4 +47,8 @@ public class User {
     @Convert(converter = CapabilitySetConverter.class)
     @Column(nullable = false, length = 120, name = "enabled_capabilities")
     private Set<Capability> enabledCapabilities = EnumSet.allOf(Capability.class);
+
+    /** Default recipient for sent reports. Null falls back to the app's global default (see ReportRecipientResolver, ADR-030). */
+    @Column(name = "default_report_email")
+    private String defaultReportEmail;
 }

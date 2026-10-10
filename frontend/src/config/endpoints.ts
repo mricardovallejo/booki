@@ -29,7 +29,9 @@ export const ENDPOINTS = {
     create: '/documents',
     byId: (id: number) => `/documents/${id}`,
     delete: (id: number) => `/documents/${id}`,
-    file: (id: number) => `/documents/${id}/file`
+    file: (id: number) => `/documents/${id}/file`,
+    detectPagination: (id: number) => `/documents/${id}/pagination/detect`,
+    updatePagination: (id: number) => `/documents/${id}/pagination`
   },
   tags: {
     list: '/collections',

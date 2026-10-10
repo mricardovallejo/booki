@@ -5,6 +5,7 @@ import type {
   Difficulty,
   GenerateSummaryRequest,
   Message,
+  PageMode,
   QuizAnswerResult,
   QuizGenerateResult,
   QuizReport,
@@ -19,8 +20,8 @@ import type {
 export interface CreateSessionRequest {
   documentId: number;
   title: string;
-  startPage: number;
-  endPage: number;
+  /** Just where the reader opens — optional, defaults to page 1. Not a locked range. */
+  startPage?: number;
   aiProfileId?: number;
   readerProfileId?: number;
   difficulty: Difficulty;
@@ -43,7 +44,7 @@ export const sendMessage = (
   message: string,
   inputType: 'TEXT' | 'VOICE' = 'TEXT',
   capabilityHint: CapabilityHint | undefined,
-  pageRange: { start: number; end: number }
+  pageRange: { start: number; end: number; mode?: PageMode }
 ) =>
   api
     .post<Message>(ENDPOINTS.sessions.messages(id), {
@@ -51,7 +52,8 @@ export const sendMessage = (
       inputType,
       capabilityHint,
       pageStart: pageRange.start,
-      pageEnd: pageRange.end
+      pageEnd: pageRange.end,
+      pageMode: pageRange.mode
     })
     .then((r) => r.data);
 
@@ -60,6 +62,7 @@ export interface GenerateQuizRequest {
   questionCount: number;
   startPage: number;
   endPage: number;
+  pageMode?: PageMode;
 }
 
 export const generateQuiz = (id: number, payload: GenerateQuizRequest) =>
@@ -70,6 +73,7 @@ export interface SubmitQuizAnswerRequest {
   question: string;
   answer: string;
   difficulty: Difficulty;
+  quizRequestId?: number;
 }
 
 export const submitQuizAnswer = (id: number, payload: SubmitQuizAnswerRequest) =>
@@ -93,8 +97,8 @@ export const listSessionReports = (id: number) =>
 export const sendProgressReport = (id: number, email: string) =>
   api.post<SentReport>(ENDPOINTS.sessions.reportProgress(id), { email }).then((r) => r.data);
 
-export const sendQuizReport = (id: number, email: string) =>
-  api.post<SentReport>(ENDPOINTS.sessions.reportQuiz(id), { email }).then((r) => r.data);
+export const sendQuizReport = (id: number, email: string, quizRequestId?: number) =>
+  api.post<SentReport>(ENDPOINTS.sessions.reportQuiz(id), { email, quizRequestId }).then((r) => r.data);
 
 export const generateSummaryAsChat = (id: number, payload: Omit<GenerateSummaryRequest, 'deliverAs'>) =>
   api

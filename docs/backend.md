@@ -17,8 +17,8 @@ This starts the backend on `http://localhost:8080` without needing PostgreSQL or
 
 ## Main entities
 
-- `User`: email, password hash, display name, and `enabledCapabilities` (account-wide, which of quiz/summary/explain/mnemonic BooKI may use). The reader's goal / level / learning preferences live in **reader profiles** (ADR-015 removed the old `bio` + `systemPrompt`; ADR-017 made the reader context its own entity).
-- `Document`: metadata for a PDF uploaded by the user (title, file path, page count). No page-level entity anymore: a document-capable provider reads a real slice of the PDF — physically cut to just the requested range, fresh on every turn, never the whole book (ADR-025/028); `ActivityContentService` extracts plain text the same way, uncached, only as a fallback for a provider that can't read PDFs (Kimi, Ollama).
+- `User`: email, password hash, display name, `enabledCapabilities` (account-wide, which of quiz/summary/explain/mnemonic BooKI may use), and `defaultReportEmail` — the account's default report recipient(s), one address or several separated by `;` (ADR-030). The reader's goal / level / learning preferences live in **reader profiles** (ADR-015 removed the old `bio` + `systemPrompt`; ADR-017 made the reader context its own entity).
+- `Document`: metadata for a PDF uploaded by the user (title, file path, page count), plus `paginationOffset` + `paginationStatus` (`unknown`/`manual`/`auto_detected`/`detection_failed`) — the physical PDF page on which this book's own printed page "1" appears, detected by AI at most once and cached, or set by hand; `MANUAL` is never overwritten by auto-detection (ADR-030). No page-level entity anymore: a document-capable provider reads a real slice of the PDF — physically cut to just the requested range, fresh on every turn, never the whole book (ADR-025/028); `ActivityContentService` extracts plain text the same way, uncached, only as a fallback for a provider that can't read PDFs (Kimi, Ollama).
 - `AiProfile`: the "master" a session runs on — just `name` + `personaText` (+ its `personaOriginalText` snapshot). Per-user; seeded from code templates at registration. Difficulty, per-function prompts, capability routing and `enabledCapabilities` are **not** here — they moved account-wide (ADR-029). **`docs/prompts.md`** (ADR-015; the old `ProfileMaster` entity is gone).
 - `AppProfileSlot`: one of 9 account-wide, user-editable text slots (`AppProfileSlotKey`: `EASY`/`MEDIUM`/`HARD` difficulty rubrics, 5 `FN_*` function prompts, `CAPABILITY_ROUTING`) — `text` + its `originalText` snapshot. The same regardless of which `AiProfile` a session uses. Seeded at registration, backfilled for new keys. ADR-029.
 - `ReaderProfile`: who is reading, in one study context — `name`, free-text `context`, `readerLevel`, `isDefault`, `readOnly`. A `user` of `null` marks a shipped read-only template (`General reader` or `Language-support reader`, seeded in `V1__init.sql`) everyone sees. Not tied to any AI Profile — a `Session` picks one. ADR-017/ADR-019.
@@ -26,7 +26,8 @@ This starts the backend on `http://localhost:8080` without needing PostgreSQL or
 - `Tag`: a per-user label a document can be filed under (many-to-many with `Document`); exposed via the `/api/collections` endpoints for historical reasons — see note below.
 - `Session`: an open-ended reading journey. `startPage` records where it began, `endPage` grows to the furthest page reached, and `currentPage` is freely navigable across the document. It also stores the chosen `difficulty`, `language`, `aiProvider` (nullable), an optional `AiProfile` and an optional `ReaderProfile` (both FKs `ON DELETE SET NULL`; null → resolved to the user's default at read time).
 - `Message`: one turn of conversation history in a session (`USER` / `BOOKI`, `TEXT` / `VOICE`). Text and voice turns share this single model — a voice turn is just a `Message` whose `inputType` is `VOICE`; raw audio is never stored.
-- `QuizAttempt`: a generated quiz question for a page plus the reader's answer, correctness, score, and feedback; FKs to the `AiProfile` it was graded under (`ON DELETE SET NULL`).
+- `QuizRequest`: one generated quiz round — range, difficulty, requested question count, and page mode — written at **generation** time, before any answer comes in, so the quiz report can state what was actually requested instead of reconstructing it from whichever questions happened to get answered (ADR-030).
+- `QuizAttempt`: a generated quiz question for a page plus the reader's answer, correctness, score, and feedback; FKs to the `AiProfile` it was graded under (`ON DELETE SET NULL`) and, nullable, the `QuizRequest` round it answers (`ON DELETE SET NULL`).
 - `SentReport`: a record of a progress/quiz report generated (and optionally emailed) for a session.
 
 ## REST API
@@ -49,7 +50,7 @@ On register the account is also seeded with its default tutor profiles and an ed
 | Method | Route | Description |
 |--------|------|-------------|
 | GET | `/api/users/me` | Get the current user's profile, incl. `enabledCapabilities` |
-| PATCH | `/api/users/me` | Update the display name and/or `enabledCapabilities` (learning preferences themselves live in reader profiles) |
+| PATCH | `/api/users/me` | Update the display name, `enabledCapabilities`, and/or `defaultReportEmail` (one address or several separated by `;`; empty string clears it back to the app-wide default — learning preferences themselves live in reader profiles) |
 
 ### Documents — `/api/documents`
 
@@ -60,6 +61,8 @@ On register the account is also seeded with its default tutor profiles and an ed
 | GET | `/api/documents/{id}` | Get one document's metadata |
 | GET | `/api/documents/{id}/file` | Stream/view the PDF file |
 | DELETE | `/api/documents/{id}` | Delete a document |
+| POST | `/api/documents/{id}/pagination/detect` | Ask the app's default AI provider to find this book's printed-page offset from its first ~20 pages; always runs when called (unlike the lazy, at-most-once fallback below) and overwrites any existing offset, including a manually-set one — the frontend confirms with the user first in that case. ADR-030 |
+| PATCH | `/api/documents/{id}/pagination` | `{offset}` — set the offset by hand (`paginationStatus=manual`, which the lazy fallback can then never silently overwrite) or `{offset: null}` to clear it back to `unknown`. ADR-030 |
 
 Upload parsing, blob storage and row creation live in `DocumentService.importPdf(userId, title, bytes)`; `uploadDocument` just unwraps the multipart and delegates. The same method seeds the welcome guide (ADR-022). Import only reads the page count now (`pdDocument.getNumberOfPages()`) and stores the blob — no text extraction at upload, no per-page rows (ADR-025). Text (or, more often now, the PDF itself) only gets touched when an activity actually needs it — see `ActivityContentService` below.
 
@@ -105,37 +108,48 @@ reader profile; the App Profile is simply read from the account. Full model in
 
 ### Sessions — `/api/sessions`
 
-Page fields have distinct meanings: `startPage` is the immutable start of the
-reading journey, `endPage` is a reading-progress marker (the furthest page
-reached, only grows), and `currentPage` is the page currently displayed. The
-reader may navigate to any document page, including backward for review. The AI
-activities (quiz, summary, chat quick-actions) run on a **client-side activity
-range** the reader controls (default: pages read so far), passed on each request
-and validated against the whole document (`1..pageCount`, clamped not rejected).
+Page fields have distinct meanings: `startPage` is where the session opens
+(now purely informational, not a locked range — see below), `endPage` is a
+reading-progress marker (the furthest page reached, only grows), and
+`currentPage` is the page currently displayed. The reader may navigate to any
+document page, including backward for review. The AI activities (quiz,
+summary, chat quick-actions) run on a **client-side activity range** the
+reader controls (default: pages read so far), passed on each request and
+validated against the whole document (`1..pageCount`, clamped not rejected).
 See ADR-024.
+
+Every page-range-accepting request (session creation, messages, voice, quiz,
+summary, reports) also accepts a `pageMode` (`physical` | `editorial`,
+defaults to `physical`): whether `startPage`/`endPage`/`pageStart`/`pageEnd`
+are the raw PDF page index or the book's own printed page numbers. The one
+place that resolves this — `ai.PageRangeResolver` — converts editorial to
+physical using `Document.paginationOffset`, triggering a one-time AI
+detection (`ai.PaginationDetectionService`) the first time a request needs an
+offset nobody has ever set or detected, then clamps to the document. See
+ADR-030.
 
 | Method | Route | Description |
 |--------|------|-------------|
-| POST | `/api/sessions` | Create a session (document, starting page, difficulty, language, `aiProfileId?`, `readerProfileId?`). `endPage` is optional for compatibility and defaults to `startPage`. Omit either profile id to use the user's default |
+| POST | `/api/sessions` | Create a session (document, difficulty, language, `aiProfileId?`, `readerProfileId?`). `startPage` is optional (defaults to 1 — not asked for by `CreateSessionModal` at all anymore), `endPage` optional too (defaults to `startPage`), both clamped not rejected; optional `pageMode`. Omit either profile id to use the user's default |
 | GET | `/api/sessions/{id}` | Load a session |
 | GET | `/api/sessions/{id}/context` | Inspect the assembled chat prompt layers (core, persona, reader profile, per-function, routing, session facts) each tagged with a `group`, plus `aiProfileName` / `readerProfileName`. Difficulty is not included — it's read only for quiz question/grading, never chat. See `docs/prompts.md` |
 | PATCH | `/api/sessions/{id}/current-page` | Navigate to any page in the document; moving forward also expands `endPage`, the furthest page reached |
 | GET | `/api/sessions/{id}/messages` | Conversation history |
-| POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `pageStart`/`pageEnd` are **required** on every turn, plain chat included — the shared activity range, same one every other activity uses (ADR-026). `502` if the AI provider fails |
-| POST | `/api/sessions/{id}/voice` | Voice turn: multipart `audio` + required `pageStart`/`pageEnd` (+ optional `capabilityHint`). Backend transcribes → same `ConversationEngine` → optional spoken reply. Returns the persisted user + bot messages and a base64 MP3 (or `null`). `502` if transcription fails |
+| POST | `/api/sessions/{id}/messages` | Send a message to BooKI, get its reply. Optional `capabilityHint` (`quiz`/`summary`/`explain`/`mnemonic`) runs that capability directly. `pageStart`/`pageEnd` are **required** on every turn, plain chat included — the shared activity range, same one every other activity uses (ADR-026) — plus optional `pageMode` (ADR-030). `502` if the AI provider fails |
+| POST | `/api/sessions/{id}/voice` | Voice turn: multipart `audio` + required `pageStart`/`pageEnd` (+ optional `capabilityHint`, `pageMode`). Backend transcribes → same `ConversationEngine` → optional spoken reply. Returns the persisted user + bot messages and a base64 MP3 (or `null`). `502` if transcription fails |
 | GET | `/api/sessions/{id}/progress` | Reading progress for the session |
 | GET | `/api/sessions/{id}/notifications` | Contextual nudges (halfway, done, say hi, try a quiz), localized per session language |
 | GET | `/api/sessions/{id}/reports` | List reports already generated/sent for this session |
-| POST | `/api/sessions/{id}/reports/progress` | Generate (and optionally email) a progress report |
-| POST | `/api/sessions/{id}/reports/quiz` | Generate (and optionally email) a quiz report |
-| POST | `/api/sessions/{id}/summary` | Generate a summary for a requested page range (omitted fields default to the whole document; clamped, not rejected). The book excerpt is capped (~12k chars, even-sampled) so a wide range stays bounded |
+| POST | `/api/sessions/{id}/reports/progress` | Generate and email a progress report to `email` (one address, or several separated by `;` — `EmailList`, ADR-030) |
+| POST | `/api/sessions/{id}/reports/quiz` | Generate and email a quiz report to `email` (same multi-address support). Optional `quizRequestId` picks which round to report on — falls back to the session's most recent `QuizRequest`, then to a best-effort reconstruction from answered attempts for pre-ADR-030 data |
+| POST | `/api/sessions/{id}/summary` | Generate a summary for a requested page range (omitted fields default to the whole document; clamped, not rejected; optional `pageMode`). The book excerpt is capped (~12k chars, even-sampled) so a wide range stays bounded |
 
 ### Quiz — `/api/sessions/{sessionId}` (mounted under Sessions)
 
 | Method | Route | Description |
 |--------|------|-------------|
-| POST | `/api/sessions/{sessionId}/quiz` | Generate 1–20 questions for a requested page range (omitted fields default to the whole document; clamped, not rejected). Question count is independent of the range width — questions are spread evenly across it, and a 1-page range still yields N. The response echoes the effective range |
-| POST | `/api/sessions/{sessionId}/quiz/answer` | Submit an open answer, get a score + teaching feedback that states the answer (ADR-023) |
+| POST | `/api/sessions/{sessionId}/quiz` | Generate 1–20 questions for a requested page range (omitted fields default to the whole document; clamped, not rejected; optional `pageMode`). Question count is independent of the range width — questions are spread evenly across it, and a 1-page range still yields N. Persists a `QuizRequest` row before generating and echoes its id as `config.quizRequestId`, along with the effective range (ADR-030) |
+| POST | `/api/sessions/{sessionId}/quiz/answer` | Submit an open answer, get a score + teaching feedback that states the answer (ADR-023). Optional `quizRequestId` (from the generate response) links the attempt back to its round, for an accurate report |
 | GET | `/api/sessions/{sessionId}/quiz/attempts` | Quiz attempt history/report for the session |
 
 ### Voice — `/api/voice`
@@ -179,7 +193,7 @@ See ADR-024.
 
 ## Request validation
 
-Every write endpoint has `@Valid` on its `@RequestBody`. Free-text fields carry `@Size` caps (persona slots ≤ 8000, reader-profile context ≤ 4000, names ≤ 120, prompts ≤ 2000), enum-ish strings carry `@Pattern` (`difficulty` ∈ `easy|medium|hard`, `deliverAs` ∈ `chat|pdf`, `readerLevel` ∈ `beginner|intermediate|advanced`), numeric ranges carry `@Min`/`@Max` (`lengthPages` 1–10), and email fields carry `@Email`. A violation is a `400 {"error": "field: message"}` via `GlobalExceptionHandler.handleValidation`.
+Every write endpoint has `@Valid` on its `@RequestBody`. Free-text fields carry `@Size` caps (persona slots ≤ 8000, reader-profile context ≤ 4000, names ≤ 120, prompts ≤ 2000), enum-ish strings carry `@Pattern` (`difficulty` ∈ `easy|medium|hard`, `deliverAs` ∈ `chat|pdf`, `readerLevel` ∈ `beginner|intermediate|advanced`), numeric ranges carry `@Min`/`@Max` (`lengthPages` 1–10), the user's own account email (`AuthRequest`) carries `@Email`, and **report-recipient** email fields (`SendReportRequest.email`, `GenerateSummaryRequest.email`, `UpdateUserRequest.defaultReportEmail`) carry `@Pattern(regexp = EmailList.REGEX)` instead — one address, or several separated by `;` (`email.EmailList` is the one place that validates/parses/normalizes the list; `defaultReportEmail`'s empty-string "clear" case is validated in `UserServiceImpl` instead, since it isn't itself a valid address). A violation is a `400 {"error": "field: message"}` via `GlobalExceptionHandler.handleValidation`.
 
 ## Conversation engine, capabilities and voice
 

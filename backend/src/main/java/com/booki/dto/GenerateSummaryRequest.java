@@ -1,6 +1,6 @@
 package com.booki.dto;
 
-import jakarta.validation.constraints.Email;
+import com.booki.email.EmailList;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -24,6 +24,9 @@ public class GenerateSummaryRequest {
     @Min(1)
     private Integer endPage;
 
+    /** physical|editorial; null means "physical". */
+    private String pageMode;
+
     @Size(max = 2000)
     private String prompt;
 
@@ -32,6 +35,7 @@ public class GenerateSummaryRequest {
     @Pattern(regexp = "chat|pdf")
     private String deliverAs;
 
-    @Email
+    /** Only used when deliverAs is pdf; optional even then. One address, or several separated by ";". */
+    @Pattern(regexp = EmailList.REGEX)
     private String email;
 }

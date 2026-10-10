@@ -5,11 +5,14 @@ import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.ai.PageRangeResolver;
+import com.booki.ai.PaginationDetectionService;
 import com.booki.conversation.capability.CapabilityRegistry;
 import com.booki.conversation.capability.ConversationCapability;
 import com.booki.domain.Document;
 import com.booki.domain.Message;
 import com.booki.domain.Session;
+import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.domain.Capability;
@@ -52,6 +55,8 @@ class ConversationEngineTest {
     @Mock private AiProviderRegistry aiProviderRegistry;
     @Mock private PromptAssembler promptAssembler;
     @Mock private CapabilityRegistry capabilityRegistry;
+    @Mock private DocumentRepository documentRepository;
+    @Mock private PaginationDetectionService paginationDetectionService;
     @Mock private AiProvider aiProvider;
     @Mock private Session session;
     @Mock private Document document;
@@ -63,8 +68,9 @@ class ConversationEngineTest {
 
     @BeforeEach
     void setUp() {
+        PageRangeResolver pageRangeResolver = new PageRangeResolver(documentRepository, paginationDetectionService);
         engine = new ConversationEngine(sessionRepository, messageRepository, activityContentService,
-                aiProviderRegistry, promptAssembler, capabilityRegistry, 20);
+                aiProviderRegistry, promptAssembler, capabilityRegistry, pageRangeResolver, 20);
 
         when(sessionRepository.findByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(Optional.of(session));
         lenientSession();
@@ -95,7 +101,7 @@ class ConversationEngineTest {
     }
 
     private static ConversationRequest request(String text) {
-        return new ConversationRequest(USER_ID, SESSION_ID, text, Message.InputType.TEXT, 1, 3);
+        return new ConversationRequest(USER_ID, SESSION_ID, text, Message.InputType.TEXT, 1, 3, null);
     }
 
     @Test
@@ -124,7 +130,7 @@ class ConversationEngineTest {
         when(aiProvider.converse(anyString(), anyList(), anyString())).thenReturn("the answer");
 
         ConversationResult result = engine.converse(
-                new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.VOICE, 1, 3));
+                new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.VOICE, 1, 3, null));
 
         verify(messageRepository, times(2)).save(savedMessageCaptor.capture());
         List<Message> saved = savedMessageCaptor.getAllValues();
@@ -139,7 +145,7 @@ class ConversationEngineTest {
         when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
         when(aiProvider.converse(anyString(), anyList(), anyString())).thenReturn("an answer");
 
-        engine.converse(new ConversationRequest(USER_ID, SESSION_ID, "tell me about this", Message.InputType.TEXT, 10, 12));
+        engine.converse(new ConversationRequest(USER_ID, SESSION_ID, "tell me about this", Message.InputType.TEXT, 10, 12, null));
 
         verify(activityContentService).resolve(document, aiProvider, 10, 12);
     }
@@ -149,7 +155,7 @@ class ConversationEngineTest {
         when(messageRepository.findBySessionIdOrderByCreatedAtDesc(eq(SESSION_ID), any())).thenReturn(List.of());
 
         assertThatThrownBy(() -> engine.converse(
-                new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.TEXT, null, null)))
+                new ConversationRequest(USER_ID, SESSION_ID, "hi", Message.InputType.TEXT, null, null, null)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -187,7 +193,7 @@ class ConversationEngineTest {
         when(capabilityRegistry.find("summary")).thenReturn(Optional.of(summary));
 
         ConversationResult result = engine.converse(new ConversationRequest(
-                USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary", 1, 3));
+                USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary", 1, 3, null));
 
         assertThat(result.botMessage().getMessage()).isEqualTo("Here is your recap.");
         verify(aiProvider, never()).converse(anyString(), anyList(), anyString());
@@ -200,7 +206,7 @@ class ConversationEngineTest {
         when(capabilityRegistry.find("bogus")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> engine.converse(new ConversationRequest(
-                USER_ID, SESSION_ID, "do a thing", Message.InputType.TEXT, "bogus", 1, 3)))
+                USER_ID, SESSION_ID, "do a thing", Message.InputType.TEXT, "bogus", 1, 3, null)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

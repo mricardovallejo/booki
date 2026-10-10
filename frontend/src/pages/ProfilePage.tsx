@@ -10,11 +10,15 @@ import { getErrorMessage } from '../lib/errors';
 export default function ProfilePage() {
   const { user, saving, save } = useUserProfile();
   const [name, setName] = useState('');
+  const [defaultReportEmail, setDefaultReportEmail] = useState('');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user) setName(user.name);
+    if (user) {
+      setName(user.name);
+      setDefaultReportEmail(user.defaultReportEmail || '');
+    }
   }, [user]);
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -22,7 +26,7 @@ export default function ProfilePage() {
     setSaved(false);
     setError(null);
     try {
-      await save({ name });
+      await save({ name, defaultReportEmail });
       setSaved(true);
     } catch (err) {
       setError(getErrorMessage(err, 'Could not save your profile.'));
@@ -40,6 +44,18 @@ export default function ProfilePage() {
         </Field>
         <Field label="Email">
           <Input value={user?.email || ''} disabled className="opacity-60" />
+        </Field>
+        <Field label="Default recipient(s) for sent reports">
+          <Input
+            type="text"
+            value={defaultReportEmail}
+            onChange={(e) => setDefaultReportEmail(e.target.value)}
+            placeholder="parent@email.com; tutor@email.com"
+          />
+          <p className="mt-1 text-xs text-white/50">
+            Pre-fills the "email report" box on progress and quiz reports. One address, or several
+            separated by ";". Leave empty to use this BooKI instance's own default, if it has one.
+          </p>
         </Field>
 
         <div className="flex items-center gap-3">

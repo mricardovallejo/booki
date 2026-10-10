@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../config/routes';
+import { detectPagination } from '../api/documents';
 import ChatPanel from './ChatPanel';
 import QuizPanel from './QuizPanel';
 import ProgressPanel from './ProgressPanel';
@@ -8,6 +9,8 @@ import ActivityRangeBar from './ActivityRangeBar';
 import NotificationsBell from './NotificationsBell';
 import ContextInfoButton from './ContextInfoButton';
 import { useSessionContext } from '../hooks/useSessionContext';
+import { useSession } from '../hooks/useSession';
+import { useDocument } from '../hooks/useDocument';
 
 interface Props {
   sessionId: number;
@@ -23,6 +26,8 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function SessionSidebar({ sessionId }: Props) {
   const { context } = useSessionContext(sessionId);
+  const { session } = useSession(sessionId);
+  const { document, refresh: refreshDocument } = useDocument(session?.documentId);
   const [tab, setTab] = useState<Tab>('chat');
   const [refreshKey, setRefreshKey] = useState(0);
   // On mobile the panel is a drawer that floats OVER the PDF instead of
@@ -89,7 +94,10 @@ export default function SessionSidebar({ sessionId }: Props) {
         </div>
       </div>
 
-      <ActivityRangeBar />
+      <ActivityRangeBar
+        document={document}
+        onDetectPagination={session ? () => detectPagination(session.documentId).then(() => refreshDocument()) : undefined}
+      />
 
       <div className="flex border-b border-white/10 px-5">
         {TABS.map((t) => (

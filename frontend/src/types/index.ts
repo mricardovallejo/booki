@@ -4,6 +4,9 @@ export type CapabilityHint = 'quiz' | 'summary' | 'explain' | 'mnemonic';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type AiProvider = 'claude' | 'openai' | 'kimi' | 'ollama';
 
+/** Whether a page number is the raw physical PDF index or the book's own printed/editorial numbering. */
+export type PageMode = 'physical' | 'editorial';
+
 export interface User {
   id: number;
   email: string;
@@ -11,6 +14,10 @@ export interface User {
   createdAt: string;
   /** Which conversational capabilities this account allows (subset of CapabilityHint) — account-wide, not per tutor profile. */
   enabledCapabilities: CapabilityHint[];
+  /** What this user explicitly set, if anything — null means "using the app's global default". */
+  defaultReportEmail: string | null;
+  /** defaultReportEmail if set, else the app's global default, else null — what to prefill a report's recipient with. */
+  effectiveReportEmail: string | null;
 }
 
 /** Which family an App Profile slot belongs to, used to group them in the editor. */
@@ -103,11 +110,17 @@ export interface SessionContext {
   layers: SessionContextLayer[];
 }
 
+/** How a Document's pagination offset was established — MANUAL always wins over auto-detection. */
+export type PaginationStatus = 'unknown' | 'manual' | 'auto_detected' | 'detection_failed';
+
 export interface Document {
   id: number;
   title: string;
   pageCount: number;
   createdAt: string;
+  /** Physical PDF page on which printed/editorial page "1" appears; null if unknown. */
+  paginationOffset: number | null;
+  paginationStatus: PaginationStatus;
 }
 
 export interface Session {
@@ -158,6 +171,8 @@ export interface QuizConfig {
   questionCount: number;
   startPage: number;
   endPage: number;
+  /** Links this quiz round's answers and report to what was actually requested. */
+  quizRequestId: number;
 }
 
 export interface QuizGenerateResult {
@@ -220,6 +235,8 @@ export interface SentReport {
   startPage: number | null;
   endPage: number | null;
   createdAt: string;
+  /** Why the email failed, when simulated is true because a send was attempted and failed. */
+  emailError: string | null;
 }
 
 export type SummaryDeliverAs = 'chat' | 'pdf';
@@ -228,6 +245,7 @@ export interface GenerateSummaryRequest {
   lengthPages: number;
   startPage: number;
   endPage: number;
+  pageMode?: PageMode;
   prompt?: string;
   includeCover: boolean;
   deliverAs: SummaryDeliverAs;

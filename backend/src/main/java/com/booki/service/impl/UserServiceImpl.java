@@ -4,6 +4,8 @@ import com.booki.domain.Capability;
 import com.booki.domain.User;
 import com.booki.dto.UpdateUserRequest;
 import com.booki.dto.UserResponse;
+import com.booki.email.EmailList;
+import com.booki.email.ReportRecipientResolver;
 import com.booki.repository.UserRepository;
 import com.booki.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import java.util.Set;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final ReportRecipientResolver reportRecipientResolver;
 
     @Override
     public UserResponse getCurrentUser(Long userId) {
@@ -33,6 +36,17 @@ public class UserServiceImpl implements UserService {
         }
         if (request.getEnabledCapabilities() != null) {
             user.setEnabledCapabilities(parseCapabilities(request.getEnabledCapabilities()));
+        }
+        if (request.getDefaultReportEmail() != null) {
+            String trimmed = request.getDefaultReportEmail().trim();
+            if (trimmed.isEmpty()) {
+                user.setDefaultReportEmail(null);
+            } else if (EmailList.isValid(trimmed)) {
+                user.setDefaultReportEmail(EmailList.normalize(trimmed));
+            } else {
+                throw new IllegalArgumentException(
+                        "defaultReportEmail must be one or more valid addresses separated by ';'");
+            }
         }
 
         userRepository.save(user);
@@ -53,6 +67,7 @@ public class UserServiceImpl implements UserService {
 
     private UserResponse toResponse(User user) {
         List<String> capabilities = user.getEnabledCapabilities().stream().sorted().map(Capability::wire).toList();
-        return new UserResponse(user.getId(), user.getEmail(), user.getName(), user.getCreatedAt(), capabilities);
+        return new UserResponse(user.getId(), user.getEmail(), user.getName(), user.getCreatedAt(), capabilities,
+                user.getDefaultReportEmail(), reportRecipientResolver.resolveDefault(user));
     }
 }

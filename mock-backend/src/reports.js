@@ -56,22 +56,26 @@ async function buildPdf(title, subtitle, sections, options = {}) {
     }
   }
 
+  // Split on real newlines FIRST — pdf-lib's standard WinAnsi font can't
+  // encode "\n" as a glyph, so one embedded directly in a word (free-text
+  // like a reader-context note or AI feedback, not just manual report
+  // content) crashed the whole process instead of just starting a new line.
   function drawWrapped(text, size, useFont, color) {
-    const words = String(text).split(' ');
-    let line = '';
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      const w = useFont.widthOfTextAtSize(test, size);
-      if (w > MAX_WIDTH && line) {
-        ensureSpace(LINE_HEIGHT);
-        page.drawText(line, { x: MARGIN_X, y, size, font: useFont, color });
-        y -= LINE_HEIGHT;
-        line = word;
-      } else {
-        line = test;
+    for (const paragraph of String(text).split('\n')) {
+      const words = paragraph.split(' ');
+      let line = '';
+      for (const word of words) {
+        const test = line ? `${line} ${word}` : word;
+        const w = useFont.widthOfTextAtSize(test, size);
+        if (w > MAX_WIDTH && line) {
+          ensureSpace(LINE_HEIGHT);
+          page.drawText(line, { x: MARGIN_X, y, size, font: useFont, color });
+          y -= LINE_HEIGHT;
+          line = word;
+        } else {
+          line = test;
+        }
       }
-    }
-    if (line) {
       ensureSpace(LINE_HEIGHT);
       page.drawText(line, { x: MARGIN_X, y, size, font: useFont, color });
       y -= LINE_HEIGHT;

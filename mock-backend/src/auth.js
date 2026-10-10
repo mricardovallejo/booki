@@ -50,12 +50,15 @@ function login(email, password) {
 }
 
 function toUserResponse(user) {
+  const defaultReportEmail = user.defaultReportEmail ?? null;
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     createdAt: user.createdAt,
-    enabledCapabilities: user.enabledCapabilities ?? [...CAPABILITIES]
+    enabledCapabilities: user.enabledCapabilities ?? [...CAPABILITIES],
+    defaultReportEmail,
+    effectiveReportEmail: defaultReportEmail
   };
 }
 

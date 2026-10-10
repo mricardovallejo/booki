@@ -591,3 +591,91 @@ will use SSE, which every browser supports.
   `aiProfileId` override (never actually changed which profile's content
   reached the model — ADR-015's rubric lookup always used the session's own
   profile) is removed for the same reason.
+
+## ADR-030: editorial page numbers, detected once and cached, plus an accurate quiz report
+
+- **Context**: every page number in BooKI was the raw physical PDF index.
+  Many books don't start their printed/editorial numbering at physical page
+  1 — a cover, title page, or table of contents pushes it later — so a
+  reader asking for "page 10" meant the printed page 10, while BooKI always
+  resolved that as the 10th PDF page. This had been discussed before but
+  never written down anywhere durable, so the decision kept getting lost
+  between conversations. Separately, the quiz report had a real bug, not
+  just a formatting gap: `QuizAttempt` rows are written at *answer* time
+  (`QuizServiceImpl.submitAnswer`), with no link back to what the quiz
+  *generation* call actually requested — so a report built only from
+  answered attempts could show the wrong page range (just the pages that
+  happened to get answered) and had no way to say how many questions were
+  requested versus answered. Reports also had no centralized recipient:
+  `SendReportForm` was retyped from scratch every send, and `ReportEmailSender`
+  swallowed delivery failures down to `e.toString()` with no stack trace —
+  "simulated" looked identical whether SMTP was unconfigured or a real send
+  had failed.
+- **Decision**: `Document` gains `paginationOffset` (nullable Integer — the
+  physical page on which printed page "1" appears; `editorialPage =
+  physicalPage - paginationOffset`, deliberately plain arithmetic, no roman
+  numeral modeling) and `paginationStatus`
+  (`UNKNOWN`/`MANUAL`/`AUTO_DETECTED`/`DETECTION_FAILED`). Every page-range
+  endpoint (session creation, chat/explain/quiz/summary turns, report
+  generation) gains a `pageMode` (`PHYSICAL`/`EDITORIAL`, default physical)
+  alongside its existing start/end pages, resolved through one new
+  component, `PageRangeResolver` — replacing three previously-duplicated
+  inline clamps in `ConversationEngine`, `QuizServiceImpl`, and
+  `ReportServiceImpl`. Editorial→physical conversion only happens there.
+  Detection is deliberately **at most once per document, then cached**:
+  `PaginationDetectionService` reuses `ActivityContentService.resolve`/
+  `converse` exactly as any other activity does (ADR-025 — a document-capable
+  provider gets the real first pages, anything else gets extracted text; no
+  separate extraction path), asking the model for `OFFSET: <physical page of
+  printed page 1>` or `OFFSET: NONE`. It runs from two places: an explicit
+  `POST /api/documents/{id}/pagination/detect` button (always runs, can
+  overwrite a prior value — the frontend confirms with the user first when
+  that value was `MANUAL`), and a lazy fallback inside `PageRangeResolver`
+  that fires only when `paginationStatus == UNKNOWN`. Once a document reaches
+  `MANUAL`, `AUTO_DETECTED`, or `DETECTION_FAILED`, the lazy path never runs
+  again for it — a manual value can therefore never be silently overwritten,
+  by construction, not by convention. A manual override is a separate
+  `PATCH /api/documents/{id}/pagination`. Session creation's `startPage`/
+  `endPage` become optional (default to page 1, resolved the same way as
+  everything else) rather than a required, blocking range — the reading
+  range was never meant to be fixed at session setup (ADR-021/024/026 already
+  established the per-task "activity range" on the frontend; this just stops
+  `CreateSessionModal` from pretending otherwise and adds the physical/
+  editorial choice to it). For the quiz report: a new `QuizRequest` row is
+  written at generation time (range, difficulty, requested question count,
+  page mode), `QuizAttempt` gains a nullable `quizRequestId`, and
+  `ReportServiceImpl.sendQuizReport` prefers the named (or session's most
+  recent) `QuizRequest` as "requested", falling back to the old
+  answered-attempts reconstruction only for rounds with no `QuizRequest` on
+  record — labeled explicitly as such rather than implying it's the
+  requested range. For email: `User.defaultReportEmail` plus a global
+  `booki.email.default-report-recipient` fallback (same `application.yml`
+  pattern as `booki.email.from` — no new admin-only DB table with nothing to
+  edit it from), resolved by `ReportRecipientResolver` into
+  `UserResponse.effectiveReportEmail`, which the frontend prefills (still
+  editable per send). `ReportEmailSender.send` returns a typed
+  `Result(sent, errorMessage)` instead of a bare `boolean`, logs the full
+  exception (not just `toString()`), and `SentReportResponse.emailError`
+  surfaces the reason transiently on a just-sent report.
+- **Consequence**: this is the durable record of the "detect once, cache
+  forever, manual always wins" rule — read this ADR, not a chat transcript,
+  before touching pagination again. `SessionRequest.startPage` drops its
+  `@NotNull`; a session's own start/end pages are now clamped, never
+  rejected, matching how every other page range in BooKI already degraded
+  (ADR-026). `GenerateQuizRequest`/`GenerateSummaryRequest`/`MessageRequest`/
+  `ConversationRequest` all gain `pageMode`. Reports built from a session with
+  no `QuizRequest` history (pre-this-change data) keep working, just labeled
+  "requested range not recorded" instead of silently guessing. `V1__init.sql`
+  is edited in place per its own documented convention (throwaway dev/pilot
+  schema, no `V2`), adding `documents.pagination_offset`/`pagination_status`,
+  `users.default_report_email`, the `quiz_requests` table, and
+  `quiz_attempts.quiz_request_id`.
+- **Follow-up**: `defaultReportEmail`/`effectiveReportEmail`, `SendReportRequest.email`
+  and `GenerateSummaryRequest.email` all accept one address or several
+  separated by `;` (a report may need to reach a parent and a tutor) —
+  `com.booki.email.EmailList` is the one place that validates and parses the
+  list; `ReportEmailSender` sends to every address via `MimeMessageHelper.setTo(String[])`.
+  `CreateSessionModal` no longer asks for a starting page at all (not even as
+  an optional field) — a session always opens at page 1; the backend's
+  `SessionRequest.startPage` stays optional for API completeness, just unused
+  by this UI now.

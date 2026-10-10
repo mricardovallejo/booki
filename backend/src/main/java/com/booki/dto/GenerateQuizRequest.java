@@ -24,4 +24,7 @@ public class GenerateQuizRequest {
     @NotNull
     @Min(1)
     private Integer endPage;
+
+    /** physical|editorial; null means "physical". */
+    private String pageMode;
 }

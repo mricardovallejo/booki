@@ -30,4 +30,7 @@ public class MessageRequest {
 
     @NotNull
     private Integer pageEnd;
+
+    /** physical|editorial; null means "physical". */
+    private String pageMode;
 }

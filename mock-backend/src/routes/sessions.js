@@ -656,6 +656,9 @@ router.post('/:id/quiz', authMiddleware, (req, res) => {
   const profile = aiProfiles.find((p) => p.id === resolvedProfileId);
 
   const questions = generateQuiz(session, { questionCount, startPage, endPage });
+  // Mock: not persisted anywhere, just enough so the frontend can thread an id
+  // through submitAnswer/sendQuizReport like the real QuizRequest.
+  const quizRequestId = Date.now();
   res.json({
     questions,
     config: {
@@ -664,7 +667,8 @@ router.post('/:id/quiz', authMiddleware, (req, res) => {
       difficulty: resolvedDifficulty,
       questionCount: questions.length,
       startPage,
-      endPage
+      endPage,
+      quizRequestId
     }
   });
 });
@@ -744,15 +748,19 @@ router.get('/:id/notifications', authMiddleware, (req, res) => {
   res.json(computeNotifications(session));
 });
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// One address, or several separated by ";" (e.g. a parent and a tutor). Mirrors the backend's EmailList.
+const SINGLE_EMAIL = '[^\\s@;]+@[^\\s@;]+\\.[^\\s@;]+';
+const EMAIL_RE = new RegExp(`^\\s*${SINGLE_EMAIL}\\s*(;\\s*${SINGLE_EMAIL}\\s*)*$`);
 
-function saveSentReport(sessionId, type, email, fileName) {
+function saveSentReport(sessionId, type, email, fileName, startPage, endPage) {
   const report = {
     id: sentReports.length ? Math.max(...sentReports.map((r) => r.id)) + 1 : 1,
     sessionId,
     type,
     email: email || null,
     fileName,
+    startPage: startPage ?? null,
+    endPage: endPage ?? null,
     createdAt: nowIso()
   };
   sentReports.push(report);
@@ -773,7 +781,12 @@ function toSentReportResponse(report) {
     email: report.email,
     downloadUrl: `/api/reports/${report.id}/file`,
     simulated: !!report.email,
-    createdAt: report.createdAt
+    startPage: report.startPage ?? null,
+    endPage: report.endPage ?? null,
+    createdAt: report.createdAt,
+    // No real SMTP in the mock, so a report is either genuinely not sent
+    // (email omitted) or "sent" via the console.log stand-in — never a failure.
+    emailError: null
   };
 }
 
@@ -821,7 +834,7 @@ router.post('/:id/reports/progress', authMiddleware, async (req, res) => {
   ];
 
   const { fileName } = await buildPdf(`Progress report — ${session.title}`, `Generated ${new Date().toLocaleString()}`, sections);
-  const report = saveSentReport(session.id, 'progress', email, fileName);
+  const report = saveSentReport(session.id, 'progress', email, fileName, session.startPage, session.endPage);
   res.status(201).json(toSentReportResponse(report));
 });
 
@@ -867,7 +880,9 @@ router.post('/:id/reports/quiz', authMiddleware, async (req, res) => {
   ];
 
   const { fileName } = await buildPdf(`Quiz correction report — ${session.title}`, `Generated ${new Date().toLocaleString()}`, sections);
-  const report = saveSentReport(session.id, 'quiz', email, fileName);
+  const quizStartPage = Math.min(...attempts.map((a) => a.pageNumber));
+  const quizEndPage = Math.max(...attempts.map((a) => a.pageNumber));
+  const report = saveSentReport(session.id, 'quiz', email, fileName, quizStartPage, quizEndPage);
   res.status(201).json(toSentReportResponse(report));
 });
 
@@ -927,7 +942,7 @@ router.post('/:id/summary', authMiddleware, async (req, res) => {
     cover ? { cover } : {}
   );
 
-  const report = saveSentReport(session.id, 'summary', email || null, fileName);
+  const report = saveSentReport(session.id, 'summary', email || null, fileName, startPage, endPage);
   res.status(201).json(toSentReportResponse(report));
 });
 

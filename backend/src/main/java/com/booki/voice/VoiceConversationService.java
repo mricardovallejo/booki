@@ -4,6 +4,7 @@ import com.booki.conversation.ConversationEngine;
 import com.booki.conversation.ConversationRequest;
 import com.booki.conversation.ConversationResult;
 import com.booki.domain.Message;
+import com.booki.domain.PageMode;
 import com.booki.domain.Session;
 import com.booki.repository.SessionRepository;
 import lombok.RequiredArgsConstructor;
@@ -43,7 +44,7 @@ public class VoiceConversationService {
 
     public VoiceTurnResult processTurn(Long userId, Long sessionId, byte[] audio, String contentType,
                                        String capabilityHint, boolean wantsAudioReply,
-                                       Integer pageStart, Integer pageEnd) {
+                                       Integer pageStart, Integer pageEnd, String pageMode) {
         log.info("Voice turn received sessionId={} audioBytes={} wantsAudioReply={}",
                 sessionId, audio == null ? 0 : audio.length, wantsAudioReply);
         Session session = sessionRepository.findByIdAndUserId(sessionId, userId)
@@ -68,7 +69,8 @@ public class VoiceConversationService {
         }
 
         ConversationResult result = conversationEngine.converse(new ConversationRequest(
-                userId, sessionId, transcript, Message.InputType.VOICE, capabilityHint, pageStart, pageEnd));
+                userId, sessionId, transcript, Message.InputType.VOICE, capabilityHint, pageStart, pageEnd,
+                PageMode.ofWire(pageMode)));
 
         // TTS is best-effort, and skippable: the text reply is already persisted
         // and returned either way, so a reader who wants text-only replies (e.g.

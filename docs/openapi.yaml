@@ -176,10 +176,10 @@ paths:
       summary: Update the current user's profile
       operationId: updateCurrentUser
       description: >
-        The display name and/or `enabledCapabilities` — the account-wide set
-        (see the App Profile tag), not per AI Profile. The reader's learning
-        context lives in reader profiles (see the Reader Profiles tag), not
-        on the user.
+        The display name, `enabledCapabilities` — the account-wide set (see
+        the App Profile tag), not per AI Profile — and/or
+        `defaultReportEmail`. The reader's learning context lives in reader
+        profiles (see the Reader Profiles tag), not on the user.
       requestBody:
         content:
           application/json:
@@ -190,6 +190,12 @@ paths:
                 enabledCapabilities:
                   type: array
                   items: { type: string, enum: [quiz, summary, explain, mnemonic] }
+                defaultReportEmail:
+                  type: string
+                  description: >
+                    One address, or several separated by ";". Empty string
+                    clears it back to the app's global default; omit to leave
+                    unchanged.
       responses:
         "200":
           description: Updated profile
@@ -289,6 +295,62 @@ paths:
           content:
             application/pdf:
               schema: { type: string, format: binary }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /documents/{id}/pagination/detect:
+    post:
+      tags: [Documents]
+      summary: Detect this book's printed/editorial page numbering
+      operationId: detectDocumentPagination
+      description: >
+        Asks the app's default AI provider to find the physical page on
+        which this book's printed page "1" appears, from its first ~20
+        pages. Always runs when called (unlike the lazy, at-most-once
+        fallback inside page-range resolution) — intended for an explicit
+        "detect pagination" action. Overwrites any existing `paginationOffset`
+        / `paginationStatus`, including a MANUAL value — the frontend should
+        confirm with the user first when that's the case. See ADR-030.
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      responses:
+        "200":
+          description: Updated document, reflecting the detection outcome (auto_detected or detection_failed)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /documents/{id}/pagination:
+    patch:
+      tags: [Documents]
+      summary: Set (or clear) this book's pagination offset by hand
+      operationId: updateDocumentPagination
+      description: >
+        A manually-set offset always wins over automatic detection — see
+        `paginationStatus=manual` on `Document` and ADR-030.
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                offset:
+                  type: integer
+                  nullable: true
+                  description: >
+                    The physical page on which printed page "1" appears.
+                    Null clears it back to `paginationStatus=unknown`.
+      responses:
+        "200":
+          description: Updated document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -742,12 +804,22 @@ paths:
           application/json:
             schema:
               type: object
-              required: [documentId, startPage, difficulty]
+              required: [documentId, difficulty]
               properties:
                 documentId: { type: integer }
                 title: { type: string, description: "Auto-generated from the document title and pages read if omitted" }
-                startPage: { type: integer, minimum: 1, description: "Where this reading journey begins." }
+                startPage:
+                  type: integer
+                  minimum: 1
+                  description: >
+                    Optional, defaults to 1 — just where the reading journey
+                    begins, not a locked range (the per-task activity range on
+                    Quiz/Summary/chat is what matters). Out-of-bounds values
+                    are clamped, never rejected. See ADR-030.
                 endPage: { type: integer, minimum: 1, description: "Optional compatibility field; defaults to startPage and then grows as the reader advances." }
+                pageMode:
+                  allOf: [{ $ref: "#/components/schemas/PageMode" }]
+                  description: Whether startPage/endPage are physical or editorial page numbers. Defaults to physical.
                 aiProfileId:
                   type: integer
                   nullable: true
@@ -894,6 +966,9 @@ paths:
                   type: integer
                   minimum: 1
                   description: See `pageStart`.
+                pageMode:
+                  allOf: [{ $ref: "#/components/schemas/PageMode" }]
+                  description: Whether pageStart/pageEnd are physical or editorial page numbers. Defaults to physical.
       responses:
         "201":
           description: BooKI's reply
@@ -955,6 +1030,9 @@ paths:
                   type: integer
                   minimum: 1
                   description: See `pageStart`.
+                pageMode:
+                  allOf: [{ $ref: "#/components/schemas/PageMode" }]
+                  description: Whether pageStart/pageEnd are physical or editorial page numbers. Defaults to physical.
       responses:
         "201":
           description: Persisted user + bot messages, plus the spoken reply
@@ -1017,6 +1095,9 @@ paths:
                 questionCount: { type: integer, minimum: 1, maximum: 20, default: 3 }
                 startPage: { type: integer, minimum: 1, description: "First page for this quiz round — the shared activity range. Clamped to the document." }
                 endPage: { type: integer, minimum: 1, description: "Last page for this quiz round. Clamped to the document." }
+                pageMode:
+                  allOf: [{ $ref: "#/components/schemas/PageMode" }]
+                  description: Whether startPage/endPage are physical or editorial page numbers. Defaults to physical.
       responses:
         "200":
           description: Generated quiz
@@ -1055,6 +1136,13 @@ paths:
                 question: { type: string, description: "Echoed back verbatim into the stored QuizAttempt for the report" }
                 answer: { type: string }
                 difficulty: { $ref: "#/components/schemas/Difficulty" }
+                quizRequestId:
+                  type: integer
+                  description: >
+                    Links this answer back to the quiz round it belongs to
+                    (from `QuizConfig.quizRequestId`), so the report can show
+                    what was requested, not just what got answered. Optional —
+                    omitting it degrades to a best-effort report. See ADR-030.
       responses:
         "200":
           description: Grading result
@@ -1157,7 +1245,9 @@ paths:
               type: object
               required: [email]
               properties:
-                email: { type: string, format: email }
+                email:
+                  type: string
+                  description: One address, or several separated by ";" (e.g. a parent and a tutor).
       responses:
         "201":
           description: Report generated
@@ -1185,7 +1275,16 @@ paths:
               type: object
               required: [email]
               properties:
-                email: { type: string, format: email }
+                email:
+                  type: string
+                  description: One address, or several separated by ";" (e.g. a parent and a tutor).
+                quizRequestId:
+                  type: integer
+                  description: >
+                    Which quiz round to report on. Optional — falls back to
+                    the session's most recent round, then to a best-effort
+                    reconstruction from answered attempts alone for data with
+                    no recorded QuizRequest. See ADR-030.
       responses:
         "201":
           description: Report generated
@@ -1370,6 +1469,21 @@ components:
       type: string
       enum: [USER, BOOKI]
 
+    PageMode:
+      type: string
+      enum: [physical, editorial]
+      description: >
+        Whether a page number is the raw physical PDF index (default) or the
+        book's own printed/editorial numbering, converted using the
+        document's `paginationOffset`. See ADR-030.
+
+    PaginationStatus:
+      type: string
+      enum: [unknown, manual, auto_detected, detection_failed]
+      description: >
+        How a document's `paginationOffset` was established. `manual` always
+        wins — it is never overwritten by automatic detection.
+
     User:
       type: object
       properties:
@@ -1381,7 +1495,21 @@ components:
           type: array
           description: Account-wide — not per AI Profile. See the App Profile tag.
           items: { type: string, enum: [quiz, summary, explain, mnemonic] }
-      required: [id, email, name, createdAt, enabledCapabilities]
+        defaultReportEmail:
+          type: string
+          nullable: true
+          description: >
+            What this user explicitly set, if anything — one address, or
+            several separated by ";". Null means "using the app's global
+            default".
+        effectiveReportEmail:
+          type: string
+          nullable: true
+          description: >
+            `defaultReportEmail` if set, else the app's global default
+            (`booki.email.default-report-recipient`), else null — what a
+            report-sending form should prefill.
+      required: [id, email, name, createdAt, enabledCapabilities, defaultReportEmail, effectiveReportEmail]
 
     AuthResponse:
       type: object
@@ -1397,7 +1525,15 @@ components:
         title: { type: string }
         pageCount: { type: integer }
         createdAt: { type: string, format: date-time }
-      required: [id, title, pageCount, createdAt]
+        paginationOffset:
+          type: integer
+          nullable: true
+          description: >
+            Physical PDF page on which printed/editorial page "1" appears;
+            null until detected or set. `editorialPage = physicalPage -
+            paginationOffset`. See ADR-030.
+        paginationStatus: { $ref: "#/components/schemas/PaginationStatus" }
+      required: [id, title, pageCount, createdAt, paginationOffset, paginationStatus]
 
     Tag:
       type: object
@@ -1591,7 +1727,14 @@ components:
         questionCount: { type: integer }
         startPage: { type: integer, description: "First page actually used for this quiz round." }
         endPage: { type: integer, description: "Last page actually used for this quiz round." }
-      required: [difficulty, questionCount, startPage, endPage]
+        quizRequestId:
+          type: integer
+          description: >
+            Identifies this quiz round — pass it to `submitQuizAnswer` and
+            `sendQuizReport` so the report can show what was actually
+            requested (range, question count, difficulty), not just what got
+            answered. See ADR-030.
+      required: [difficulty, questionCount, startPage, endPage, quizRequestId]
 
     QuizGenerateResult:
       type: object
@@ -1679,8 +1822,21 @@ components:
             no SMTP is configured (SMTP_HOST/EMAIL_FROM unset) or the send
             failed. False means ReportEmailSender handed the PDF to the SMTP
             server successfully. Always false when `email` is null.
+        startPage:
+          type: integer
+          nullable: true
+          description: The page range this specific report's content actually covers — not the session's own (auto-growing) range.
+        endPage: { type: integer, nullable: true }
+        emailError:
+          type: string
+          nullable: true
+          description: >
+            Why the email failed, when `simulated` is true because a send was
+            attempted and failed. Null when simply "not configured", or on
+            historical rows read back later (the error is transient, surfaced
+            only at send time).
         createdAt: { type: string, format: date-time }
-      required: [id, sessionId, type, email, downloadUrl, simulated, createdAt]
+      required: [id, sessionId, type, email, downloadUrl, simulated, startPage, endPage, emailError, createdAt]
 
     GenerateSummaryRequest:
       type: object
@@ -1699,6 +1855,9 @@ components:
           type: integer
           minimum: 1
           description: Last page to summarize. Clamped to the document.
+        pageMode:
+          allOf: [{ $ref: "#/components/schemas/PageMode" }]
+          description: Whether startPage/endPage are physical or editorial page numbers. Defaults to physical.
         prompt:
           type: string
           description: Optional free-text instruction from the reader (e.g. "focus on the characters"). Echoed verbatim into the generated summary's intro.
@@ -1708,5 +1867,6 @@ components:
         deliverAs: { type: string, enum: [chat, pdf] }
         email:
           type: string
-          format: email
-          description: Only used when deliverAs is pdf; optional even then.
+          description: >
+            Only used when deliverAs is pdf; optional even then. One
+            address, or several separated by ";".

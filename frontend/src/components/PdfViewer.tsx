@@ -7,6 +7,8 @@ import { API_BASE_IS_SECURE } from '../config/endpoints';
 import { useAuth } from '../context/AuthContext';
 import { useActivityRange } from '../context/ActivityRangeContext';
 import { useSession } from '../hooks/useSession';
+import { useDocument } from '../hooks/useDocument';
+import { toDisplayPage, toPhysicalPage } from '../lib/pagination';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -20,17 +22,27 @@ interface Props {
 export default function PdfViewer({ sessionId }: Props) {
   const { token } = useAuth();
   const { session, error, goToPage } = useSession(sessionId);
-  const { initTotalPages, setReadEnd } = useActivityRange();
+  const { document } = useDocument(session?.documentId);
+  const { initTotalPages, setReadEnd, pageMode } = useActivityRange();
   const [numPages, setNumPages] = useState(0);
   const [inputPage, setInputPage] = useState(1);
   const [pageContainerNode, setPageContainerNode] = useState<HTMLDivElement | null>(null);
   const [fitWidth, setFitWidth] = useState<number>();
   const [zoom, setZoom] = useState(1);
 
+  // `range`/`currentPage` everywhere else in the app stay physical (matches
+  // the backend and the PDF's own index) — this is the one spot that also
+  // shows the printed/editorial equivalent, so the SAME number shown here and
+  // in the activity range bar always means the SAME physical page. Showing
+  // only one or the other previously let two different physical pages both
+  // display as "12" and look like a match. See ADR-030.
+  const offset = document?.paginationOffset ?? null;
+  const mode = pageMode;
+
   const currentPage = session?.currentPage;
   useEffect(() => {
-    if (currentPage != null) setInputPage(currentPage);
-  }, [currentPage]);
+    if (currentPage != null) setInputPage(toDisplayPage(currentPage, mode, offset));
+  }, [currentPage, mode, offset]);
 
   // Feed the shared activity-range state: document length + reading progress.
   // The range control itself lives above the sidebar tabs (ActivityRangeBar).
@@ -90,17 +102,25 @@ export default function PdfViewer({ sessionId }: Props) {
     );
   }
 
-  const onGoToPage = async (page: number) => {
+  const onGoToPhysicalPage = async (physicalPage: number) => {
     if (!numPages) return;
-    await goToPage(Math.max(1, Math.min(page, numPages)));
+    await goToPage(Math.max(1, Math.min(physicalPage, numPages)));
   };
+
+  // The free-text input holds whatever unit is currently displayed
+  // (physical or printed); convert to physical before navigating — react-pdf
+  // and the session's own currentPage always operate in physical terms.
+  const onGoToDisplayedPage = (displayedPage: number) =>
+    onGoToPhysicalPage(toPhysicalPage(displayedPage, mode, offset));
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-booki-surface/50 px-6 py-3 backdrop-blur">
         <div className="min-w-0 flex-1 basis-full sm:basis-auto">
           <h2 className="truncate text-sm font-bold text-white">{session.title}</h2>
-          <p className="truncate text-xs text-booki-muted">Read so far: pages {session.startPage}-{session.endPage}</p>
+          <p className="truncate text-xs text-booki-muted">
+            Read so far: pages {toDisplayPage(session.startPage, mode, offset)}-{toDisplayPage(session.endPage, mode, offset)}
+          </p>
           {error && <p className="mt-0.5 truncate text-xs text-rose-400">{error}</p>}
         </div>
         <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
@@ -129,7 +149,7 @@ export default function PdfViewer({ sessionId }: Props) {
           </div>
           <div className="flex items-center gap-2 rounded-lg bg-booki-card px-3 py-1.5">
             <button
-              onClick={() => onGoToPage(session.currentPage - 1)}
+              onClick={() => onGoToPhysicalPage(session.currentPage - 1)}
               disabled={session.currentPage <= 1}
               className="rounded p-1 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
             >
@@ -137,20 +157,27 @@ export default function PdfViewer({ sessionId }: Props) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <span className="text-xs text-white/60">Page</span>
+            <span className="text-xs text-white/60" title={mode === 'editorial' ? 'Printed page number' : 'PDF page number'}>
+              {mode === 'editorial' ? 'Printed' : 'Page'}
+            </span>
             <input
               type="number"
-              min={1}
-              max={numPages || undefined}
+              min={toDisplayPage(1, mode, offset)}
+              max={numPages ? toDisplayPage(numPages, mode, offset) : undefined}
               value={inputPage}
               onChange={(e) => setInputPage(Number(e.target.value))}
-              onBlur={() => onGoToPage(inputPage)}
-              onKeyDown={(e) => e.key === 'Enter' && onGoToPage(inputPage)}
+              onBlur={() => onGoToDisplayedPage(inputPage)}
+              onKeyDown={(e) => e.key === 'Enter' && onGoToDisplayedPage(inputPage)}
               className="w-12 bg-transparent text-center text-sm font-bold text-white outline-none"
             />
-            <span className="text-xs text-white/60">/ {numPages || '…'}</span>
+            <span className="text-xs text-white/60">/ {numPages ? toDisplayPage(numPages, mode, offset) : '…'}</span>
+            {mode === 'editorial' && currentPage != null && (
+              <span className="text-[10px] text-white/35" title="The PDF's own raw page number">
+                (PDF {currentPage})
+              </span>
+            )}
             <button
-              onClick={() => onGoToPage(session.currentPage + 1)}
+              onClick={() => onGoToPhysicalPage(session.currentPage + 1)}
               disabled={!numPages || session.currentPage >= numPages}
               className="rounded p-1 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
             >
@@ -188,7 +215,9 @@ export default function PdfViewer({ sessionId }: Props) {
           </PdfDoc>
         </div>
         <p className="mt-4 text-center text-xs text-booki-muted">
-          PDF total: {numPages} pages · Current session page: {session.currentPage}
+          {mode === 'editorial'
+            ? `Printed page ${toDisplayPage(session.currentPage, mode, offset)} of ${toDisplayPage(numPages, mode, offset)} · PDF page ${session.currentPage} of ${numPages}`
+            : `PDF total: ${numPages} pages · Current session page: ${session.currentPage}`}
         </p>
       </div>
     </div>

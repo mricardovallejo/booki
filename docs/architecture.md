@@ -34,13 +34,15 @@ typing, a quick-action button, or speaking — converges on one
 **`ConversationEngine`**, which composes that session context with conversational
 **capabilities** and an **AI provider**.
 
-Sessions are open-ended: `startPage` records where the journey began,
-`endPage` is a pure reading-progress marker (grows to the furthest page reached),
-and `currentPage` may move anywhere in the PDF. Plain chat sends a bounded window
-around the reading position (or an explicit range typed into the message). The AI
-*activities* — panel quiz, summary modal, chat quick-actions — instead run on a
-reader-controlled **activity page range** (client-side, shared, defaults to
-"pages read so far", editable); see ADR-024.
+Sessions are open-ended: `startPage` is just where the session opens (not a
+locked range — `CreateSessionModal` doesn't even ask for it), `endPage` is a
+pure reading-progress marker (grows to the furthest page reached), and
+`currentPage` may move anywhere in the PDF. Every turn — plain chat included —
+runs on one reader-controlled **activity page range** (client-side, shared
+across chat/quiz/summary, defaults to "pages read so far", editable, no
+per-message override; ADR-024/ADR-026), which can be expressed in either
+*physical* (raw PDF page) or *editorial* (the book's own printed page number,
+converted via the document's detected-or-manual offset) terms — see ADR-030.
 
 ```
   TEXT ─────────────┐

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSummary } from '../hooks/useSummary';
 import { useSession } from '../hooks/useSession';
 import { useActivityRange } from '../context/ActivityRangeContext';
+import { useAuth } from '../context/AuthContext';
 import Button from './ui/Button';
 import { Field, Input, TextArea } from './ui/FormField';
 import type { SummaryDeliverAs } from '../types';
@@ -17,6 +18,7 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
   const { generating, error, lastReport, generate } = useSummary(sessionId);
   const { session, refresh } = useSession(sessionId);
   const { range, pinned } = useActivityRange();
+  const { user } = useAuth();
   const [lengthPages, setLengthPages] = useState(2);
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState(1);
@@ -25,6 +27,10 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
   const [deliverAs, setDeliverAs] = useState<SummaryDeliverAs>('chat');
   const [email, setEmail] = useState('');
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (user?.effectiveReportEmail) setEmail((prev) => prev || user.effectiveReportEmail || '');
+  }, [user]);
 
   useEffect(() => {
     if (range) {
@@ -139,10 +145,10 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
           {deliverAs === 'pdf' && (
             <Field label="Also email it (optional)">
               <Input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@email.com"
+                placeholder="you@email.com; someone-else@email.com"
               />
             </Field>
           )}
@@ -152,11 +158,13 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
           )}
           {error && <p className="text-sm text-rose-400">{error}</p>}
           {done && deliverAs === 'pdf' && (
-            <p className="text-sm text-emerald-400">
+            <p className={`text-sm ${lastReport?.simulated ? 'text-amber-400' : 'text-emerald-400'}`}>
               PDF generated and downloaded
               {lastReport?.email
                 ? lastReport.simulated
-                  ? ` · not actually emailed to ${lastReport.email} — email isn't configured on this server`
+                  ? lastReport.emailError
+                    ? ` · could not email ${lastReport.email}: ${lastReport.emailError}`
+                    : ` · not actually emailed to ${lastReport.email} — email isn't configured on this server`
                   : ` · sent to ${lastReport.email}`
                 : ''}
               .

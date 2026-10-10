@@ -17,4 +17,6 @@ public class SentReportResponse {
     private Integer startPage;
     private Integer endPage;
     private Instant createdAt;
+    /** Why the email failed, when {@code simulated} is true because a send was attempted and failed — null when simply "not configured" or not applicable. */
+    private String emailError;
 }

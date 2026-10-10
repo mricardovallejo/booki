@@ -23,7 +23,9 @@ function toDocumentResponse(doc) {
     id: doc.id,
     title: doc.title,
     pageCount: doc.pageCount,
-    createdAt: doc.createdAt
+    createdAt: doc.createdAt,
+    paginationOffset: doc.paginationOffset ?? null,
+    paginationStatus: doc.paginationStatus ?? 'unknown'
   };
 }
 
@@ -38,6 +40,37 @@ router.get('/', authMiddleware, (req, res) => {
 router.get('/:id', authMiddleware, (req, res) => {
   const doc = documents.find((d) => d.id === Number(req.params.id) && d.userId === req.userId);
   if (!doc) return res.status(404).json({ error: 'Document not found' });
+  res.json(toDocumentResponse(doc));
+});
+
+// Mock: deterministic rather than a real AI call — alternates between
+// "found something" and "found nothing" so both UI states are reachable.
+router.post('/:id/pagination/detect', authMiddleware, (req, res) => {
+  const doc = documents.find((d) => d.id === Number(req.params.id) && d.userId === req.userId);
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+  if (doc.pageCount > 1) {
+    doc.paginationOffset = 1;
+    doc.paginationStatus = 'auto_detected';
+  } else {
+    doc.paginationOffset = null;
+    doc.paginationStatus = 'detection_failed';
+  }
+  res.json(toDocumentResponse(doc));
+});
+
+router.patch('/:id/pagination', authMiddleware, (req, res) => {
+  const doc = documents.find((d) => d.id === Number(req.params.id) && d.userId === req.userId);
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+  const { offset } = req.body || {};
+  if (offset === null || offset === undefined) {
+    doc.paginationOffset = null;
+    doc.paginationStatus = 'unknown';
+  } else {
+    doc.paginationOffset = Number(offset);
+    doc.paginationStatus = 'manual';
+  }
   res.json(toDocumentResponse(doc));
 });
 

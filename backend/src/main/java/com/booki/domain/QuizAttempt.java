@@ -23,6 +23,11 @@ public class QuizAttempt {
     @JoinColumn(nullable = false, name = "session_id")
     private Session session;
 
+    /** The quiz round this attempt answers — null for attempts recorded before this link existed. See ADR-030. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "quiz_request_id")
+    private QuizRequest quizRequest;
+
     @Column(nullable = false, name = "page_number")
     private Integer pageNumber;
 

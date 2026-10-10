@@ -81,6 +81,10 @@ booki:
     # "simulated" (SentReportResponse.simulated=true) same as before — no
     # crash from a missing SMTP setup.
     from: ${EMAIL_FROM:}
+    # App-wide fallback recipient when a user hasn't set their own
+    # defaultReportEmail (see ReportRecipientResolver, ADR-030). Blank = no
+    # default; the sender must type an address.
+    default-report-recipient: ${REPORT_DEFAULT_EMAIL:}
   jwt:
     # Leave unset for local dev / tests — JwtUtil signs with a random ephemeral
     # key and warns. MUST be a strong random 32+ byte value for any real deploy.

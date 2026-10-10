@@ -1,6 +1,7 @@
 package com.booki.it;
 
 import com.booki.dto.DocumentResponse;
+import com.booki.dto.UpdateDocumentPaginationRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -90,5 +91,57 @@ class DocumentIT extends IntegrationTestBase {
         ResponseEntity<DocumentResponse> getAfter = rest.exchange("/api/documents/" + documentId, HttpMethod.GET,
                 new HttpEntity<>(auth(owner.token())), DocumentResponse.class);
         assertThat(getAfter.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void newDocumentHasUnknownPaginationUntilDetectedOrSetByHand() {
+        AuthData user = register(uniqueEmail("pagin"));
+        Long documentId = uploadDocument(user, pdfWithPages("Front matter", "Page one", "Page two"), "book.pdf");
+
+        ResponseEntity<DocumentResponse> fresh = rest.exchange("/api/documents/" + documentId, HttpMethod.GET,
+                new HttpEntity<>(auth(user.token())), DocumentResponse.class);
+        assertThat(fresh.getBody().getPaginationStatus()).isEqualTo("unknown");
+        assertThat(fresh.getBody().getPaginationOffset()).isNull();
+
+        // The fake AI provider has no scripted reply, so detection degrades to
+        // DETECTION_FAILED rather than crashing — still a real, cached status.
+        ResponseEntity<DocumentResponse> detected = rest.exchange("/api/documents/" + documentId + "/pagination/detect",
+                HttpMethod.POST, new HttpEntity<>(auth(user.token())), DocumentResponse.class);
+        assertThat(detected.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(detected.getBody().getPaginationStatus()).isEqualTo("detection_failed");
+
+        UpdateDocumentPaginationRequest manual = new UpdateDocumentPaginationRequest();
+        manual.setOffset(1);
+        ResponseEntity<DocumentResponse> set = rest.exchange("/api/documents/" + documentId + "/pagination",
+                HttpMethod.PATCH, new HttpEntity<>(manual, auth(user.token())), DocumentResponse.class);
+        assertThat(set.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(set.getBody().getPaginationStatus()).isEqualTo("manual");
+        assertThat(set.getBody().getPaginationOffset()).isEqualTo(1);
+    }
+
+    @Test
+    void detectPaginationCachesTheAiOffsetAndManualAlwaysWins() {
+        AuthData user = register(uniqueEmail("pagin-ai"));
+        Long documentId = uploadDocument(user, pdfWithPages("Cover", "Page one", "Page two"), "book.pdf");
+
+        fakeAi.enqueue("OFFSET: 2");
+        ResponseEntity<DocumentResponse> detected = rest.exchange("/api/documents/" + documentId + "/pagination/detect",
+                HttpMethod.POST, new HttpEntity<>(auth(user.token())), DocumentResponse.class);
+        assertThat(detected.getBody().getPaginationStatus()).isEqualTo("auto_detected");
+        assertThat(detected.getBody().getPaginationOffset()).isEqualTo(1); // physical page 2 is printed page 1
+
+        UpdateDocumentPaginationRequest manual = new UpdateDocumentPaginationRequest();
+        manual.setOffset(0);
+        rest.exchange("/api/documents/" + documentId + "/pagination", HttpMethod.PATCH,
+                new HttpEntity<>(manual, auth(user.token())), DocumentResponse.class);
+
+        // Re-detecting via the explicit button is allowed to overwrite MANUAL
+        // (the frontend confirms with the user first) — only the lazy fallback
+        // inside PageRangeResolver may never touch a MANUAL value.
+        fakeAi.enqueue("OFFSET: 3");
+        ResponseEntity<DocumentResponse> redetected = rest.exchange("/api/documents/" + documentId + "/pagination/detect",
+                HttpMethod.POST, new HttpEntity<>(auth(user.token())), DocumentResponse.class);
+        assertThat(redetected.getBody().getPaginationStatus()).isEqualTo("auto_detected");
+        assertThat(redetected.getBody().getPaginationOffset()).isEqualTo(2);
     }
 }

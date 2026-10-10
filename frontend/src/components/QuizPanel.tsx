@@ -5,6 +5,7 @@ import { useSession } from '../hooks/useSession';
 import { useActivityRange } from '../context/ActivityRangeContext';
 import { useAppProfile } from '../hooks/useAppProfile';
 import { useSessionReports } from '../hooks/useSessionReports';
+import { useAuth } from '../context/AuthContext';
 import { ROUTES } from '../config/routes';
 import Button from './ui/Button';
 import Card from './ui/Card';
@@ -39,6 +40,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
   } = useQuiz(sessionId, session, onActivity);
   const { sending, lastSent, error: reportError, send, download } = useSessionReports(sessionId);
   const { range, pinned } = useActivityRange();
+  const { user } = useAuth();
   // The shared activity range (set above the PDF) drives which pages the quiz uses.
   useEffect(() => {
     if (range) setConfig((prev) => ({ ...prev, startPage: range.start, endPage: range.end }));
@@ -46,6 +48,9 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [showSetup, setShowSetup] = useState(true);
   const [reportEmail, setReportEmail] = useState('');
+  useEffect(() => {
+    if (user?.effectiveReportEmail) setReportEmail((prev) => prev || user.effectiveReportEmail || '');
+  }, [user]);
 
   const onGenerate = async () => {
     setAnswers({});
@@ -231,20 +236,20 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                   Email this correction report
                 </p>
                 <p className="mt-1 text-[11px] text-white/40">
-                  Generates a real PDF and emails it to the address below, if this server has email delivery
-                  configured — you can always download it instead.
+                  Generates a real PDF and emails it to the address(es) below, if this server has email
+                  delivery configured — you can always download it instead. Separate several with ";".
                 </p>
                 <div className="mt-2 flex gap-2">
                   <Input
-                    type="email"
+                    type="text"
                     value={reportEmail}
                     onChange={(e) => setReportEmail(e.target.value)}
-                    placeholder="parent@email.com"
+                    placeholder="parent@email.com; tutor@email.com"
                     className="flex-1"
                   />
                   <Button
                     size="sm"
-                    onClick={() => reportEmail.trim() && send('quiz', reportEmail.trim())}
+                    onClick={() => reportEmail.trim() && send('quiz', reportEmail.trim(), activeConfig?.quizRequestId)}
                     disabled={sending === 'quiz' || !reportEmail.trim()}
                   >
                     {sending === 'quiz' ? 'Sending…' : 'Send'}
@@ -253,7 +258,13 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                 {reportError && <p className="mt-2 text-xs text-rose-400">{reportError}</p>}
                 {lastSent && lastSent.type === 'quiz' && (
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-400">
-                    <span>{lastSent.simulated ? `Not actually emailed to ${lastSent.email} — email isn't configured on this server` : `Sent to ${lastSent.email}`}</span>
+                    <span className={lastSent.simulated ? 'text-amber-400' : undefined}>
+                      {lastSent.simulated
+                        ? lastSent.emailError
+                          ? `Could not email ${lastSent.email}: ${lastSent.emailError}`
+                          : `Not actually emailed to ${lastSent.email} — email isn't configured on this server`
+                        : `Sent to ${lastSent.email}`}
+                    </span>
                     <button onClick={() => download(lastSent)} className="font-bold text-white/80 hover:text-white">
                       Download PDF
                     </button>

@@ -47,7 +47,8 @@ public class VoiceController {
             @RequestParam(value = "capabilityHint", required = false) String capabilityHint,
             @RequestParam(value = "wantsAudioReply", required = false, defaultValue = "true") boolean wantsAudioReply,
             @RequestParam("pageStart") Integer pageStart,
-            @RequestParam("pageEnd") Integer pageEnd) {
+            @RequestParam("pageEnd") Integer pageEnd,
+            @RequestParam(value = "pageMode", required = false) String pageMode) {
 
         byte[] bytes;
         try {
@@ -58,7 +59,7 @@ public class VoiceController {
 
         VoiceConversationService.VoiceTurnResult result = voiceConversationService.processTurn(
                 SecurityUtil.currentUserId(), id, bytes, audio.getContentType(), capabilityHint, wantsAudioReply,
-                pageStart, pageEnd);
+                pageStart, pageEnd, pageMode);
 
         VoiceTurnResponse body = new VoiceTurnResponse(
                 MessageResponse.of(result.userMessage()),

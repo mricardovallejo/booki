@@ -12,4 +12,6 @@ public class QuizConfigResponse {
     private Integer questionCount;
     private Integer startPage;
     private Integer endPage;
+    /** Links this quiz round's answers and report to what was actually requested. See ADR-030. */
+    private Long quizRequestId;
 }

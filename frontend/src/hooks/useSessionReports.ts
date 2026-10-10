@@ -20,12 +20,14 @@ export function useSessionReports(sessionId: number) {
   const [lastSent, setLastSent] = useState<SentReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const send = async (type: 'progress' | 'quiz', email: string) => {
+  const send = async (type: 'progress' | 'quiz', email: string, quizRequestId?: number) => {
     setSending(type);
     setError(null);
     try {
       const report =
-        type === 'progress' ? await sendProgressReport(sessionId, email) : await sendQuizReport(sessionId, email);
+        type === 'progress'
+          ? await sendProgressReport(sessionId, email)
+          : await sendQuizReport(sessionId, email, quizRequestId);
       setLastSent(report);
       return report;
     } catch (err) {

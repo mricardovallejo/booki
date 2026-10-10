@@ -1,6 +1,7 @@
 package com.booki.service.impl;
 
 import com.booki.ai.AiProviderRegistry;
+import com.booki.ai.PageRangeResolver;
 import com.booki.conversation.ConversationEngine;
 import com.booki.conversation.ConversationRequest;
 import com.booki.conversation.ConversationResult;
@@ -8,6 +9,7 @@ import com.booki.domain.AiProfile;
 import com.booki.domain.Capability;
 import com.booki.domain.Document;
 import com.booki.domain.Message;
+import com.booki.domain.PageMode;
 import com.booki.domain.Session;
 import com.booki.dto.MessageRequest;
 import com.booki.dto.MessageResponse;
@@ -45,6 +47,7 @@ public class SessionServiceImpl implements SessionService {
     private final SessionProgressCalculator progressCalculator;
     private final ConversationEngine conversationEngine;
     private final ReaderProfileService readerProfileService;
+    private final PageRangeResolver pageRangeResolver;
 
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
 
@@ -75,18 +78,15 @@ public class SessionServiceImpl implements SessionService {
         Document document = documentRepository.findByIdAndUserId(request.getDocumentId(), userId)
                 .orElseThrow(() -> new NoSuchElementException("Document not found"));
 
-        int initialEndPage = request.getEndPage() != null ? request.getEndPage() : request.getStartPage();
-        if (request.getStartPage() > document.getPageCount()) {
-            throw new IllegalArgumentException(
-                    "startPage exceeds the document's page count (" + document.getPageCount() + ")");
-        }
-        if (request.getStartPage() > initialEndPage) {
-            throw new IllegalArgumentException("startPage must be less than or equal to endPage");
-        }
-        if (initialEndPage > document.getPageCount()) {
-            throw new IllegalArgumentException(
-                    "endPage exceeds the document's page count (" + document.getPageCount() + ")");
-        }
+        // The reading range is optional and non-blocking at session creation —
+        // it's the per-task activity range (quiz/summary/chat) that matters, not
+        // this one. Defaults to page 1; out-of-bounds values are clamped, same as
+        // every other page range in BooKI, not rejected. See ADR-030.
+        int rawStartPage = request.getStartPage() != null ? request.getStartPage() : 1;
+        int rawEndPage = request.getEndPage() != null ? request.getEndPage() : rawStartPage;
+        PageRangeResolver.PhysicalRange range = pageRangeResolver.resolve(
+                document, rawStartPage, rawEndPage, PageMode.ofWire(request.getPageMode()));
+
         if (request.getAiProvider() != null && !aiProviderRegistry.availableProviders().contains(request.getAiProvider())) {
             throw new IllegalArgumentException(
                     "aiProvider must be one of " + aiProviderRegistry.availableProviders());
@@ -95,9 +95,9 @@ public class SessionServiceImpl implements SessionService {
         Session session = new Session();
         session.setUser(document.getUser());
         session.setDocument(document);
-        session.setStartPage(request.getStartPage());
-        session.setEndPage(initialEndPage);
-        session.setCurrentPage(request.getStartPage());
+        session.setStartPage(range.start());
+        session.setEndPage(range.end());
+        session.setCurrentPage(range.start());
         session.setDifficulty(resolveDifficulty(request.getDifficulty()));
         session.setLanguage(promptAssembler.resolveLanguage(request.getLanguage()));
         session.setAiProvider(request.getAiProvider());
@@ -167,7 +167,8 @@ public class SessionServiceImpl implements SessionService {
         // would hold a DB connection open across that call and undo that design.
         ConversationResult result = conversationEngine.converse(new ConversationRequest(
                 userId, sessionId, request.getMessage(), parseInputType(request.getInputType()),
-                request.getCapabilityHint(), request.getPageStart(), request.getPageEnd()));
+                request.getCapabilityHint(), request.getPageStart(), request.getPageEnd(),
+                PageMode.ofWire(request.getPageMode())));
         return toResponse(result.botMessage());
     }
 

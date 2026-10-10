@@ -5,6 +5,8 @@ import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.ai.PageRangeResolver;
+import com.booki.ai.PaginationDetectionService;
 import com.booki.ai.StreamingAiProvider;
 import com.booki.conversation.capability.CapabilityInvocation;
 import com.booki.conversation.capability.CapabilityRegistry;
@@ -12,6 +14,7 @@ import com.booki.conversation.capability.ConversationCapability;
 import com.booki.domain.Document;
 import com.booki.domain.Message;
 import com.booki.domain.Session;
+import com.booki.repository.DocumentRepository;
 import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.domain.Capability;
@@ -53,6 +56,8 @@ class ConversationEngineStreamingTest {
     @Mock private AiProvider aiProvider;
     @Mock private PromptAssembler promptAssembler;
     @Mock private CapabilityRegistry capabilityRegistry;
+    @Mock private DocumentRepository documentRepository;
+    @Mock private PaginationDetectionService paginationDetectionService;
     @Mock private Session session;
     @Mock private Document document;
 
@@ -60,8 +65,9 @@ class ConversationEngineStreamingTest {
 
     @BeforeEach
     void setUp() {
+        PageRangeResolver pageRangeResolver = new PageRangeResolver(documentRepository, paginationDetectionService);
         engine = new ConversationEngine(sessionRepository, messageRepository, activityContentService,
-                aiProviderRegistry, promptAssembler, capabilityRegistry, 20);
+                aiProviderRegistry, promptAssembler, capabilityRegistry, pageRangeResolver, 20);
 
         when(sessionRepository.findByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(Optional.of(session));
         lenient().when(session.getId()).thenReturn(SESSION_ID);
@@ -86,7 +92,7 @@ class ConversationEngineStreamingTest {
     }
 
     private static ConversationRequest request(String text) {
-        return new ConversationRequest(USER_ID, SESSION_ID, text, Message.InputType.TEXT, 1, 3);
+        return new ConversationRequest(USER_ID, SESSION_ID, text, Message.InputType.TEXT, 1, 3, null);
     }
 
     private void providerEmits(String... events) {
@@ -150,7 +156,7 @@ class ConversationEngineStreamingTest {
 
         RecordingStream out = new RecordingStream();
         engine.converseStreaming(
-                new ConversationRequest(USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary", 1, 3),
+                new ConversationRequest(USER_ID, SESSION_ID, "Summarize", Message.InputType.TEXT, "summary", 1, 3, null),
                 out);
 
         assertThat(out.deltas).containsExactly("Your recap.");

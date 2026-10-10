@@ -31,7 +31,6 @@ export default function CreateSessionModal({ document, onClose }: Props) {
   const navigate = useNavigate();
   const { profiles, error: profilesError } = useAiProfiles();
   const { profiles: readerProfiles, error: readerError } = useReaderProfiles();
-  const [startPage, setStartPage] = useState(1);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [difficultyTouched, setDifficultyTouched] = useState(false);
   const [aiProfileId, setAiProfileId] = useState<number | undefined>(undefined);
@@ -43,7 +42,6 @@ export default function CreateSessionModal({ document, onClose }: Props) {
 
   useEffect(() => {
     if (document) {
-      setStartPage(1);
       setLanguage(getDefaultLanguage());
       setRememberLanguage(false);
       setDifficultyTouched(false);
@@ -73,30 +71,20 @@ export default function CreateSessionModal({ document, onClose }: Props) {
 
   if (!document) return null;
 
-  const pageError =
-    !Number.isFinite(startPage)
-      ? 'Enter a valid starting page.'
-      : startPage < 1 || startPage > document.pageCount
-        ? `The starting page must be between 1 and ${document.pageCount}.`
-        : null;
-
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pageError) {
-      setError(pageError);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
       if (rememberLanguage) {
         setDefaultLanguage(language);
       }
+      // No starting page here on purpose — the session just opens at page 1;
+      // the actual range that matters (chat/quiz/summary) is chosen per task,
+      // not here.
       const session = await createSession({
         documentId: document.id,
         title: document.title,
-        startPage,
-        endPage: startPage,
         difficulty,
         aiProfileId,
         readerProfileId,
@@ -117,20 +105,6 @@ export default function CreateSessionModal({ document, onClose }: Props) {
         <p className="mt-1 text-sm text-booki-muted">{document.title}</p>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <Field label="Start reading on page">
-            <input
-              type="number"
-              min={1}
-              max={document.pageCount}
-              value={startPage}
-              onChange={(e) => setStartPage(Number(e.target.value))}
-              className="w-full rounded-lg bg-booki-card px-3 py-2 text-white outline-none ring-1 ring-white/10 focus:ring-booki-accent"
-            />
-            <p className="mt-1 text-xs text-white/50">
-              The whole PDF stays available. BooKI records how far you read as you move through it.
-            </p>
-          </Field>
-
           <Field label="Tutor profile — how BooKI teaches">
             <Select
               value={aiProfileId ?? ''}
@@ -210,13 +184,13 @@ export default function CreateSessionModal({ document, onClose }: Props) {
             </label>
           </Field>
 
-          {(error || pageError) && <p className="text-sm text-rose-400">{error || pageError}</p>}
+          {error && <p className="text-sm text-rose-400">{error}</p>}
 
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !!pageError} className="flex-1">
+            <Button type="submit" disabled={loading} className="flex-1">
               {loading ? 'Creating…' : 'Start reading'}
             </Button>
           </div>

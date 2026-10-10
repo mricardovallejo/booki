@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode
 } from 'react';
+import type { PageMode } from '../types';
 
 /**
  * The page range the AI "functions" run on — the panel quiz, the summary modal,
@@ -27,7 +28,7 @@ export interface ActivityRange {
 }
 
 interface ActivityRangeValue {
-  /** Effective range. Null only until the document length is known. */
+  /** Effective range, ALWAYS in physical pages regardless of pageMode. Null only until the document length is known. */
   range: ActivityRange | null;
   totalPages: number;
   /** True once the reader has overridden the default (pages read so far). */
@@ -39,6 +40,14 @@ interface ActivityRangeValue {
   initTotalPages: (total: number) => void;
   /** The PDF viewer reports how far the reader has got (session.endPage). */
   setReadEnd: (page: number) => void;
+  /**
+   * How `range` is DISPLAYED and EDITED (ActivityRangeBar) and sent to the
+   * backend with (chat/quiz/summary) — purely a UI/wire concern, `range`
+   * itself always stays physical. Defaults to physical; a page only offers
+   * "editorial" once its Document has a known pagination offset.
+   */
+  pageMode: PageMode;
+  setPageMode: (mode: PageMode) => void;
 }
 
 const ActivityRangeContext = createContext<ActivityRangeValue | null>(null);
@@ -49,6 +58,7 @@ export function ActivityRangeProvider({ children }: { children: ReactNode }) {
   const [pinned, setPinned] = useState<ActivityRange | null>(null);
   const [totalPages, setTotalPages] = useState(0);
   const [readEnd, setReadEndState] = useState(1);
+  const [pageMode, setPageMode] = useState<PageMode>('physical');
 
   const setRange = useCallback((next: ActivityRange) => {
     const a = Math.max(1, Math.round(next.start) || 1);
@@ -86,9 +96,11 @@ export function ActivityRangeProvider({ children }: { children: ReactNode }) {
       setRange,
       resetRange,
       initTotalPages,
-      setReadEnd
+      setReadEnd,
+      pageMode,
+      setPageMode
     }),
-    [range, totalPages, pinned, setRange, resetRange, initTotalPages, setReadEnd]
+    [range, totalPages, pinned, setRange, resetRange, initTotalPages, setReadEnd, pageMode]
   );
 
   return <ActivityRangeContext.Provider value={value}>{children}</ActivityRangeContext.Provider>;

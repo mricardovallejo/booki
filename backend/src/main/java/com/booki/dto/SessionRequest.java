@@ -13,12 +13,15 @@ public class SessionRequest {
 
     private String title;
 
-    @NotNull
+    /** Optional — defaults to page 1. The reading range is no longer fixed at session creation; see ADR-030. */
     @Min(1)
     private Integer startPage;
 
     @Min(1)
     private Integer endPage;
+
+    /** physical|editorial; null means "physical". Only meaningful alongside startPage/endPage. */
+    private String pageMode;
 
     private Long aiProfileId;
 

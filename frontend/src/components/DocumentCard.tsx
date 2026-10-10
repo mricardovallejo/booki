@@ -6,9 +6,10 @@ interface Props {
   onSelect?: (doc: Document) => void;
   onOrganize?: (doc: Document) => void;
   onDelete?: (doc: Document) => void;
+  onSettings?: (doc: Document) => void;
 }
 
-export default function DocumentCard({ document, onSelect, onOrganize, onDelete }: Props) {
+export default function DocumentCard({ document, onSelect, onOrganize, onDelete, onSettings }: Props) {
   const gradient = gradientFor(document.title, document.id);
 
   // The card used to be a <button> with more <button role="button" span>s nested
@@ -33,22 +34,41 @@ export default function DocumentCard({ document, onSelect, onOrganize, onDelete 
       {/* Corner actions. On desktop they fade in on hover; on touch devices
           (no hover) they stay visible and use a 44px tap target so they don't
           get lost behind the full-card "open" button. */}
-      {onOrganize && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOrganize(document);
-          }}
-          className="absolute right-1.5 top-1.5 z-10 flex items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur transition hover:bg-black/70 hover:text-white focus-visible:opacity-100 group-hover:opacity-100 max-sm:h-11 max-sm:w-11 sm:p-1.5 sm:opacity-0"
-          title="Organize tags"
-          aria-label="Organize tags"
-        >
-          <svg className="h-5 w-5 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-6.586 6.586a1 1 0 01-1.414 0L5.293 11.293A1 1 0 015 10.586V5a2 2 0 012-2z" />
-          </svg>
-        </button>
-      )}
+      <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1">
+        {onSettings && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSettings(document);
+            }}
+            className="flex items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur transition hover:bg-black/70 hover:text-white focus-visible:opacity-100 group-hover:opacity-100 max-sm:h-11 max-sm:w-11 sm:p-1.5 sm:opacity-0"
+            title="Book settings (pagination)"
+            aria-label="Book settings"
+          >
+            <svg className="h-5 w-5 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
+            </svg>
+          </button>
+        )}
+        {onOrganize && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOrganize(document);
+            }}
+            className="flex items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur transition hover:bg-black/70 hover:text-white focus-visible:opacity-100 group-hover:opacity-100 max-sm:h-11 max-sm:w-11 sm:p-1.5 sm:opacity-0"
+            title="Organize tags"
+            aria-label="Organize tags"
+          >
+            <svg className="h-5 w-5 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-6.586 6.586a1 1 0 01-1.414 0L5.293 11.293A1 1 0 015 10.586V5a2 2 0 012-2z" />
+            </svg>
+          </button>
+        )}
+      </div>
       {onDelete && (
         <button
           type="button"

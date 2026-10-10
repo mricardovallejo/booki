@@ -5,6 +5,7 @@ import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderException;
 import com.booki.ai.AiProviderRegistry;
+import com.booki.ai.PageRangeResolver;
 import com.booki.ai.StreamingAiProvider;
 import com.booki.conversation.capability.CapabilityInvocation;
 import com.booki.conversation.capability.CapabilityRegistry;
@@ -59,6 +60,7 @@ public class ConversationEngine {
     private final AiProviderRegistry aiProviderRegistry;
     private final PromptAssembler promptAssembler;
     private final CapabilityRegistry capabilityRegistry;
+    private final PageRangeResolver pageRangeResolver;
     private final int historyWindow;
 
     public ConversationEngine(SessionRepository sessionRepository,
@@ -67,6 +69,7 @@ public class ConversationEngine {
                               AiProviderRegistry aiProviderRegistry,
                               PromptAssembler promptAssembler,
                               CapabilityRegistry capabilityRegistry,
+                              PageRangeResolver pageRangeResolver,
                               @Value("${booki.conversation.history-window:20}") int historyWindow) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
@@ -74,6 +77,7 @@ public class ConversationEngine {
         this.aiProviderRegistry = aiProviderRegistry;
         this.promptAssembler = promptAssembler;
         this.capabilityRegistry = capabilityRegistry;
+        this.pageRangeResolver = pageRangeResolver;
         this.historyWindow = Math.max(1, historyWindow);
     }
 
@@ -111,13 +115,9 @@ public class ConversationEngine {
      * provider with no document support, plain text extracted from that range.
      */
     private ActivityContent resolveActivityContent(Session session, ConversationRequest request, AiProvider provider) {
-        if (request.pageStart() == null || request.pageEnd() == null) {
-            throw new IllegalArgumentException("pageStart and pageEnd are required");
-        }
-        int pageCount = session.getDocument().getPageCount();
-        int start = Math.max(1, Math.min(request.pageStart(), pageCount));
-        int end = Math.max(start, Math.min(request.pageEnd(), pageCount));
-        return activityContentService.resolve(session.getDocument(), provider, start, end);
+        PageRangeResolver.PhysicalRange range = pageRangeResolver.resolve(
+                session.getDocument(), request.pageStart(), request.pageEnd(), request.pageMode());
+        return activityContentService.resolve(session.getDocument(), provider, range.start(), range.end());
     }
 
     /**

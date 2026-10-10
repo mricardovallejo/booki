@@ -16,6 +16,14 @@ session, not persisted, default "pages read so far", editable — passed on each
 request and clamped to the document. Quiz question count is independent of the
 range width. See ADR-024.
 
+Pages can be **physical** (raw PDF index, default) or **editorial**
+(printed/front-matter-offset numbers) — every page-range request carries a
+`pageMode`, converted in exactly one place (`PageRangeResolver`) using
+`Document.paginationOffset`, detected by AI **at most once per document**
+and cached (`paginationStatus`); a manually-set offset is never overwritten
+by that lazy detection. See ADR-030 — read it before touching pagination,
+this has been re-discussed and re-forgotten before.
+
 ## Fixed stack
 
 - Backend: Spring Boot 4, Java 21, Gradle, JPA, Flyway, PostgreSQL (dev/deployed), H2 in PostgreSQL mode (tests/no-Docker), Spring Security + JWT, WebClient (shared timeouts via `config/OutboundHttp`).

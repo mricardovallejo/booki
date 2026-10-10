@@ -70,7 +70,8 @@ export function useQuiz(sessionId: number, session: Session | null, onActivity?:
           pageNumber: question.pageNumber,
           question: question.question,
           answer,
-          difficulty: activeConfig?.difficulty || config.difficulty
+          difficulty: activeConfig?.difficulty || config.difficulty,
+          quizRequestId: activeConfig?.quizRequestId
         });
         setResults((prev) => ({ ...prev, [question.id]: result }));
         onActivity?.();

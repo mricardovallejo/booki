@@ -35,4 +35,12 @@ public class Document {
     @CreationTimestamp
     @Column(nullable = false, updatable = false, name = "created_at")
     private Instant createdAt;
+
+    /** Physical PDF page on which printed/editorial page "1" appears; null until detected or set. See ADR-030. */
+    @Column(name = "pagination_offset")
+    private Integer paginationOffset;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20, name = "pagination_status")
+    private PaginationStatus paginationStatus = PaginationStatus.UNKNOWN;
 }

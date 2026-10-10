@@ -1694,7 +1694,7 @@ components:
                 description: >
                   Where the layer comes from, e.g. "App", "Session", "App
                   Profile" (functions/routing — account-wide), or
-                  'AI profile "Patient Tutor"' (persona).
+                  'AI profile "BooKI"' (persona).
               content: { type: string, nullable: true }
             required: [key, group, label, editable, source, content]
       required: [aiProfileId, aiProfileName, language, difficulty, enabledCapabilities, layers]

@@ -679,3 +679,55 @@ will use SSE, which every browser supports.
   an optional field) — a session always opens at page 1; the backend's
   `SessionRequest.startPage` stays optional for API completeness, just unused
   by this UI now.
+
+## ADR-031: prompt catalog v2 — answer first, labeled outside knowledge, five distinct personas, upgrades that follow unedited copies
+
+- **Context**: in real use, replies hedged and handed questions back instead of
+  answering ("guide their thinking instead of replacing it" in the core), and
+  outside knowledge was blended into page-based answers without any marker.
+  A side-by-side test showed `gpt-4o-mini` ignored the source-labeling rule
+  while Claude followed it, so Claude became the default chat provider
+  (`AI_PROVIDER`). The five shipped personas overlapped (three were variants of
+  a patient tutor), and the difficulty rubrics were descriptive rather than
+  operational. The easy rubric suggested choice/true-false questions, which
+  `fn_quiz_question` forbids. Each account holds its own copies of personas and
+  App Profile slots, and the backfills only added missing keys, so a catalog
+  change never reached existing accounts.
+- **Decision**: catalog `2.0.0`. The core answers first and concretely. Outside
+  knowledge is encouraged when it is high quality, and always goes in its own
+  paragraph opened by a "beyond your pages" label in the session language.
+  When a function defines an exact output format (quiz question, SCORE/FEEDBACK,
+  routing JSON), that format wins over the conversational reply shape. Five
+  personas with distinct voices: `booki` (default: warm companion and
+  narrator), `teacher`, `critic`, `step_by_step` (technical, structured), and
+  `specialist` (orthopedagogy, speech-language practice, teaching techniques;
+  never diagnoses). Each difficulty level states what is asked, the expected
+  answer, the support given, and how strictly to grade. A template's
+  `replaces:` list names the retired keys it supersedes.
+- **Consequence**: on startup `AiProfileBackfill` does four things. It moves
+  unedited copies of live templates to the current persona text. It converts
+  unedited copies of retired templates in place, keeping the same row so
+  sessions keep their link; a second copy mapping to an already-present
+  replacement is deleted when no session uses it. It seeds missing templates.
+  If the converted profile was the account default, the default moves to
+  `booki`, once, so a default chosen later is never overridden.
+  `AppProfileSlotBackfill` updates unedited slots the same way. Edited copies
+  are never touched. "Restore" for slots and personas now returns the current
+  catalog text, not the text the row was first seeded with. No schema change
+  is needed: unedited means `text == originalText`.
+
+## ADR-032: schema changes are incremental migrations; `V1__init.sql` is frozen
+
+- **Context**: until now `V1__init.sql` was rewritten in place and the target
+  database was wiped before each deploy (ADR-011/015/017/030). Once a real user
+  had data on Neon, an in-place edit to V1 (ADR-030) made the Cloud Run revision
+  fail to start: Flyway refused to boot on a checksum mismatch, and Cloud Run
+  only reported that the container did not listen on port 8080.
+- **Decision**: `V1__init.sql` is frozen. Every schema change goes in a new
+  `V2__…`, `V3__…` migration. Wiping a database is an explicit, exceptional
+  choice, never part of a routine deploy.
+- **Consequence**: V1 is never edited, not even its header comment. That
+  comment still describes the old convention, but Flyway's checksum covers the
+  whole file, so correcting it would cause the very failure this ADR prevents.
+  `docs/deployment.md` documents the rule and keeps the wipe procedure only as
+  a historical fallback.

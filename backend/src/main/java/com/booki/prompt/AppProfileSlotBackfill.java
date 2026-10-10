@@ -14,8 +14,9 @@ import java.util.stream.Collectors;
 /**
  * New users are seeded with their full App Profile (difficulty rubrics,
  * function prompts, capability routing) at registration; on startup, an
- * existing user missing one or more slots receives only the missing ones,
- * leaving any already-edited row untouched.
+ * existing user missing one or more slots receives only the missing ones, and
+ * every unedited row (text still equal to its original) picks up the current
+ * catalog text. Any already-edited row is left untouched.
  */
 @Slf4j
 @Component
@@ -30,8 +31,18 @@ public class AppProfileSlotBackfill {
     @Transactional
     public void seedMissing() {
         int seeded = 0;
+        int updated = 0;
         for (var user : userRepository.findAll()) {
-            var existingKeys = appProfileSlotRepository.findByUserId(user.getId()).stream()
+            var existing = appProfileSlotRepository.findByUserId(user.getId());
+            for (var row : existing) {
+                String current = catalog.appProfileDefaults().get(row.getSlot());
+                if (!row.isModified() && current != null && !current.equals(row.getText())) {
+                    row.setText(current);
+                    row.setOriginalText(current);
+                    updated++;
+                }
+            }
+            var existingKeys = existing.stream()
                     .map(r -> r.getSlot())
                     .collect(Collectors.toSet());
             var missing = catalog.newAppProfileSlots(user).stream()
@@ -42,8 +53,8 @@ public class AppProfileSlotBackfill {
                 seeded += missing.size();
             }
         }
-        if (seeded > 0) {
-            log.info("Seeded {} missing App Profile slot(s)", seeded);
+        if (seeded + updated > 0) {
+            log.info("App Profile sync: {} slot(s) seeded, {} updated to the current catalog", seeded, updated);
         }
     }
 }

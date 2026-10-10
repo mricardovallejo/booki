@@ -57,10 +57,9 @@ class AuthSecurityIT extends IntegrationTestBase {
         List<AiProfileSummaryResponse> profiles = response.getBody();
         assertThat(profiles).hasSize(5);
         assertThat(profiles).extracting(AiProfileSummaryResponse::name)
-                .containsExactlyInAnyOrder("Patient Tutor", "Study Buddy", "Subject Expert", "Accessible Pace",
-                        "Language & Learning Guide");
+                .containsExactlyInAnyOrder("BooKI", "Teacher", "Critic", "Step by Step", "Learning Specialist");
         assertThat(profiles).filteredOn(AiProfileSummaryResponse::isDefault)
-                .singleElement().extracting(AiProfileSummaryResponse::name).isEqualTo("Patient Tutor");
+                .singleElement().extracting(AiProfileSummaryResponse::name).isEqualTo("BooKI");
     }
 
     @Test

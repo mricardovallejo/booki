@@ -41,7 +41,7 @@ class AiProfileServiceImplTest {
 
         User user = new User();
         user.setId(USER_ID);
-        profile = catalog.newProfile(catalog.byKey("patient_tutor").orElseThrow(), user);
+        profile = catalog.newProfile(catalog.byKey("booki").orElseThrow(), user);
         profile.setId(PROFILE_ID);
 
         org.mockito.Mockito.lenient()
@@ -53,8 +53,8 @@ class AiProfileServiceImplTest {
     @Test
     void getReturnsThePersona() {
         AiProfileResponse response = service.get(USER_ID, PROFILE_ID);
-        assertThat(response.name()).isEqualTo("Patient Tutor");
-        assertThat(response.persona()).contains("You are a patient tutor");
+        assertThat(response.name()).isEqualTo("BooKI");
+        assertThat(response.persona()).contains("You are BooKI's own voice");
         assertThat(response.personaModified()).isFalse();
         assertThat(response.isDefault()).isTrue();
     }
@@ -84,7 +84,7 @@ class AiProfileServiceImplTest {
 
         AiProfileResponse copy = service.duplicate(USER_ID, PROFILE_ID, null);
 
-        assertThat(copy.name()).isEqualTo("Patient Tutor (copy)");
+        assertThat(copy.name()).isEqualTo("BooKI (copy)");
         assertThat(copy.isDefault()).isFalse();
         assertThat(copy.persona()).isEqualTo("edited persona");
         assertThat(copy.personaOriginal()).isNotEqualTo("edited persona"); // baseline carried over
@@ -112,7 +112,7 @@ class AiProfileServiceImplTest {
 
     @Test
     void updateSetsDefaultAndClearsThePreviousOne() {
-        AiProfile other = catalog.newProfile(catalog.byKey("patient_tutor").orElseThrow(), profile.getUser());
+        AiProfile other = catalog.newProfile(catalog.byKey("teacher").orElseThrow(), profile.getUser());
         other.setId(2L);
         other.setDefaultProfile(true);
         profile.setDefaultProfile(false);
@@ -143,7 +143,7 @@ class AiProfileServiceImplTest {
 
     @Test
     void deletingTheDefaultPromotesAnotherProfile() {
-        AiProfile other = catalog.newProfile(catalog.byKey("patient_tutor").orElseThrow(), profile.getUser());
+        AiProfile other = catalog.newProfile(catalog.byKey("teacher").orElseThrow(), profile.getUser());
         other.setId(2L);
         when(repository.countByUserId(USER_ID)).thenReturn(2L);
         when(repository.findByUserIdOrderByIdAsc(USER_ID)).thenReturn(List.of(other));

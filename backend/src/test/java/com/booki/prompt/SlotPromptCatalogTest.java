@@ -15,23 +15,34 @@ class SlotPromptCatalogTest {
 
     @Test
     void loadsTheVersionedCatalogAndEveryTemplate() {
-        assertThat(catalog.version()).isEqualTo("1.5.0");
-        assertThat(catalog.corePrompt()).contains("conversational reading companion", "SOURCE DISCIPLINE");
+        assertThat(catalog.version()).isEqualTo("2.0.0");
+        assertThat(catalog.corePrompt()).contains("makes reading feel worth continuing", "SOURCES AND CURIOSITY");
         assertThat(catalog.templates()).extracting(SlotPromptCatalog.Template::key)
-                .containsExactly("patient_tutor", "study_buddy", "subject_expert", "accessible_pace",
-                        "language_learning_guide");
+                .containsExactly("booki", "teacher", "critic", "step_by_step", "specialist");
         assertThat(catalog.templates()).filteredOn(SlotPromptCatalog.Template::isDefault).hasSize(1);
         // A template now varies only by persona — nothing else is per-tutor.
-        assertThat(catalog.byKey("patient_tutor").orElseThrow().personaText()).contains("You are a patient tutor");
+        assertThat(catalog.byKey("teacher").orElseThrow().personaText()).contains("You are a clear, structured teacher");
+        assertThat(catalog.defaultTemplate().key()).isEqualTo("booki");
+    }
+
+    @Test
+    void retiredTemplateKeysMapToTheirReplacement() {
+        assertThat(catalog.replacementFor("patient_tutor")).map(SlotPromptCatalog.Template::key).contains("teacher");
+        assertThat(catalog.replacementFor("study_buddy")).map(SlotPromptCatalog.Template::key).contains("booki");
+        assertThat(catalog.replacementFor("subject_expert")).map(SlotPromptCatalog.Template::key).contains("critic");
+        assertThat(catalog.replacementFor("accessible_pace")).map(SlotPromptCatalog.Template::key).contains("specialist");
+        assertThat(catalog.replacementFor("language_learning_guide")).map(SlotPromptCatalog.Template::key)
+                .contains("specialist");
+        assertThat(catalog.replacementFor("booki")).isEmpty();
     }
 
     @Test
     void appProfileDefaultsCoverAllNineKeysAccountWide() {
         assertThat(catalog.appProfileDefaults()).containsOnlyKeys(AppProfileSlotKey.values());
         assertThat(catalog.appProfileDefaults().get(AppProfileSlotKey.HARD))
-                .contains("Advanced. Assume a close reading");
+                .contains("Hard. ASK the reader to evaluate");
         assertThat(catalog.appProfileDefaults().get(AppProfileSlotKey.FN_QUIZ_QUESTION))
-                .contains("Do not use another part of the document");
+                .contains("answerable entirely from these pages");
     }
 
     @Test

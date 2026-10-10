@@ -140,6 +140,11 @@ public class PromptAssembler {
         // confirmed happening (a French session replying in Spanish because
         // the reader typed Spanish). Restating it last, right next to where
         // generation actually starts, is a standard mitigation for that.
+        // Same mitigation for source discipline: gpt-4o-mini blended general
+        // knowledge into page-based answers unlabeled despite the core rule.
+        sb.append("\n\nReminder: unless this turn's function requires an exact output format, answer fully first, "
+                + "and put anything not stated in the supplied pages after the page-based part, in its own paragraph "
+                + "opened by a short label in the session language saying it goes beyond the pages.");
         sb.append("\n\nReminder: reply in ").append(languageName(session.getLanguage()))
                 .append(", regardless of what language the reader's message or the document use.");
         return sb.toString();

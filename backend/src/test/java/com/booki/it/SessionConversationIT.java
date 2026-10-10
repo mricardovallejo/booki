@@ -99,8 +99,8 @@ class SessionConversationIT extends IntegrationTestBase {
         ResponseEntity<List<AiProfileSummaryResponse>> profiles = rest.exchange("/api/ai-profiles", HttpMethod.GET,
                 new HttpEntity<>(auth(user.token())), new ParameterizedTypeReference<>() {
                 });
-        Long studyBuddyId = profiles.getBody().stream()
-                .filter(p -> p.name().equals("Study Buddy")).findFirst().orElseThrow().id();
+        Long criticId = profiles.getBody().stream()
+                .filter(p -> p.name().equals("Critic")).findFirst().orElseThrow().id();
 
         SessionRequest request = new SessionRequest();
         request.setDocumentId(documentId);
@@ -109,12 +109,12 @@ class SessionConversationIT extends IntegrationTestBase {
         request.setDifficulty("easy");
         request.setAiProvider("fake");
         request.setReaderProfileId(readerProfileId);
-        request.setAiProfileId(studyBuddyId);
+        request.setAiProfileId(criticId);
         ResponseEntity<SessionResponse> response = rest.exchange("/api/sessions", HttpMethod.POST,
                 new HttpEntity<>(request, auth(user.token())), SessionResponse.class);
 
         assertThat(response.getBody().getReaderProfileId()).isEqualTo(readerProfileId);
-        assertThat(response.getBody().getAiProfileId()).isEqualTo(studyBuddyId);
+        assertThat(response.getBody().getAiProfileId()).isEqualTo(criticId);
     }
 
     @Test
@@ -334,7 +334,7 @@ class SessionConversationIT extends IntegrationTestBase {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         SessionContextResponse context = response.getBody();
-        assertThat(context.aiProfileName()).isEqualTo("Patient Tutor");
+        assertThat(context.aiProfileName()).isEqualTo("BooKI");
         assertThat(context.language()).isEqualTo("en");
         assertThat(context.difficulty()).isEqualTo("easy");
         assertThat(context.layers()).extracting(SessionContextResponse.Layer::key)

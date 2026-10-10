@@ -5,6 +5,7 @@ import com.booki.domain.AppProfileSlotKey;
 import com.booki.domain.User;
 import com.booki.dto.AppProfileSlotResponse;
 import com.booki.dto.UpdateAppProfileRequest;
+import com.booki.prompt.SlotPromptCatalog;
 import com.booki.repository.AppProfileSlotRepository;
 import com.booki.service.AppProfileSlotService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.util.List;
 public class AppProfileSlotServiceImpl implements AppProfileSlotService {
 
     private final AppProfileSlotRepository repository;
+    private final SlotPromptCatalog catalog;
 
     @Override
     @Transactional(readOnly = true)
@@ -59,7 +61,7 @@ public class AppProfileSlotServiceImpl implements AppProfileSlotService {
             throw new IllegalArgumentException("Unknown App Profile slot: " + key);
         }
         rows.stream().filter(r -> r.getSlot() == slotKey).findFirst()
-                .ifPresent(r -> r.setText(r.getOriginalText()));
+                .ifPresent(this::restoreToCatalog);
         return toResponses(rows);
     }
 
@@ -67,8 +69,18 @@ public class AppProfileSlotServiceImpl implements AppProfileSlotService {
     @Transactional
     public List<AppProfileSlotResponse> restore(Long userId) {
         List<AppProfileSlot> rows = repository.findByUserId(userId);
-        rows.forEach(r -> r.setText(r.getOriginalText()));
+        rows.forEach(this::restoreToCatalog);
         return toResponses(rows);
+    }
+
+    /**
+     * Back to the CURRENT shipped text, not the one the row was first seeded
+     * with — otherwise an edited row would restore to an outdated catalog version.
+     */
+    private void restoreToCatalog(AppProfileSlot row) {
+        String current = catalog.appProfileDefaults().getOrDefault(row.getSlot(), row.getOriginalText());
+        row.setText(current);
+        row.setOriginalText(current);
     }
 
     @Override

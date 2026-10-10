@@ -431,11 +431,24 @@ deploy workflow.
 Flyway runs at startup — fine with one instance (`min-instances 1`, and Cloud
 Run won't run two at this traffic); with 2+ it locks and the others wait.
 
-### Redeploying after a `V1__init.sql` change
+### Schema changes: always a new migration (ADR-032)
 
-This project keeps a single baseline migration and rewrites it in place rather
-than layering `V2`/`V3` (ADR-011/015/017) — deliberate while there's no real
-production data worth an in-place `ALTER`. Whenever `V1__init.sql` changes
+Neon now holds real data, so `V1__init.sql` is **frozen**. Every schema change
+goes in a new file, `V2__<what>.sql`, `V3__<what>.sql` and so on, with
+`ALTER TABLE` / `CREATE TABLE`. Flyway applies only the new ones and keeps the
+data. Do not edit `V1__init.sql` at all, not even its header comment: Flyway's
+checksum covers the whole file, comments included, so any edit makes the app
+refuse to boot. The header still describes the old rewrite-in-place convention;
+it is kept as is for that reason.
+
+The rest of this section is the historical procedure, needed only if V1 is
+ever edited by mistake or a deliberate full reset is wanted.
+
+### Redeploying after a `V1__init.sql` change (historical)
+
+This project used to keep a single baseline migration and rewrite it in place
+rather than layering `V2`/`V3` (ADR-011/015/017) — deliberate while there was no
+real production data worth an in-place `ALTER`. Whenever `V1__init.sql` changes
 (most recently: `document_pages` dropped and `sent_reports.email_sent` added,
 ADR-025/027/028), Flyway
 refuses to boot against a Neon database that already recorded the *old*

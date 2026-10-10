@@ -65,7 +65,7 @@ class PromptAssemblerTest {
         s.setDifficulty(difficulty);
         s.setLanguage(language);
         if (withProfile) {
-            AiProfile profile = catalog.newProfile(catalog.byKey("patient_tutor").orElseThrow(), user);
+            AiProfile profile = catalog.newProfile(catalog.byKey("teacher").orElseThrow(), user);
             profile.setId(9L);
             s.setAiProfile(profile);
         }
@@ -89,13 +89,14 @@ class PromptAssemblerTest {
 
         String prompt = assembler.forChat(s, "PAGE TEXT");
 
-        assertThat(prompt).contains("You are BooKI, a conversational reading companion"); // core
-        assertThat(prompt).contains("You are a patient tutor");                             // persona
+        assertThat(prompt).contains("You are BooKI, a reading companion");               // core
+        assertThat(prompt).contains("You are a clear, structured teacher");              // persona
         assertThat(prompt).contains("Reader level: intermediate.\nPrefers short answers."); // reader profile
         assertThat(prompt).contains("Reply in Spanish.");                                   // session facts
         assertThat(prompt).contains("<<<BEGIN DOCUMENT>>>\nPAGE TEXT\n<<<END DOCUMENT>>>");  // fenced page text
+        assertThat(prompt).contains("<<<END DOCUMENT>>>\n\nReminder: unless this turn's function requires an exact output format"); // source reminder
         assertThat(prompt).endsWith("regardless of what language the reader's message or the document use.");
-        assertThat(prompt).doesNotContain("Assume the reader is new to this material");
+        assertThat(prompt).doesNotContain("Easy. ASK about one main idea");
         // Difficulty only applies to quiz question generation and grading, never chat.
         assertThat(prompt).doesNotContain("--- Difficulty ---");
     }
@@ -155,7 +156,7 @@ class PromptAssemblerTest {
         String prompt = assembler.forFunction(s, AppProfileSlotKey.FN_ANSWER_GRADING, "easy", "P");
         assertThat(prompt).contains("Reply in exactly this format and nothing else:");
         assertThat(prompt).contains("SCORE: a number from 0.0 to 1.0");
-        assertThat(prompt).contains("This is a moment to teach, not to test");
+        assertThat(prompt).contains("Grade the reader's answer against the supplied pages");
         // Answer grading is one of the two function calls that reads the active difficulty rubric.
         assertThat(prompt).contains("--- Difficulty ---", "EASY RUBRIC TEXT");
     }
@@ -176,7 +177,7 @@ class PromptAssemblerTest {
 
         SessionContextResponse ctx = assembler.describe(s);
 
-        assertThat(ctx.aiProfileName()).isEqualTo("Patient Tutor");
+        assertThat(ctx.aiProfileName()).isEqualTo("Teacher");
         assertThat(ctx.readerProfileName()).isEqualTo("General reader");
         assertThat(ctx.language()).isEqualTo("fr");
         assertThat(ctx.difficulty()).isEqualTo("medium");
@@ -186,7 +187,7 @@ class PromptAssemblerTest {
                         "functions", "functions", "functions", "functions", "functions",
                         "routing", "session");
         assertThat(ctx.layers().get(0).editable()).isFalse();   // core
-        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v1.5.0");
+        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v2.0.0");
     }
 
     @Test

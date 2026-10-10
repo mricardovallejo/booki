@@ -11,4 +11,5 @@ public interface SessionRepository extends JpaRepository<Session, Long> {
     Optional<Session> findByIdAndUserId(Long id, Long userId);
     List<Session> findByDocumentId(Long documentId);
     void deleteByDocumentId(Long documentId);
+    boolean existsByAiProfileId(Long aiProfileId);
 }

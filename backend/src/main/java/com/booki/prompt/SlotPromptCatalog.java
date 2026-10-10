@@ -42,8 +42,11 @@ public class SlotPromptCatalog {
     /** The three difficulty levels, account-wide — not a per-tutor-profile concept. */
     public static final List<String> DIFFICULTY_LEVELS = List.of("easy", "medium", "hard");
 
-    /** A shipped tutor-persona starting point. Not persisted — used only to seed and to restore user profiles. */
-    public record Template(String key, String name, boolean isDefault, String personaText) {
+    /**
+     * A shipped tutor-persona starting point. Not persisted — used only to seed and to restore user profiles.
+     * {@code replaces} lists retired template keys whose unedited copies are converted into this one.
+     */
+    public record Template(String key, String name, boolean isDefault, String personaText, List<String> replaces) {
     }
 
     private final String version;
@@ -80,11 +83,19 @@ public class SlotPromptCatalog {
             }
             String name = required(source.getName(), "template name for " + key);
             String persona = required(source.getPersona(), "template persona for " + key);
-            loaded.add(new Template(key, name, source.isDefaultProfile(), persona));
+            loaded.add(new Template(key, name, source.isDefaultProfile(), persona, List.copyOf(source.getReplaces())));
             defaultCount += source.isDefaultProfile() ? 1 : 0;
         }
         if (loaded.isEmpty() || defaultCount != 1) {
             throw invalid("The prompt catalog must define templates and exactly one default profile");
+        }
+        Set<String> retired = new HashSet<>();
+        for (Template t : loaded) {
+            for (String old : t.replaces()) {
+                if (keys.contains(old) || !retired.add(old)) {
+                    throw invalid("A retired template key must be replaced by exactly one template and not be live: " + old);
+                }
+            }
         }
         this.templates = List.copyOf(loaded);
     }
@@ -103,6 +114,16 @@ public class SlotPromptCatalog {
 
     public Optional<Template> byKey(String key) {
         return templates.stream().filter(t -> t.key().equals(key)).findFirst();
+    }
+
+    /** The live template that replaced a retired template key, if any. */
+    public Optional<Template> replacementFor(String retiredKey) {
+        return templates.stream().filter(t -> t.replaces().contains(retiredKey)).findFirst();
+    }
+
+    /** The one shipped default tutor template. */
+    public Template defaultTemplate() {
+        return templates.stream().filter(Template::isDefault).findFirst().orElseThrow();
     }
 
     /** The shipped default text for each App Profile slot — account-wide, not per tutor profile. */
@@ -238,6 +259,7 @@ public class SlotPromptCatalog {
         private String name;
         private boolean defaultProfile;
         private String persona;
+        private List<String> replaces = new ArrayList<>();
 
         public String getKey() { return key; }
         public void setKey(String key) { this.key = key; }
@@ -247,5 +269,7 @@ public class SlotPromptCatalog {
         public void setDefaultProfile(boolean defaultProfile) { this.defaultProfile = defaultProfile; }
         public String getPersona() { return persona; }
         public void setPersona(String persona) { this.persona = persona; }
+        public List<String> getReplaces() { return replaces; }
+        public void setReplaces(List<String> replaces) { this.replaces = replaces; }
     }
 }

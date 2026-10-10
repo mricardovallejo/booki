@@ -143,11 +143,15 @@ output format it parses) that the user can't touch.
 
 The authoritative shipped wording lives in
 `backend/src/main/resources/prompts/catalog.yml`, currently catalog version
-`1.5.0`. It contains the fixed core, the `difficulty` block (3 keys) and
+`2.0.0` (ADR-031). It contains the fixed core, the `difficulty` block (3 keys) and
 `shared` block (the 5 function prompts + `capability_routing`) that together
 seed every account's App Profile, a `default-capabilities` list that seeds
 `User#enabledCapabilities` at registration, and the tutor `templates:` — each
-now just `{key, name, default-profile, persona}`. Templates no longer have a
+`{key, name, default-profile, persona, replaces?}`. The shipped personas are
+`booki` (default), `teacher`, `critic`, `step_by_step` and `specialist`;
+`replaces` lists retired template keys whose unedited copies are converted in
+place on startup. Unedited copies of personas and App Profile slots follow the
+catalog automatically; edited ones are never overwritten. Templates no longer have a
 `capabilities:` field or an `overrides:` mechanism — nothing left varies by
 template except persona. `SlotPromptCatalog` loads and validates the catalog at
 startup: every App Profile key must be known and non-blank, template keys must
@@ -377,11 +381,12 @@ Registration seeds one AI Profile per template
 `AppProfileSlotKey` (`AppProfileSlotRepository.saveAll(catalog.newAppProfileSlots(user))`),
 `user.enabledCapabilities` from `catalog.defaultCapabilities()`, and provisions
 an editable default reader profile copied from "General reader".
-`AiProfileBackfill` / `AppProfileSlotBackfill` each add only newly shipped keys
-to existing accounts; neither ever rewrites an already-seeded value. Shipped
-reader templates remain shared and read-only. The schema is a single
-`V1__init.sql` — **wipe the target DB before deploying a change to it** so
-Flyway re-runs clean.
+`AiProfileBackfill` / `AppProfileSlotBackfill` add newly shipped keys to
+existing accounts and move every **unedited** copy to the current catalog text
+(retired persona templates are converted in place, ADR-031); an edited value is
+never rewritten. Shipped reader templates remain shared and read-only. Schema
+changes go in a new incremental migration (`V2__…`, `V3__…`), never in
+`V1__init.sql` (ADR-032).
 
 ## Design principles
 

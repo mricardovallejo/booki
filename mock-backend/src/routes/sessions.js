@@ -6,20 +6,21 @@ const {
   documentPages,
   aiProfiles,
   readerProfiles,
+  appProfileSlots,
+  users,
   quizAttempts,
   sentReports,
   nowIso
 } = require('../data');
 const { authMiddleware } = require('../middleware');
 const { buildPdf, coverColorFor, initialsFor } = require('../reports');
-const { CORE_PROMPT, CAPABILITIES, assembledSlotText } = require('../aiProfiles');
+const { CORE_PROMPT, CAPABILITIES } = require('../aiProfiles');
+const { assembledSlotText } = require('../appProfile');
 
 const router = express.Router();
 
 const SUPPORTED_LANGUAGES = ['en', 'es', 'fr'];
 const LANGUAGE_NAMES = { en: 'English', es: 'Spanish', fr: 'French' };
-const RUBRIC_SLOT = { easy: 'rubric_easy', medium: 'rubric_medium', hard: 'rubric_hard' };
-const RUBRIC_LEVEL_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Advanced' };
 
 // Friendlier labels for the per-function layers in the context view.
 const FUNCTION_LAYER_LABEL = {
@@ -34,13 +35,10 @@ function profileFor(session) {
   return aiProfiles.find((p) => p.id === session.aiProfileId) || null;
 }
 
-function slot(profile, key) {
-  return profile ? profile.slots.find((s) => s.key === key) || null : null;
-}
-
-function slotContent(profile, key) {
-  const s = slot(profile, key);
-  return s && s.text ? s.text : null;
+// Functions, routing, and difficulty are account-wide App Profile slots —
+// not part of any AI Profile.
+function appSlot(userId, key) {
+  return appProfileSlots.find((s) => s.userId === userId && s.key === key) || null;
 }
 
 // The reader context is not a slot and not tied to the AI Profile: the session
@@ -68,11 +66,10 @@ function readerContentFor(session) {
   return parts.length ? parts.join('\n') : null;
 }
 
+// Account-wide — not tied to any AI Profile.
 function enabledCapabilitiesFor(session) {
-  const profile = profileFor(session);
-  return profile && Array.isArray(profile.enabledCapabilities)
-    ? profile.enabledCapabilities
-    : [...CAPABILITIES];
+  const user = users.find((u) => u.id === session.userId);
+  return user && Array.isArray(user.enabledCapabilities) ? user.enabledCapabilities : [...CAPABILITIES];
 }
 
 // Every part of the instructions BooKI reads before answering — not just the
@@ -86,17 +83,10 @@ function buildContext(session) {
   const reader = readerProfileFor(session);
   const enabled = enabledCapabilitiesFor(session);
 
+  const appSource = 'App Profile';
   const layers = [
     { key: 'core', group: 'core', label: 'BooKI core', editable: false, source: 'App', content: CORE_PROMPT },
-    {
-      key: 'rubric',
-      group: 'difficulty',
-      label: `Difficulty — ${RUBRIC_LEVEL_LABEL[difficulty]}`,
-      editable: true,
-      source,
-      content: slotContent(profile, RUBRIC_SLOT[difficulty])
-    },
-    { key: 'persona', group: 'persona', label: 'Master persona', editable: true, source, content: slotContent(profile, 'persona') },
+    { key: 'persona', group: 'persona', label: 'Master persona', editable: true, source, content: profile ? profile.persona : null },
     {
       key: 'reader_context',
       group: 'reader',
@@ -108,24 +98,24 @@ function buildContext(session) {
   ];
 
   for (const key of Object.keys(FUNCTION_LAYER_LABEL)) {
-    const s = slot(profile, key);
+    const s = appSlot(session.userId, key);
     layers.push({
       key,
       group: 'functions',
       label: FUNCTION_LAYER_LABEL[key],
       editable: true,
-      source,
+      source: appSource,
       content: s ? assembledSlotText(s) : null
     });
   }
 
-  const routingSlot = slot(profile, 'capability_routing');
+  const routingSlot = appSlot(session.userId, 'capability_routing');
   layers.push({
     key: 'capability_routing',
     group: 'routing',
     label: 'When BooKI acts on its own in chat',
     editable: true,
-    source,
+    source: appSource,
     content:
       (routingSlot ? assembledSlotText(routingSlot) + '\n\n' : '') +
       `Enabled here: ${enabled.length ? enabled.join(', ') : 'none'}.`
@@ -653,7 +643,7 @@ router.post('/:id/quiz', authMiddleware, (req, res) => {
   const session = sessions.find((s) => s.id === Number(req.params.id) && s.userId === req.userId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  const { aiProfileId, difficulty, questionCount } = req.body || {};
+  const { difficulty, questionCount } = req.body || {};
   const startPage = Number(req.body?.startPage) || session.startPage;
   const endPage = Number(req.body?.endPage) || session.endPage;
   if (startPage < session.startPage || endPage > session.endPage || startPage > endPage) {
@@ -662,7 +652,7 @@ router.post('/:id/quiz', authMiddleware, (req, res) => {
     });
   }
   const resolvedDifficulty = QUIZ_DIFFICULTIES.includes(difficulty) ? difficulty : session.difficulty || 'medium';
-  const resolvedProfileId = aiProfileId || session.aiProfileId || null;
+  const resolvedProfileId = session.aiProfileId || null;
   const profile = aiProfiles.find((p) => p.id === resolvedProfileId);
 
   const questions = generateQuiz(session, { questionCount, startPage, endPage });
@@ -683,7 +673,7 @@ router.post('/:id/quiz/answer', authMiddleware, (req, res) => {
   const session = sessions.find((s) => s.id === Number(req.params.id) && s.userId === req.userId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  const { pageNumber, question, answer, difficulty, aiProfileId } = req.body;
+  const { pageNumber, question, answer, difficulty } = req.body;
   const resolvedDifficulty = QUIZ_DIFFICULTIES.includes(difficulty) ? difficulty : session.difficulty || 'medium';
   const isFirstAttempt = quizAttempts.filter((a) => a.sessionId === session.id).length === 0;
   const result = gradeAnswer(session, pageNumber, answer, resolvedDifficulty, isFirstAttempt);
@@ -695,7 +685,7 @@ router.post('/:id/quiz/answer', authMiddleware, (req, res) => {
     question: question || '',
     answer,
     difficulty: resolvedDifficulty,
-    aiProfileId: aiProfileId || session.aiProfileId || null,
+    aiProfileId: session.aiProfileId || null,
     correct: result.correct,
     score: result.score,
     feedback: result.feedback,

@@ -1,11 +1,12 @@
 import api from './client';
 import { ENDPOINTS } from '../config/endpoints';
-import type { User } from '../types';
+import type { CapabilityHint, User } from '../types';
 
 export const getMe = () => api.get<User>(ENDPOINTS.users.me).then((r) => r.data);
 
 export interface UpdateUserRequest {
   name?: string;
+  enabledCapabilities?: CapabilityHint[];
 }
 
 export const updateMe = (payload: UpdateUserRequest) =>

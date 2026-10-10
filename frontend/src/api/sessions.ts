@@ -56,7 +56,6 @@ export const sendMessage = (
     .then((r) => r.data);
 
 export interface GenerateQuizRequest {
-  aiProfileId?: number | null;
   difficulty: Difficulty;
   questionCount: number;
   startPage: number;
@@ -71,7 +70,6 @@ export interface SubmitQuizAnswerRequest {
   question: string;
   answer: string;
   difficulty: Difficulty;
-  aiProfileId?: number | null;
 }
 
 export const submitQuizAnswer = (id: number, payload: SubmitQuizAnswerRequest) =>

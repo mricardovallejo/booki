@@ -36,6 +36,13 @@ public class SentReport {
     @Column(nullable = false, name = "file_name")
     private String fileName;
 
+    /** The page range this report's content actually covers — not the session's own (auto-growing) range. */
+    @Column(name = "start_page")
+    private Integer startPage;
+
+    @Column(name = "end_page")
+    private Integer endPage;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false, name = "created_at")
     private Instant createdAt;

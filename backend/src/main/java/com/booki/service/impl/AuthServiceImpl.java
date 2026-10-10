@@ -1,11 +1,13 @@
 package com.booki.service.impl;
 
+import com.booki.domain.Capability;
 import com.booki.domain.User;
 import com.booki.dto.AuthRequest;
 import com.booki.dto.AuthResponse;
 import com.booki.dto.UserResponse;
 import com.booki.prompt.SlotPromptCatalog;
 import com.booki.repository.AiProfileRepository;
+import com.booki.repository.AppProfileSlotRepository;
 import com.booki.repository.UserRepository;
 import com.booki.security.JwtUtil;
 import com.booki.service.AuthService;
@@ -17,6 +19,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -25,6 +29,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AiProfileRepository aiProfileRepository;
+    private final AppProfileSlotRepository appProfileSlotRepository;
     private final SlotPromptCatalog slotPromptCatalog;
     private final ReaderProfileProvisioner readerProfileProvisioner;
     private final ApplicationEventPublisher events;
@@ -40,8 +45,10 @@ public class AuthServiceImpl implements AuthService {
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setName(resolveName(request, email));
+        user.setEnabledCapabilities(slotPromptCatalog.defaultCapabilities());
         userRepository.save(user);
         aiProfileRepository.saveAll(slotPromptCatalog.seedFor(user));
+        appProfileSlotRepository.saveAll(slotPromptCatalog.newAppProfileSlots(user));
         readerProfileProvisioner.provisionFor(user);
         // Post-registration side effects run after this transaction commits.
         events.publishEvent(new UserRegisteredEvent(user.getId()));
@@ -72,8 +79,9 @@ public class AuthServiceImpl implements AuthService {
 
     private AuthResponse toAuthResponse(User user) {
         String token = jwtUtil.generateToken(user.getEmail(), user.getId());
+        List<String> capabilities = user.getEnabledCapabilities().stream().sorted().map(Capability::wire).toList();
         UserResponse userResponse = new UserResponse(
-                user.getId(), user.getEmail(), user.getName(), user.getCreatedAt());
+                user.getId(), user.getEmail(), user.getName(), user.getCreatedAt(), capabilities);
         return new AuthResponse(token, userResponse);
     }
 }

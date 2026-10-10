@@ -259,7 +259,7 @@ class SessionConversationIT extends IntegrationTestBase {
         assertThat(context.language()).isEqualTo("en");
         assertThat(context.difficulty()).isEqualTo("easy");
         assertThat(context.layers()).extracting(SessionContextResponse.Layer::key)
-                .contains("core", "rubric", "persona", "session", "capability_routing");
+                .contains("core", "persona", "session", "capability_routing");
     }
 
     @Test

@@ -1,9 +1,9 @@
 package com.booki.prompt;
 
 import com.booki.domain.AiProfile;
+import com.booki.domain.AppProfileSlot;
+import com.booki.domain.AppProfileSlotKey;
 import com.booki.domain.Capability;
-import com.booki.domain.SlotKey;
-import com.booki.domain.SlotPrompt;
 import com.booki.domain.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,23 +29,28 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Loads and validates the fixed BooKI core and shipped AI Profile templates
- * from a versioned YAML resource. Java keeps the schema and domain keys typed;
- * prompt authors can edit the actual wording without changing source code.
+ * Loads and validates the fixed BooKI core, the account-wide App Profile
+ * defaults, and the shipped tutor-persona templates from a versioned YAML
+ * resource. Java keeps the schema and domain keys typed; prompt authors can
+ * edit the actual wording without changing source code.
  */
 @Component
 public class SlotPromptCatalog {
 
     public static final String DEFAULT_LOCATION = "classpath:prompts/catalog.yml";
 
-    /** A shipped starting point. Not persisted — used only to seed and to restore user profiles. */
-    public record Template(String key, String name, boolean isDefault,
-                           EnumSet<Capability> capabilities, Map<SlotKey, String> texts) {
+    /** The three difficulty levels, account-wide — not a per-tutor-profile concept. */
+    public static final List<String> DIFFICULTY_LEVELS = List.of("easy", "medium", "hard");
+
+    /** A shipped tutor-persona starting point. Not persisted — used only to seed and to restore user profiles. */
+    public record Template(String key, String name, boolean isDefault, String personaText) {
     }
 
     private final String version;
     private final String corePrompt;
     private final List<Template> templates;
+    private final Map<AppProfileSlotKey, String> appProfileDefaults;
+    private final EnumSet<Capability> defaultCapabilities;
 
     /** Default constructor is intentionally public for focused unit tests. */
     public SlotPromptCatalog() {
@@ -58,10 +63,16 @@ public class SlotPromptCatalog {
         this.version = required(yaml.getVersion(), "booki.prompts.version");
         this.corePrompt = required(yaml.getCore(), "booki.prompts.core");
 
-        Map<SlotKey, String> shared = parseShared(yaml.getShared());
+        Map<AppProfileSlotKey, String> defaults = new EnumMap<>(AppProfileSlotKey.class);
+        parseInto(defaults, yaml.getDifficulty(), "difficulty rubric");
+        parseInto(defaults, yaml.getShared(), "shared prompt");
+        requireEveryAppProfileSlot(defaults);
+        this.appProfileDefaults = Map.copyOf(defaults);
+        this.defaultCapabilities = parseCapabilities(yaml.getDefaultCapabilities(), "default-capabilities");
+
         List<Template> loaded = new ArrayList<>();
         Set<String> keys = new HashSet<>();
-        int defaults = 0;
+        int defaultCount = 0;
         for (TemplateYaml source : yaml.getTemplates()) {
             String key = required(source.getKey(), "template key");
             if (!key.matches("[a-z0-9_]+") || !keys.add(key)) {
@@ -69,15 +80,10 @@ public class SlotPromptCatalog {
             }
             String name = required(source.getName(), "template name for " + key);
             String persona = required(source.getPersona(), "template persona for " + key);
-            EnumSet<Capability> capabilities = parseCapabilities(source.getCapabilities(), key);
-            Map<SlotKey, String> texts = new EnumMap<>(shared);
-            texts.putAll(parseOverrides(source.getOverrides(), key));
-            texts.put(SlotKey.PERSONA, persona);
-            requireEverySlot(texts, key);
-            loaded.add(new Template(key, name, source.isDefaultProfile(), capabilities, Map.copyOf(texts)));
-            defaults += source.isDefaultProfile() ? 1 : 0;
+            loaded.add(new Template(key, name, source.isDefaultProfile(), persona));
+            defaultCount += source.isDefaultProfile() ? 1 : 0;
         }
-        if (loaded.isEmpty() || defaults != 1) {
+        if (loaded.isEmpty() || defaultCount != 1) {
             throw invalid("The prompt catalog must define templates and exactly one default profile");
         }
         this.templates = List.copyOf(loaded);
@@ -99,7 +105,24 @@ public class SlotPromptCatalog {
         return templates.stream().filter(t -> t.key().equals(key)).findFirst();
     }
 
-    /** One editable {@link AiProfile} (with all its SlotPrompts) per template, for a new user. */
+    /** The shipped default text for each App Profile slot — account-wide, not per tutor profile. */
+    public Map<AppProfileSlotKey, String> appProfileDefaults() {
+        return appProfileDefaults;
+    }
+
+    /** The shipped default enabled-capability set for a new account. */
+    public EnumSet<Capability> defaultCapabilities() {
+        return EnumSet.copyOf(defaultCapabilities);
+    }
+
+    /** One editable {@link AppProfileSlot} row per key, for a new user. */
+    public List<AppProfileSlot> newAppProfileSlots(User user) {
+        return List.of(AppProfileSlotKey.values()).stream()
+                .map(key -> new AppProfileSlot(user, key, appProfileDefaults.getOrDefault(key, "")))
+                .toList();
+    }
+
+    /** One editable {@link AiProfile} per template, for a new user. */
     public List<AiProfile> seedFor(User user) {
         return templates.stream().map(t -> newProfile(t, user)).toList();
     }
@@ -110,10 +133,8 @@ public class SlotPromptCatalog {
         profile.setName(t.name());
         profile.setBasedOnTemplate(t.key());
         profile.setDefaultProfile(t.isDefault());
-        profile.setEnabledCapabilities(EnumSet.copyOf(t.capabilities()));
-        for (SlotKey key : SlotKey.values()) {
-            profile.addSlot(new SlotPrompt(key, t.texts().getOrDefault(key, "")));
-        }
+        profile.setPersonaText(t.personaText());
+        profile.setPersonaOriginalText(t.personaText());
         return profile;
     }
 
@@ -121,12 +142,8 @@ public class SlotPromptCatalog {
     public void restore(AiProfile profile) {
         Template t = byKey(profile.getBasedOnTemplate()).orElseThrow(
                 () -> new IllegalArgumentException("This profile has no original template to restore from."));
-        profile.setEnabledCapabilities(EnumSet.copyOf(t.capabilities()));
-        for (SlotPrompt slot : profile.getSlots()) {
-            String text = t.texts().getOrDefault(slot.getSlot(), "");
-            slot.setText(text);
-            slot.setOriginalText(text);
-        }
+        profile.setPersonaText(t.personaText());
+        profile.setPersonaOriginalText(t.personaText());
     }
 
     private static CatalogYaml load(String location) {
@@ -146,57 +163,34 @@ public class SlotPromptCatalog {
         }
     }
 
-    private static Map<SlotKey, String> parseShared(Map<String, String> raw) {
-        Map<SlotKey, String> result = new EnumMap<>(SlotKey.class);
+    private static void parseInto(Map<AppProfileSlotKey, String> target, Map<String, String> raw, String fieldLabel) {
         for (Map.Entry<String, String> entry : raw.entrySet()) {
-            SlotKey key;
+            AppProfileSlotKey key;
             try {
-                key = SlotKey.ofWire(entry.getKey());
+                key = AppProfileSlotKey.ofWire(entry.getKey());
             } catch (IllegalArgumentException e) {
-                throw invalid("Unknown shared prompt slot: " + entry.getKey(), e);
+                throw invalid("Unknown " + fieldLabel + " slot: " + entry.getKey(), e);
             }
-            if (key == SlotKey.PERSONA) {
-                throw invalid("persona belongs to each template, not the shared prompt map");
-            }
-            result.put(key, required(entry.getValue(), "shared prompt " + entry.getKey()));
+            target.put(key, required(entry.getValue(), fieldLabel + " " + entry.getKey()));
         }
-        return result;
     }
 
-    private static EnumSet<Capability> parseCapabilities(List<String> raw, String templateKey) {
+    private static EnumSet<Capability> parseCapabilities(List<String> raw, String fieldLabel) {
         EnumSet<Capability> result = EnumSet.noneOf(Capability.class);
         for (String wire : raw) {
             try {
                 result.add(Capability.ofWire(wire));
             } catch (IllegalArgumentException e) {
-                throw invalid("Unknown capability '" + wire + "' in template " + templateKey, e);
+                throw invalid("Unknown capability '" + wire + "' in " + fieldLabel, e);
             }
         }
         return result;
     }
 
-    private static Map<SlotKey, String> parseOverrides(Map<String, String> raw, String templateKey) {
-        Map<SlotKey, String> result = new EnumMap<>(SlotKey.class);
-        for (Map.Entry<String, String> entry : raw.entrySet()) {
-            SlotKey key;
-            try {
-                key = SlotKey.ofWire(entry.getKey());
-            } catch (IllegalArgumentException e) {
-                throw invalid("Unknown prompt override '" + entry.getKey() + "' in template " + templateKey, e);
-            }
-            if (key == SlotKey.PERSONA) {
-                throw invalid("Template " + templateKey + " must define persona through its persona field");
-            }
-            result.put(key, required(entry.getValue(),
-                    "prompt override " + entry.getKey() + " in template " + templateKey));
-        }
-        return result;
-    }
-
-    private static void requireEverySlot(Map<SlotKey, String> texts, String templateKey) {
-        for (SlotKey key : SlotKey.values()) {
-            if (!texts.containsKey(key) || texts.get(key).isBlank()) {
-                throw invalid("Template " + templateKey + " has no prompt for " + key.wire());
+    private static void requireEveryAppProfileSlot(Map<AppProfileSlotKey, String> defaults) {
+        for (AppProfileSlotKey key : AppProfileSlotKey.values()) {
+            if (!defaults.containsKey(key) || defaults.get(key).isBlank()) {
+                throw invalid("App Profile catalog has no prompt for " + key.wire());
             }
         }
     }
@@ -220,15 +214,21 @@ public class SlotPromptCatalog {
     public static class CatalogYaml {
         private String version;
         private String core;
+        private Map<String, String> difficulty = new LinkedHashMap<>();
         private Map<String, String> shared = new LinkedHashMap<>();
+        private List<String> defaultCapabilities = new ArrayList<>();
         private List<TemplateYaml> templates = new ArrayList<>();
 
         public String getVersion() { return version; }
         public void setVersion(String version) { this.version = version; }
         public String getCore() { return core; }
         public void setCore(String core) { this.core = core; }
+        public Map<String, String> getDifficulty() { return difficulty; }
+        public void setDifficulty(Map<String, String> difficulty) { this.difficulty = difficulty; }
         public Map<String, String> getShared() { return shared; }
         public void setShared(Map<String, String> shared) { this.shared = shared; }
+        public List<String> getDefaultCapabilities() { return defaultCapabilities; }
+        public void setDefaultCapabilities(List<String> defaultCapabilities) { this.defaultCapabilities = defaultCapabilities; }
         public List<TemplateYaml> getTemplates() { return templates; }
         public void setTemplates(List<TemplateYaml> templates) { this.templates = templates; }
     }
@@ -237,9 +237,7 @@ public class SlotPromptCatalog {
         private String key;
         private String name;
         private boolean defaultProfile;
-        private List<String> capabilities = new ArrayList<>();
         private String persona;
-        private Map<String, String> overrides = new LinkedHashMap<>();
 
         public String getKey() { return key; }
         public void setKey(String key) { this.key = key; }
@@ -247,11 +245,7 @@ public class SlotPromptCatalog {
         public void setName(String name) { this.name = name; }
         public boolean isDefaultProfile() { return defaultProfile; }
         public void setDefaultProfile(boolean defaultProfile) { this.defaultProfile = defaultProfile; }
-        public List<String> getCapabilities() { return capabilities; }
-        public void setCapabilities(List<String> capabilities) { this.capabilities = capabilities; }
         public String getPersona() { return persona; }
         public void setPersona(String persona) { this.persona = persona; }
-        public Map<String, String> getOverrides() { return overrides; }
-        public void setOverrides(Map<String, String> overrides) { this.overrides = overrides; }
     }
 }

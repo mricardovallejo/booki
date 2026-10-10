@@ -20,6 +20,4 @@ public class SubmitQuizAnswerRequest {
 
     @Pattern(regexp = "easy|medium|hard")
     private String difficulty;
-
-    private Long aiProfileId;
 }

@@ -3,7 +3,7 @@ package com.booki.conversation.capability;
 import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
-import com.booki.domain.SlotKey;
+import com.booki.domain.AppProfileSlotKey;
 import com.booki.prompt.PromptAssembler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -35,7 +35,7 @@ public class ExplainCapability implements ConversationCapability {
     @Override
     public String execute(CapabilityInvocation invocation) {
         String systemPrompt = promptAssembler.forFunction(
-                invocation.session(), SlotKey.FN_EXPLAIN, invocation.session().getDifficulty(),
+                invocation.session(), AppProfileSlotKey.FN_EXPLAIN, invocation.session().getDifficulty(),
                 activityContentService.documentTextFor(invocation.content()));
         String instruction = "The reader said: \"" + invocation.userText()
                 + "\". Re-explain what they are stuck on, drawn from the pages above.";

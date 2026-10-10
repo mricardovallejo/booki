@@ -7,20 +7,19 @@ import lombok.Setter;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Set;
+import java.util.Objects;
 
 /**
- * The "master" a reading session runs on — persona, difficulty rubrics,
- * per-function instructions, capability routing — plus the enabled
- * {@link Capability} set. Who is reading is a separate {@code ReaderProfile}.
+ * The "master" a reading session runs on — just a persona. Who is reading is
+ * a separate {@code ReaderProfile}; what a difficulty level means, how
+ * BooKI's functions behave, and which capabilities are enabled is all
+ * account-wide ({@code AppProfileSlot}, {@code User#enabledCapabilities}),
+ * not part of any one tutor profile.
  *
  * <p>Every account is seeded at registration with one copy of each shipped
- * template ({@code SlotPromptCatalog}). A profile is autonomous: it holds its own
- * {@link SlotPrompt} rows and only remembers, via {@code basedOnTemplate}, which
- * template to "restore to original" against.
+ * template ({@code SlotPromptCatalog}). {@code personaOriginalText} is the
+ * baseline it was seeded with — the profile only remembers, via
+ * {@code basedOnTemplate}, which template to "restore to original" against.
  */
 @Entity
 @Table(name = "ai_profiles")
@@ -47,28 +46,17 @@ public class AiProfile {
     @Column(nullable = false, name = "is_default")
     private boolean defaultProfile = false;
 
-    @Convert(converter = CapabilitySetConverter.class)
-    @Column(nullable = false, length = 120, name = "enabled_capabilities")
-    private Set<Capability> enabledCapabilities = EnumSet.allOf(Capability.class);
+    @Column(nullable = false, columnDefinition = "TEXT", name = "persona_text")
+    private String personaText = "";
+
+    @Column(nullable = false, columnDefinition = "TEXT", name = "persona_original_text")
+    private String personaOriginalText = "";
 
     @UpdateTimestamp
     @Column(nullable = false, name = "updated_at")
     private Instant updatedAt;
 
-    @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<SlotPrompt> slots = new ArrayList<>();
-
-    public SlotPrompt slot(SlotKey key) {
-        return slots.stream().filter(s -> s.getSlot() == key).findFirst().orElse(null);
-    }
-
-    public String text(SlotKey key) {
-        SlotPrompt slot = slot(key);
-        return slot != null ? slot.getText() : "";
-    }
-
-    public void addSlot(SlotPrompt slot) {
-        slot.setProfile(this);
-        slots.add(slot);
+    public boolean isPersonaModified() {
+        return !Objects.equals(personaText, personaOriginalText);
     }
 }

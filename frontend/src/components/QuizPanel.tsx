@@ -3,24 +3,19 @@ import { Link } from 'react-router-dom';
 import { useQuiz } from '../hooks/useQuiz';
 import { useSession } from '../hooks/useSession';
 import { useActivityRange } from '../context/ActivityRangeContext';
-import { useAiProfileSlots } from '../hooks/useAiProfileSlots';
+import { useAppProfile } from '../hooks/useAppProfile';
 import { useSessionReports } from '../hooks/useSessionReports';
 import { ROUTES } from '../config/routes';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import { Field, TextArea, Input } from './ui/FormField';
-import type { Difficulty } from '../types';
 
 interface Props {
   sessionId: number;
   onActivity?: () => void;
 }
 
-const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
-  { value: 'easy', label: 'Easy' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'hard', label: 'Advanced' }
-];
+const DIFFICULTY_LABEL: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Advanced' };
 
 // Ceiling for a single round — mirrors GenerateQuizRequest's @Max on the backend.
 // The effective limit is usually lower: one question per page in the range.
@@ -28,7 +23,7 @@ const QUESTION_HARD_MAX = 20;
 
 export default function QuizPanel({ sessionId, onActivity }: Props) {
   const { session } = useSession(sessionId);
-  const profileSlots = useAiProfileSlots(session?.aiProfileId ?? undefined);
+  const appProfile = useAppProfile();
   const {
     config,
     setConfig,
@@ -73,50 +68,30 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
           <div>
             <h4 className="text-sm font-bold text-white">Quiz setup</h4>
             <p className="mt-1 text-xs text-booki-muted">
-              Pick how hard it is and how many questions — the difficulty here applies to this round
-              only, starting from the session's level. What each level means comes from this session's
-              tutor profile.
+              Pick how many questions — difficulty follows this session's level
+              {config.difficulty ? ` (${DIFFICULTY_LABEL[config.difficulty] ?? config.difficulty})` : ''}.
+              Change the level for the whole session from the session screen.
             </p>
           </div>
 
-          <Field label="Difficulty">
-            <div className="grid grid-cols-3 gap-2">
-              {DIFFICULTY_OPTIONS.map((d) => (
-                <button
-                  key={d.value}
-                  type="button"
-                  onClick={() => setConfig((prev) => ({ ...prev, difficulty: d.value }))}
-                  className={`rounded-lg py-2 text-xs font-bold transition ${
-                    config.difficulty === d.value
-                      ? 'bg-booki-accent text-white'
-                      : 'bg-booki-bg/60 text-white/70 hover:bg-booki-card-hover'
-                  }`}
+          {(() => {
+            const rubric = appProfile.slots.find((s) => s.key === config.difficulty)?.text;
+            if (!rubric) return null;
+            return (
+              <details className="rounded-lg bg-booki-bg/60 p-2.5 text-[11px] leading-relaxed text-white/60">
+                <summary className="cursor-pointer select-none font-medium text-white/70">
+                  What this level means
+                </summary>
+                <p className="mt-1.5">{rubric}</p>
+                <Link
+                  to={`${ROUTES.aiProfiles}?tab=app&key=${config.difficulty}`}
+                  className="mt-1 inline-block font-medium text-booki-accent hover:underline"
                 >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-            {(() => {
-              const rubric = profileSlots.find((s) => s.key === `rubric_${config.difficulty}`)?.text;
-              if (!rubric) return null;
-              return (
-                <details className="mt-2 rounded-lg bg-booki-bg/60 p-2.5 text-[11px] leading-relaxed text-white/60">
-                  <summary className="cursor-pointer select-none font-medium text-white/70">
-                    What this level means
-                  </summary>
-                  <p className="mt-1.5">{rubric}</p>
-                  {session?.aiProfileId && (
-                    <Link
-                      to={`${ROUTES.aiProfile(session.aiProfileId)}?slot=rubric_${config.difficulty}`}
-                      className="mt-1 inline-block font-medium text-booki-accent hover:underline"
-                    >
-                      Fine-tune this level in the tutor profile →
-                    </Link>
-                  )}
-                </details>
-              );
-            })()}
-          </Field>
+                  Fine-tune this level →
+                </Link>
+              </details>
+            );
+          })()}
 
           {range && (
             <p className="text-xs text-white/50">

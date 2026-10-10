@@ -2,8 +2,9 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { buildFactoryAiProfiles, seedUserAiProfiles } = require('./aiProfiles');
+const { buildFactoryAiProfiles, seedUserAiProfiles, CAPABILITIES } = require('./aiProfiles');
 const { FACTORY_READER, LANGUAGE_SUPPORT_READER } = require('./readerProfiles');
+const { seedAppProfileForUser } = require('./appProfile');
 
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -16,7 +17,9 @@ let users = [
     email: 'demo@booki.app',
     passwordHash: 'password', // plain text for demo only
     name: 'Demo User',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString()
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
+    // Account-wide — not per tutor profile.
+    enabledCapabilities: [...CAPABILITIES]
   }
 ];
 
@@ -40,11 +43,24 @@ function seedProfilesForUser(userId) {
   return { copies };
 }
 
+// The account-wide App Profile (difficulty rubrics, function prompts, capability
+// routing) — not per AI Profile. Every user gets their own editable set, seeded
+// from the shared defaults.
+let appProfileSlots = [];
+
+function seedAppProfile(userId) {
+  const nextId = appProfileSlots.length ? Math.max(...appProfileSlots.map((r) => r.id)) + 1 : 1;
+  const rows = seedAppProfileForUser(userId, nextId);
+  appProfileSlots.push(...rows);
+  return rows;
+}
+
 // Demo user: the AI template copies + one custom reader profile. Its seed sessions
 // (below) pick a reader profile each.
 let demoExamPrepReaderId = null;
 (() => {
   seedProfilesForUser(1);
+  seedAppProfile(1);
   const examPrep = {
     id: nextReaderProfileId(),
     userId: 1,
@@ -208,6 +224,8 @@ module.exports = {
   readerProfiles,
   factoryTemplates,
   seedProfilesForUser,
+  appProfileSlots,
+  seedAppProfile,
   documents,
   documentPages,
   sessions,

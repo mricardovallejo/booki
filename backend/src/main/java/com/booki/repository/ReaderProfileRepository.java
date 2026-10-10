@@ -17,4 +17,6 @@ public interface ReaderProfileRepository extends JpaRepository<ReaderProfile, Lo
     Optional<ReaderProfile> findFirstByUserIsNullAndDefaultProfileTrueOrderByIdAsc();
 
     Optional<ReaderProfile> findByIdAndUserId(Long id, Long userId);
+
+    List<ReaderProfile> findByUserIdOrderByIdAsc(Long userId);
 }

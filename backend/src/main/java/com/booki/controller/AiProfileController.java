@@ -3,7 +3,6 @@ package com.booki.controller;
 import com.booki.dto.AiProfileResponse;
 import com.booki.dto.AiProfileSummaryResponse;
 import com.booki.dto.DuplicateAiProfileRequest;
-import com.booki.dto.RevertSlotRequest;
 import com.booki.dto.UpdateAiProfileRequest;
 import com.booki.service.AiProfileService;
 import com.booki.util.SecurityUtil;
@@ -47,9 +46,8 @@ public class AiProfileController {
     }
 
     @PostMapping("/{id}/revert")
-    public ResponseEntity<AiProfileResponse> revert(@PathVariable Long id,
-                                                    @Valid @RequestBody RevertSlotRequest request) {
-        return ResponseEntity.ok(aiProfileService.revertSlot(SecurityUtil.currentUserId(), id, request.getKey()));
+    public ResponseEntity<AiProfileResponse> revert(@PathVariable Long id) {
+        return ResponseEntity.ok(aiProfileService.revertPersona(SecurityUtil.currentUserId(), id));
     }
 
     @PostMapping("/{id}/restore")

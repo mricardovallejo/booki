@@ -8,7 +8,7 @@ import com.booki.domain.Document;
 import com.booki.domain.AiProfile;
 import com.booki.domain.Message;
 import com.booki.domain.QuizAttempt;
-import com.booki.domain.SlotKey;
+import com.booki.domain.AppProfileSlotKey;
 import com.booki.prompt.PromptAssembler;
 import com.booki.domain.SentReport;
 import com.booki.domain.Session;
@@ -100,7 +100,8 @@ public class ReportServiceImpl implements ReportService {
                 null);
 
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "progress", email, pdf, fileName, "Progreso: " + progress.getPctRead() + "%");
+        SentReport report = saveSentReport(session, "progress", email, pdf, fileName,
+                "Progreso: " + progress.getPctRead() + "%", session.getStartPage(), session.getEndPage());
         return toResponse(report);
     }
 
@@ -119,10 +120,15 @@ public class ReportServiceImpl implements ReportService {
         long correctCount = attempts.stream().filter(QuizAttempt::getCorrect).count();
         int avgScore = (int) Math.round(attempts.stream().mapToDouble(QuizAttempt::getScore).average().orElse(0) * 100);
 
+        // The actual range these quiz questions covered — not the session's own
+        // (auto-growing) start/end page, which can diverge from it.
+        int startPage = attempts.stream().mapToInt(QuizAttempt::getPageNumber).min().orElse(session.getStartPage());
+        int endPage = attempts.stream().mapToInt(QuizAttempt::getPageNumber).max().orElse(session.getEndPage());
+
         List<PdfReportBuilder.Section> sections = new java.util.ArrayList<>();
         sections.add(new PdfReportBuilder.Section("Session", List.of(
                 "Document: " + (document != null ? document.getTitle() : "Unknown"),
-                "Pages: " + session.getStartPage() + "-" + session.getEndPage()
+                "Pages: " + startPage + "-" + endPage
         )));
         sections.add(new PdfReportBuilder.Section("Quiz summary", List.of(
                 attempts.size() + " answered · " + correctCount + " correct · " + avgScore + "% average score"
@@ -140,13 +146,14 @@ public class ReportServiceImpl implements ReportService {
         }
 
         byte[] pdf = pdfReportBuilder.build(
-                "Quiz correction report — " + sessionTitle(session),
+                "Quiz correction report — " + sessionTitle(session, startPage, endPage),
                 "Generated " + Instant.now(),
                 sections,
                 null);
 
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "quiz", email, pdf, fileName, "Nota: " + avgScore + "%");
+        SentReport report = saveSentReport(session, "quiz", email, pdf, fileName,
+                "Nota: " + avgScore + "%", startPage, endPage);
         return toResponse(report);
     }
 
@@ -200,11 +207,14 @@ public class ReportServiceImpl implements ReportService {
 
         String heading = SUMMARY_HEADING.getOrDefault(
                 promptAssembler.resolveLanguage(session.getLanguage()), SUMMARY_HEADING.get("en"));
-        List<PdfReportBuilder.Section> sections = List.of(new PdfReportBuilder.Section(heading, List.of(summaryText)));
+        List<PdfReportBuilder.Section> sections = List.of(new PdfReportBuilder.Section(heading, List.of(
+                "Pages: " + startPage + "-" + endPage,
+                summaryText
+        )));
 
-        byte[] pdf = pdfReportBuilder.build("Summary — " + sessionTitle(session), null, sections, cover);
+        byte[] pdf = pdfReportBuilder.build("Summary — " + sessionTitle(session, startPage, endPage), null, sections, cover);
         String fileName = writeReportFile(pdf);
-        SentReport report = saveSentReport(session, "summary", email, pdf, fileName, "Resumen");
+        SentReport report = saveSentReport(session, "summary", email, pdf, fileName, "Resumen", startPage, endPage);
         return toResponse(report);
     }
 
@@ -246,7 +256,7 @@ public class ReportServiceImpl implements ReportService {
 
         String contextText = "BOOK EXCERPT:\n" + bookExcerpt + "\n\nDISCUSSION SO FAR:\n" + discussion;
         String systemPrompt = promptAssembler.forFunction(
-                session, SlotKey.FN_SUMMARY, session.getDifficulty(), contextText);
+                session, AppProfileSlotKey.FN_SUMMARY, session.getDifficulty(), contextText);
 
         StringBuilder instruction = new StringBuilder("Write the summary now — about " + pages
                 + " page(s) long (roughly " + (pages * 250) + " words), from the excerpt and discussion above.");
@@ -274,7 +284,11 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private String sessionTitle(Session session) {
-        return session.getDocument().getTitle() + " (pages " + session.getStartPage() + "-" + session.getEndPage() + ")";
+        return sessionTitle(session, session.getStartPage(), session.getEndPage());
+    }
+
+    private String sessionTitle(Session session, int startPage, int endPage) {
+        return session.getDocument().getTitle() + " (pages " + startPage + "-" + endPage + ")";
     }
 
     private Session findOwned(Long userId, Long sessionId) {
@@ -290,7 +304,7 @@ public class ReportServiceImpl implements ReportService {
      * plain label for a summary).
      */
     private SentReport saveSentReport(Session session, String type, String email, byte[] pdf, String fileName,
-                                      String metric) {
+                                      String metric, Integer startPage, Integer endPage) {
         boolean sent = false;
         if (email != null) {
             String subject = session.getDocument().getTitle() + " — " + metric + " — "
@@ -303,6 +317,8 @@ public class ReportServiceImpl implements ReportService {
         report.setEmail(email);
         report.setEmailSent(sent);
         report.setFileName(fileName);
+        report.setStartPage(startPage);
+        report.setEndPage(endPage);
         return sentReportRepository.save(report);
     }
 
@@ -320,6 +336,8 @@ public class ReportServiceImpl implements ReportService {
                 report.getEmail(),
                 "/api/reports/" + report.getId() + "/file",
                 report.getEmail() != null && !report.isEmailSent(),
+                report.getStartPage(),
+                report.getEndPage(),
                 report.getCreatedAt()
         );
     }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createSession } from '../api/sessions';
 import { useAiProfiles } from '../hooks/useAiProfiles';
 import { useReaderProfiles } from '../hooks/useReaderProfiles';
@@ -131,35 +131,6 @@ export default function CreateSessionModal({ document, onClose }: Props) {
             </p>
           </Field>
 
-          <Field label="Difficulty for this session">
-            <div className="grid grid-cols-3 gap-2">
-              {DIFFICULTIES.map((d) => (
-                <button
-                  key={d.value}
-                  type="button"
-                  onClick={() => {
-                    setDifficulty(d.value);
-                    setDifficultyTouched(true);
-                  }}
-                  className={`rounded-lg py-2 text-xs font-bold transition ${
-                    difficulty === d.value
-                      ? 'bg-booki-accent text-white'
-                      : 'bg-booki-card text-white/70 hover:bg-booki-card-hover'
-                  }`}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1 text-xs text-white/50">
-              {selectedReader?.readerLevel
-                ? `Preset from ${selectedReader.name}'s starting level. `
-                : ''}
-              Change it anytime during the session; the quiz tab can also override it per round. What
-              each level means is set in the tutor profile.
-            </p>
-          </Field>
-
           <Field label="Tutor profile — how BooKI teaches">
             <Select
               value={aiProfileId ?? ''}
@@ -188,6 +159,36 @@ export default function CreateSessionModal({ document, onClose }: Props) {
               ))}
             </Select>
             {readerError && <p className="mt-1 text-xs text-rose-400">{readerError}</p>}
+          </Field>
+
+          <Field label="Difficulty — quizzes, evaluations & reviews">
+            <div className="grid grid-cols-3 gap-2">
+              {DIFFICULTIES.map((d) => (
+                <button
+                  key={d.value}
+                  type="button"
+                  onClick={() => {
+                    setDifficulty(d.value);
+                    setDifficultyTouched(true);
+                  }}
+                  className={`rounded-lg py-2 text-xs font-bold transition ${
+                    difficulty === d.value
+                      ? 'bg-booki-accent text-white'
+                      : 'bg-booki-card text-white/70 hover:bg-booki-card-hover'
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-white/50">
+              {selectedReader?.readerLevel ? `Preset from ${selectedReader.name}'s starting level. ` : ''}
+              Only affects quiz questions, grading, and progress reviews — chat and summaries are not
+              affected. Change it anytime during the session.{' '}
+              <Link to={`${ROUTES.aiProfiles}?tab=app&key=${difficulty}`} className="text-booki-accent hover:underline">
+                What each level means →
+              </Link>
+            </p>
           </Field>
 
           <Field label="BooKI's interaction language">

@@ -12,7 +12,6 @@ interface Props {
 // Order the layers appear in, and which groups are heavy enough to fold away.
 const GROUP_ORDER: SessionContextGroup[] = [
   'core',
-  'difficulty',
   'persona',
   'reader',
   'session',
@@ -22,7 +21,6 @@ const GROUP_ORDER: SessionContextGroup[] = [
 const FOLDED_BY_DEFAULT: SessionContextGroup[] = ['functions', 'routing'];
 const GROUP_HEADING: Record<SessionContextGroup, string> = {
   core: 'Core',
-  difficulty: 'Difficulty',
   persona: 'Persona',
   reader: 'Reader profile',
   session: 'This session',

@@ -1,13 +1,9 @@
 const express = require('express');
 const { aiProfiles, factoryTemplates } = require('../data');
 const { authMiddleware } = require('../middleware');
-const { profileResponse, restoreFromTemplate, CAPABILITIES } = require('../aiProfiles');
+const { profileResponse, restoreFromTemplate } = require('../aiProfiles');
 
 const router = express.Router();
-
-function respond(profile) {
-  return profileResponse(profile, { withSlots: true });
-}
 
 // Users only ever see and touch their own profiles. The factory templates
 // (userId null) are hidden originals, used only for "restore to original".
@@ -24,13 +20,13 @@ function nextId() {
 }
 
 router.get('/', authMiddleware, (req, res) => {
-  res.json(ownedBy(req.userId).map((p) => profileResponse(p)));
+  res.json(ownedBy(req.userId).map(profileResponse));
 });
 
 router.get('/:id', authMiddleware, (req, res) => {
   const profile = findOwned(req.userId, req.params.id);
   if (!profile) return res.status(404).json({ error: 'AI profile not found' });
-  res.json(respond(profile));
+  res.json(profileResponse(profile));
 });
 
 router.post('/:id/duplicate', authMiddleware, (req, res) => {
@@ -45,54 +41,42 @@ router.post('/:id/duplicate', authMiddleware, (req, res) => {
     source: 'custom',
     basedOnId: source.basedOnId,
     isDefault: false,
-    enabledCapabilities: [...(source.enabledCapabilities ?? CAPABILITIES)],
     updatedAt: new Date().toISOString(),
-    slots: source.slots.map((s) => ({ ...s }))
+    persona: source.persona,
+    personaOriginal: source.personaOriginal
   };
   aiProfiles.push(copy);
-  res.status(201).json(respond(copy));
+  res.status(201).json(profileResponse(copy));
 });
 
 router.patch('/:id', authMiddleware, (req, res) => {
   const profile = findOwned(req.userId, req.params.id);
   if (!profile) return res.status(404).json({ error: 'AI profile not found' });
 
-  const { name, enabledCapabilities, slots } = req.body || {};
+  const { name, persona } = req.body || {};
   if (typeof name === 'string' && name.trim()) profile.name = name.trim();
-  if (Array.isArray(enabledCapabilities)) {
-    profile.enabledCapabilities = CAPABILITIES.filter((c) => enabledCapabilities.includes(c));
-  }
-  if (Array.isArray(slots)) {
-    for (const patch of slots) {
-      const slot = profile.slots.find((s) => s.key === patch.key);
-      if (slot && typeof patch.text === 'string') slot.text = patch.text;
-    }
-  }
+  if (typeof persona === 'string') profile.persona = persona;
   profile.updatedAt = new Date().toISOString();
-  res.json(respond(profile));
+  res.json(profileResponse(profile));
 });
 
-// Reset one slot to the text it was born with.
+// Reset the persona text to what it was born with.
 router.post('/:id/revert', authMiddleware, (req, res) => {
   const profile = findOwned(req.userId, req.params.id);
   if (!profile) return res.status(404).json({ error: 'AI profile not found' });
-  const key = req.body && req.body.key;
-  const slot = profile.slots.find((s) => s.key === key);
-  if (!slot) return res.status(400).json({ error: 'Unknown slot key' });
-  slot.text = slot.originalText;
+  profile.persona = profile.personaOriginal;
   profile.updatedAt = new Date().toISOString();
-  res.json(respond(profile));
+  res.json(profileResponse(profile));
 });
 
-// Reset the whole profile (all slots, reader level, capabilities) to the
-// original template it was based on.
+// Reset the whole profile (just the persona) to the original template it was based on.
 router.post('/:id/restore', authMiddleware, (req, res) => {
   const profile = findOwned(req.userId, req.params.id);
   if (!profile) return res.status(404).json({ error: 'AI profile not found' });
   const template = factoryTemplates.find((t) => t.id === profile.basedOnId);
   if (!template) return res.status(400).json({ error: 'This profile has no original to restore from.' });
   restoreFromTemplate(profile, template);
-  res.json(respond(profile));
+  res.json(profileResponse(profile));
 });
 
 router.delete('/:id', authMiddleware, (req, res) => {

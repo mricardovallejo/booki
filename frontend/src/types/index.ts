@@ -9,10 +9,31 @@ export interface User {
   email: string;
   name: string;
   createdAt: string;
+  /** Which conversational capabilities this account allows (subset of CapabilityHint) — account-wide, not per tutor profile. */
+  enabledCapabilities: CapabilityHint[];
 }
 
-/** Which family a prompt slot belongs to, used to group them in the editor. */
-export type AiProfileSlotGroup = 'persona' | 'difficulty' | 'functions' | 'routing';
+/** Which family an App Profile slot belongs to, used to group them in the editor. */
+export type AppProfileSlotGroup = 'difficulty' | 'functions' | 'routing';
+
+/**
+ * One row of the account-wide App Profile: a difficulty rubric (what
+ * easy/medium/hard mean for quiz questions), a function prompt (how BooKI
+ * writes a quiz question, grades an answer, summarizes, explains, or builds
+ * a mnemonic), or the capability-routing instruction. One editable set per
+ * account — never tied to any one tutor profile. `originalText` is the
+ * shipped baseline for the Edited/Original badge and "restore original text".
+ */
+export interface AppProfileSlot {
+  key: string;
+  label: string;
+  group: AppProfileSlotGroup;
+  lockedPreamble: string | null;
+  lockedPostamble: string | null;
+  text: string;
+  originalText: string;
+  modified: boolean;
+}
 
 /** Structured self-assessed level, used to suggest a session difficulty. */
 export type ReaderLevel = 'beginner' | 'intermediate' | 'advanced';
@@ -33,39 +54,27 @@ export interface ReaderProfile {
   updatedAt: string;
 }
 
-/**
- * One SlotPrompt inside an AI Profile. `text` is the editable body; the locked
- * frame (`lockedPreamble` / `lockedPostamble`) is shown for context but cannot
- * be changed because the app depends on its shape. `originalText` is the shipped
- * baseline used for the Edited/Original badge and "restore original text".
- */
-export interface AiProfileSlot {
-  key: string;
-  label: string;
-  group: AiProfileSlotGroup;
-  lockedPreamble: string | null;
-  lockedPostamble: string | null;
-  text: string;
-  originalText: string;
-  modified: boolean;
-}
-
 export interface AiProfileSummary {
   id: number;
   name: string;
   isDefault: boolean;
-  /** Which conversational capabilities this profile allows (subset of CapabilityHint). */
-  enabledCapabilities: CapabilityHint[];
   updatedAt: string;
 }
 
+/**
+ * An AI Profile ("tutor profile"): a name and a persona — nothing else.
+ * `personaOriginal` is the shipped baseline for the Edited/Original badge.
+ * Enabled capabilities, difficulty rubrics, and function prompts are all
+ * account-wide (see `User` and the App Profile), not part of this.
+ */
 export interface AiProfile extends AiProfileSummary {
-  slots: AiProfileSlot[];
+  persona: string;
+  personaOriginal: string;
+  personaModified: boolean;
 }
 
 export type SessionContextGroup =
   | 'core'
-  | 'difficulty'
   | 'persona'
   | 'reader'
   | 'functions'
@@ -208,6 +217,8 @@ export interface SentReport {
   email: string | null;
   downloadUrl: string;
   simulated: boolean;
+  startPage: number | null;
+  endPage: number | null;
   createdAt: string;
 }
 

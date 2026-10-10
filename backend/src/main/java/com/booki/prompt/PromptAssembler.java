@@ -1,17 +1,18 @@
 package com.booki.prompt;
 
 import com.booki.domain.AiProfile;
+import com.booki.domain.AppProfileSlotKey;
 import com.booki.domain.Capability;
 import com.booki.domain.ReaderProfile;
 import com.booki.domain.Session;
-import com.booki.domain.SlotKey;
+import com.booki.domain.User;
 import com.booki.dto.SessionContextResponse;
+import com.booki.service.AppProfileSlotService;
 import com.booki.service.ReaderProfileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -19,11 +20,13 @@ import java.util.stream.Stream;
 
 /**
  * Builds the system prompt for every AI call in a session by layering, in
- * precedence order: BooKI core, the difficulty rubric for the active level, the
- * function's locked frame + editable body (capability calls only), the master
- * persona (AI Profile), the reader context (reader profile), then the session
- * facts and the reading text. Also produces the {@link SessionContextResponse}
- * breakdown for {@code GET /sessions/{id}/context}.
+ * precedence order: BooKI core, the function's locked frame + editable body
+ * (capability calls only), the active difficulty rubric (quiz question and
+ * answer grading only), the tutor persona (AI Profile), the reader context
+ * (reader profile), then the session facts and the reading text. The
+ * difficulty rubric, every function prompt, and capability routing are the
+ * account-wide App Profile — never per tutor profile. Also produces the
+ * {@link SessionContextResponse} breakdown for {@code GET /sessions/{id}/context}.
  *
  * <p>{@code ConversationEngine} supplies the live capability descriptions
  * because it owns the registry; this class places them in the trusted prefix
@@ -34,26 +37,26 @@ import java.util.stream.Stream;
 public class PromptAssembler {
 
     private final ReaderProfileService readerProfiles;
+    private final AppProfileSlotService appProfileSlots;
     private final SlotPromptCatalog catalog;
 
     private static final Set<String> SUPPORTED_LANGUAGES = Set.of("en", "es", "fr");
     private static final Map<String, String> LANGUAGE_NAMES =
             Map.of("en", "English", "es", "Spanish", "fr", "French");
 
-    private static final Map<String, SlotKey> RUBRIC = Map.of(
-            "easy", SlotKey.RUBRIC_EASY, "medium", SlotKey.RUBRIC_MEDIUM, "hard", SlotKey.RUBRIC_HARD);
-    private static final Map<String, String> LEVEL_LABEL = Map.of(
-            "easy", "Easy", "medium", "Medium", "hard", "Advanced");
+    /** Only these two function calls read the active difficulty rubric — chat, voice, and summaries never do. */
+    private static final Set<AppProfileSlotKey> DIFFICULTY_AWARE_SLOTS =
+            Set.of(AppProfileSlotKey.FN_QUIZ_QUESTION, AppProfileSlotKey.FN_ANSWER_GRADING);
 
-    private static final List<SlotKey> FUNCTION_SLOTS = List.of(
-            SlotKey.FN_QUIZ_QUESTION, SlotKey.FN_ANSWER_GRADING, SlotKey.FN_SUMMARY,
-            SlotKey.FN_EXPLAIN, SlotKey.FN_MNEMONIC);
-    private static final Map<SlotKey, String> FUNCTION_LAYER_LABEL = Map.of(
-            SlotKey.FN_QUIZ_QUESTION, "When you ask for a quiz question",
-            SlotKey.FN_ANSWER_GRADING, "When BooKI grades a quiz answer",
-            SlotKey.FN_SUMMARY, "When you ask for a summary",
-            SlotKey.FN_EXPLAIN, "When you ask BooKI to explain a passage",
-            SlotKey.FN_MNEMONIC, "When you ask for a memory aid");
+    private static final List<AppProfileSlotKey> FUNCTION_SLOTS = List.of(
+            AppProfileSlotKey.FN_QUIZ_QUESTION, AppProfileSlotKey.FN_ANSWER_GRADING, AppProfileSlotKey.FN_SUMMARY,
+            AppProfileSlotKey.FN_EXPLAIN, AppProfileSlotKey.FN_MNEMONIC);
+    private static final Map<AppProfileSlotKey, String> FUNCTION_LAYER_LABEL = Map.of(
+            AppProfileSlotKey.FN_QUIZ_QUESTION, "When you ask for a quiz question",
+            AppProfileSlotKey.FN_ANSWER_GRADING, "When BooKI grades a quiz answer",
+            AppProfileSlotKey.FN_SUMMARY, "When you ask for a summary",
+            AppProfileSlotKey.FN_EXPLAIN, "When you ask BooKI to explain a passage",
+            AppProfileSlotKey.FN_MNEMONIC, "When you ask for a memory aid");
 
     // ---- small helpers reused by the services -------------------------------
 
@@ -66,13 +69,11 @@ public class PromptAssembler {
     }
 
     public String resolveDifficulty(String difficulty) {
-        return RUBRIC.containsKey(difficulty) ? difficulty : "medium";
+        return SlotPromptCatalog.DIFFICULTY_LEVELS.contains(difficulty) ? difficulty : "medium";
     }
 
     public Set<Capability> enabledCapabilities(Session session) {
-        return session.getAiProfile() != null
-                ? session.getAiProfile().getEnabledCapabilities()
-                : EnumSet.allOf(Capability.class);
+        return session.getUser().getEnabledCapabilities();
     }
 
     // ---- system prompts ----------------------------------------------------
@@ -93,36 +94,34 @@ public class PromptAssembler {
     }
 
     /** System prompt for a capability run — the function's frame + body are layered in. */
-    public String forFunction(Session session, SlotKey functionSlot, String difficulty, String documentText) {
+    public String forFunction(Session session, AppProfileSlotKey functionSlot, String difficulty, String documentText) {
         return assemble(session, resolveDifficulty(difficulty), functionSlot, null, documentText);
     }
 
     /**
      * The capability-routing section for a normal chat turn: the locked JSON
-     * contract plus the profile's editable {@code capability_routing} body.
+     * contract plus the account's editable {@code capability_routing} body.
      * Used by the context-inspection view; {@code ConversationEngine} supplies
      * the same content to the three-argument {@link #forChat} overload together
-     * with the dynamic enabled-capability descriptions. Empty when the session
-     * has no profile or the slot is blank.
+     * with the dynamic enabled-capability descriptions.
      */
     public String chatRoutingSection(Session session) {
-        if (session.getAiProfile() == null) {
-            return "";
-        }
-        String body = framed(SlotKey.CAPABILITY_ROUTING, session.getAiProfile());
+        String body = framed(AppProfileSlotKey.CAPABILITY_ROUTING, session.getUser());
         return body.isBlank() ? "" : "\n\n--- When BooKI can act on its own ---\n" + body;
     }
 
-    private String assemble(Session session, String difficulty, SlotKey functionSlot,
+    private String assemble(Session session, String difficulty, AppProfileSlotKey functionSlot,
                             String routingInstructions, String documentText) {
         AiProfile profile = session.getAiProfile();
         StringBuilder sb = new StringBuilder(catalog.corePrompt());
 
-        appendSection(sb, "Difficulty", text(profile, RUBRIC.get(difficulty)));
-        if (functionSlot != null) {
-            appendSection(sb, "What to do this turn", framed(functionSlot, profile));
+        if (functionSlot != null && DIFFICULTY_AWARE_SLOTS.contains(functionSlot)) {
+            appendSection(sb, "Difficulty", appProfileSlots.textFor(session.getUser(), AppProfileSlotKey.ofWire(difficulty)));
         }
-        appendSection(sb, "Persona", text(profile, SlotKey.PERSONA));
+        if (functionSlot != null) {
+            appendSection(sb, "What to do this turn", framed(functionSlot, session.getUser()));
+        }
+        appendSection(sb, "Persona", profile != null ? profile.getPersonaText() : "");
         appendSection(sb, "Reader", readerContextText(session));
         appendSection(sb, "Routing", routingInstructions);
         appendSection(sb, "This session", sessionFacts(session));
@@ -152,26 +151,25 @@ public class PromptAssembler {
         AiProfile profile = session.getAiProfile();
         String language = resolveLanguage(session.getLanguage());
         String difficulty = resolveDifficulty(session.getDifficulty());
-        String source = profile != null ? "AI profile \"" + profile.getName() + "\"" : "AI profile";
+        String personaSource = profile != null ? "AI profile \"" + profile.getName() + "\"" : "AI profile";
+        String appSource = "App Profile";
         Set<Capability> enabled = enabledCapabilities(session);
 
         List<SessionContextResponse.Layer> layers = new ArrayList<>();
         layers.add(layer("core", "core", "BooKI core", false,
                 "App prompt catalog v" + catalog.version(), catalog.corePrompt()));
-        layers.add(layer("rubric", "difficulty", "Difficulty — " + LEVEL_LABEL.get(difficulty),
-                true, source, blankToNull(text(profile, RUBRIC.get(difficulty)))));
-        layers.add(layer("persona", "persona", "Persona", true, source,
-                blankToNull(text(profile, SlotKey.PERSONA))));
+        layers.add(layer("persona", "persona", "Persona", true, personaSource,
+                blankToNull(profile != null ? profile.getPersonaText() : "")));
         ReaderProfile reader = readerProfiles.resolveFor(session);
         layers.add(layer("reader_context", "reader", "Reader profile", true,
                 reader != null ? "Reader profile \"" + reader.getName() + "\"" : "Reader profile",
                 blankToNull(readerContextText(session))));
-        for (SlotKey fn : FUNCTION_SLOTS) {
-            layers.add(layer(fn.wire(), "functions", FUNCTION_LAYER_LABEL.get(fn), true, source,
-                    blankToNull(framed(fn, profile))));
+        for (AppProfileSlotKey fn : FUNCTION_SLOTS) {
+            layers.add(layer(fn.wire(), "functions", FUNCTION_LAYER_LABEL.get(fn), true, appSource,
+                    blankToNull(framed(fn, session.getUser()))));
         }
-        layers.add(layer("capability_routing", "routing", "When BooKI acts on its own in chat", true, source,
-                routingContent(profile, enabled)));
+        layers.add(layer("capability_routing", "routing", "When BooKI acts on its own in chat", true, appSource,
+                routingContent(session.getUser(), enabled)));
         layers.add(layer("session", "session", "This session", false, "Session", contextSessionFacts(session)));
 
         return new SessionContextResponse(
@@ -192,8 +190,8 @@ public class PromptAssembler {
         }
     }
 
-    private String framed(SlotKey key, AiProfile profile) {
-        String body = text(profile, key);
+    private String framed(AppProfileSlotKey key, User user) {
+        String body = appProfileSlots.textFor(user, key);
         return Stream.of(key.lockedPreamble(), body.isBlank() ? null : body, key.lockedPostamble())
                 .filter(s -> s != null && !s.isBlank())
                 .reduce((a, b) -> a + "\n\n" + b)
@@ -216,8 +214,8 @@ public class PromptAssembler {
                 + "\nOnly a bounded window of relevant extracted pages is included in each answer.";
     }
 
-    private String routingContent(AiProfile profile, Set<Capability> enabled) {
-        String body = framed(SlotKey.CAPABILITY_ROUTING, profile);
+    private String routingContent(User user, Set<Capability> enabled) {
+        String body = framed(AppProfileSlotKey.CAPABILITY_ROUTING, user);
         String enabledLine = "Enabled here: "
                 + (enabled.isEmpty() ? "none"
                 : enabled.stream().sorted().map(Capability::wire).reduce((a, b) -> a + ", " + b).orElse("none"))
@@ -226,18 +224,12 @@ public class PromptAssembler {
     }
 
     private String routingBody(Session session, String capabilityInstructions) {
-        String profileRouting = session.getAiProfile() != null
-                ? framed(SlotKey.CAPABILITY_ROUTING, session.getAiProfile())
-                : "";
-        return Stream.of(profileRouting, capabilityInstructions)
+        String accountRouting = framed(AppProfileSlotKey.CAPABILITY_ROUTING, session.getUser());
+        return Stream.of(accountRouting, capabilityInstructions)
                 .filter(s -> s != null && !s.isBlank())
                 .map(String::strip)
                 .reduce((a, b) -> a + "\n\n" + b)
                 .orElse("");
-    }
-
-    private static String text(AiProfile profile, SlotKey key) {
-        return profile != null ? profile.text(key) : "";
     }
 
     /** The reader-context text the model reads: the level line (if set) + the free-text context. */

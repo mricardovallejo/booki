@@ -7,6 +7,8 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
+import java.util.EnumSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "users")
@@ -40,4 +42,9 @@ public class User {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "default_reader_profile_id")
     private ReaderProfile defaultReaderProfile;
+
+    /** Which conversational capabilities (quiz/summary/explain/mnemonic) this account allows — account-wide, not per tutor profile. */
+    @Convert(converter = CapabilitySetConverter.class)
+    @Column(nullable = false, length = 120, name = "enabled_capabilities")
+    private Set<Capability> enabledCapabilities = EnumSet.allOf(Capability.class);
 }

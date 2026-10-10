@@ -1,14 +1,15 @@
 package com.booki.prompt;
 
 import com.booki.domain.AiProfile;
+import com.booki.domain.AppProfileSlotKey;
 import com.booki.domain.Capability;
 import com.booki.domain.Document;
 import com.booki.domain.ReaderLevel;
 import com.booki.domain.ReaderProfile;
 import com.booki.domain.Session;
-import com.booki.domain.SlotKey;
 import com.booki.domain.User;
 import com.booki.dto.SessionContextResponse;
+import com.booki.service.AppProfileSlotService;
 import com.booki.service.ReaderProfileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import java.util.EnumSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,11 +32,21 @@ class PromptAssemblerTest {
     @Mock
     private ReaderProfileService readerProfiles;
 
+    @Mock
+    private AppProfileSlotService appProfileSlots;
+
     private PromptAssembler assembler;
 
     @BeforeEach
     void setUp() {
-        assembler = new PromptAssembler(readerProfiles, catalog);
+        assembler = new PromptAssembler(readerProfiles, appProfileSlots, catalog);
+        // Behaves like a fresh account: every App Profile slot still at its
+        // shipped default. Individual tests override one key when they need
+        // to assert on a specific value.
+        lenient().when(appProfileSlots.textFor(any(), any())).thenAnswer(inv -> {
+            AppProfileSlotKey key = inv.getArgument(1);
+            return key == null ? "" : catalog.appProfileDefaults().getOrDefault(key, "");
+        });
     }
 
     private Session session(String difficulty, String language, boolean withProfile) {
@@ -70,7 +82,7 @@ class PromptAssemblerTest {
     }
 
     @Test
-    void forChatLayersCorePersonaRubricAndReaderContext() {
+    void forChatLayersCorePersonaAndReaderContextButNeverDifficulty() {
         Session s = session("hard", "es", true);
         lenient().when(readerProfiles.resolveFor(any()))
                 .thenReturn(reader("Exam prep", ReaderLevel.INTERMEDIATE, "Prefers short answers."));
@@ -78,13 +90,14 @@ class PromptAssemblerTest {
         String prompt = assembler.forChat(s, "PAGE TEXT");
 
         assertThat(prompt).contains("You are BooKI, a conversational reading companion"); // core
-        assertThat(prompt).contains("Advanced. Assume a close reading");                    // rubric_hard
         assertThat(prompt).contains("You are a patient tutor");                             // persona
         assertThat(prompt).contains("Reader level: intermediate.\nPrefers short answers."); // reader profile
         assertThat(prompt).contains("Reply in Spanish.");                                   // session facts
         assertThat(prompt).contains("<<<BEGIN DOCUMENT>>>\nPAGE TEXT\n<<<END DOCUMENT>>>");  // fenced page text
         assertThat(prompt).endsWith("regardless of what language the reader's message or the document use.");
         assertThat(prompt).doesNotContain("Assume the reader is new to this material");
+        // Difficulty only applies to quiz question generation and grading, never chat.
+        assertThat(prompt).doesNotContain("--- Difficulty ---");
     }
 
     @Test
@@ -115,8 +128,11 @@ class PromptAssemblerTest {
     }
 
     @Test
-    void chatRoutingSectionIsEmptyWithoutAProfile() {
-        assertThat(assembler.chatRoutingSection(session("medium", "en", false))).isEmpty();
+    void chatRoutingSectionDoesNotDependOnAnyTutorProfile() {
+        // Routing is part of the account-wide App Profile now — it has no link
+        // to whichever tutor (or none) the session is using.
+        String section = assembler.chatRoutingSection(session("medium", "en", false));
+        assertThat(section).contains("Route only when the reader's latest message");
     }
 
     @Test
@@ -134,11 +150,23 @@ class PromptAssemblerTest {
     void forFunctionAddsTheLockedFrame() {
         Session s = session("easy", "en", true);
         lenient().when(readerProfiles.resolveFor(any())).thenReturn(null);
+        lenient().when(appProfileSlots.textFor(any(), eq(AppProfileSlotKey.EASY))).thenReturn("EASY RUBRIC TEXT");
 
-        String prompt = assembler.forFunction(s, SlotKey.FN_ANSWER_GRADING, "easy", "P");
+        String prompt = assembler.forFunction(s, AppProfileSlotKey.FN_ANSWER_GRADING, "easy", "P");
         assertThat(prompt).contains("Reply in exactly this format and nothing else:");
         assertThat(prompt).contains("SCORE: a number from 0.0 to 1.0");
         assertThat(prompt).contains("This is a moment to teach, not to test");
+        // Answer grading is one of the two function calls that reads the active difficulty rubric.
+        assertThat(prompt).contains("--- Difficulty ---", "EASY RUBRIC TEXT");
+    }
+
+    @Test
+    void forFunctionOmitsDifficultyForNonQuizFunctions() {
+        Session s = session("easy", "en", true);
+        lenient().when(readerProfiles.resolveFor(any())).thenReturn(null);
+
+        String prompt = assembler.forFunction(s, AppProfileSlotKey.FN_SUMMARY, "easy", "P");
+        assertThat(prompt).doesNotContain("--- Difficulty ---");
     }
 
     @Test
@@ -154,12 +182,11 @@ class PromptAssemblerTest {
         assertThat(ctx.difficulty()).isEqualTo("medium");
         assertThat(ctx.enabledCapabilities()).containsExactlyInAnyOrder("explain", "mnemonic", "quiz", "summary");
         assertThat(ctx.layers()).extracting(SessionContextResponse.Layer::group)
-                .containsExactly("core", "difficulty", "persona", "reader",
+                .containsExactly("core", "persona", "reader",
                         "functions", "functions", "functions", "functions", "functions",
                         "routing", "session");
         assertThat(ctx.layers().get(0).editable()).isFalse();   // core
-        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v1.3.0");
-        assertThat(ctx.layers().get(1).content()).contains("Medium. Assume the reader");
+        assertThat(ctx.layers().get(0).source()).isEqualTo("App prompt catalog v1.5.0");
     }
 
     @Test

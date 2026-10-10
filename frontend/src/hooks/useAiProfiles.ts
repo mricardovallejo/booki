@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { deleteAiProfile, duplicateAiProfile, listAiProfiles } from '../api/aiProfiles';
+import {
+  deleteAiProfile,
+  duplicateAiProfile,
+  listAiProfiles,
+  updateAiProfile,
+  type UpdateAiProfileRequest
+} from '../api/aiProfiles';
 import { getErrorMessage } from '../lib/errors';
 import type { AiProfile, AiProfileSummary } from '../types';
 
@@ -41,5 +47,14 @@ export function useAiProfiles() {
     [refresh]
   );
 
-  return { profiles, loading, error, refresh, duplicate, remove };
+  const update = useCallback(
+    async (id: number, payload: UpdateAiProfileRequest): Promise<AiProfile> => {
+      const updated = await updateAiProfile(id, payload);
+      await refresh();
+      return updated;
+    },
+    [refresh]
+  );
+
+  return { profiles, loading, error, refresh, duplicate, remove, update };
 }

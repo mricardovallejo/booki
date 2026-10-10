@@ -7,7 +7,7 @@ import com.booki.ai.AiProviderRegistry;
 import com.booki.domain.AiProfile;
 import com.booki.domain.QuizAttempt;
 import com.booki.domain.Session;
-import com.booki.domain.SlotKey;
+import com.booki.domain.AppProfileSlotKey;
 import com.booki.prompt.PromptAssembler;
 import com.booki.dto.GenerateQuizRequest;
 import com.booki.dto.QuizAnswerResponse;
@@ -17,7 +17,6 @@ import com.booki.dto.QuizGenerateResponse;
 import com.booki.dto.QuizQuestionResponse;
 import com.booki.dto.QuizReportResponse;
 import com.booki.dto.SubmitQuizAnswerRequest;
-import com.booki.repository.AiProfileRepository;
 import com.booki.repository.QuizAttemptRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.QuizService;
@@ -45,7 +44,6 @@ public class QuizServiceImpl implements QuizService {
 
     private final SessionRepository sessionRepository;
     private final ActivityContentService activityContentService;
-    private final AiProfileRepository aiProfileRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final AiProviderRegistry aiProviderRegistry;
     private final PromptAssembler promptAssembler;
@@ -66,13 +64,15 @@ public class QuizServiceImpl implements QuizService {
      */
     private static final double PASS_SCORE = 0.6;
 
+    /** Target size of each page sub-range generated in its own call — keeps coverage even across a wide request instead of relying on the model to "spread out" over one large one. */
+    private static final int PAGES_PER_BLOCK = 5;
+
     @Override
     public QuizGenerateResponse generateQuiz(Long userId, Long sessionId, GenerateQuizRequest request) {
         Session session = findOwned(userId, sessionId);
 
-        Long resolvedProfileId = request.getAiProfileId() != null
-                ? request.getAiProfileId()
-                : session.getAiProfile() != null ? session.getAiProfile().getId() : null;
+        AiProfile profile = session.getAiProfile();
+        Long resolvedProfileId = profile != null ? profile.getId() : null;
         String resolvedDifficulty = resolveDifficulty(
                 request.getDifficulty() != null ? request.getDifficulty() : session.getDifficulty());
         int questionCount = clamp(request.getQuestionCount() == null ? 3 : request.getQuestionCount(), 1, 20);
@@ -83,25 +83,62 @@ public class QuizServiceImpl implements QuizService {
         int endPage = clamp(request.getEndPage(), 1, pageCount);
         int startPage = clamp(request.getStartPage(), 1, endPage);
 
-        AiProfile profile = resolvedProfileId != null
-                ? aiProfileRepository.findByIdAndUserId(resolvedProfileId, userId).orElse(null) : null;
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
-        ActivityContent content = activityContentService.resolve(session.getDocument(), provider, startPage, endPage);
 
-        String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_QUIZ_QUESTION, resolvedDifficulty,
-                activityContentService.documentTextFor(content));
-        String instruction = "Write exactly " + questionCount + " quiz questions covering pages " + startPage
-                + " to " + endPage + ", spread across that whole range — not clustered on one page. "
-                + "Do not ask about any page or information outside that range. "
-                + "Respond with exactly " + questionCount + " blocks in this exact format, one per question:\n"
-                + "PAGE: <page number>\nQUESTION: <the question>";
-        String reply = activityContentService.converse(provider, content, systemPrompt, List.of(), instruction);
-        List<QuizQuestionResponse> questions = parseQuestions(reply, questionCount, startPage, endPage);
+        List<QuizQuestionResponse> questions = new ArrayList<>(questionCount);
+        for (PageBlock block : splitIntoBlocks(startPage, endPage, questionCount)) {
+            ActivityContent content = activityContentService.resolve(
+                    session.getDocument(), provider, block.startPage(), block.endPage());
+            String systemPrompt = promptAssembler.forFunction(session, AppProfileSlotKey.FN_QUIZ_QUESTION, resolvedDifficulty,
+                    activityContentService.documentTextFor(content));
+            String instruction = "Write exactly " + block.questionCount() + " quiz questions covering pages "
+                    + block.startPage() + " to " + block.endPage() + ", spread across that range — not clustered "
+                    + "on one page. Do not ask about any page or information outside that range. "
+                    + "Respond with exactly " + block.questionCount() + " blocks in this exact format, one per question:\n"
+                    + "PAGE: <page number>\nQUESTION: <the question>";
+            String reply = activityContentService.converse(provider, content, systemPrompt, List.of(), instruction);
+            questions.addAll(parseQuestions(reply, block.questionCount(), block.startPage(), block.endPage()));
+        }
+        for (int i = 0; i < questions.size(); i++) {
+            questions.get(i).setId(i + 1);
+        }
 
         QuizConfigResponse config = new QuizConfigResponse(
                 resolvedProfileId, profile != null ? profile.getName() : null, resolvedDifficulty, questions.size(),
                 startPage, endPage);
         return new QuizGenerateResponse(questions, config);
+    }
+
+    private record PageBlock(int startPage, int endPage, int questionCount) {
+    }
+
+    /**
+     * Splits {@code [startPage, endPage]} into contiguous sub-ranges of at most
+     * {@link #PAGES_PER_BLOCK} pages each (never more blocks than questions, so
+     * every block gets at least one), and spreads {@code questionCount} across
+     * them as evenly as possible. Each block is later resolved and generated
+     * from only its own pages — coverage is enforced by construction, not left
+     * to a prompt instruction the model might ignore on a large range.
+     */
+    private List<PageBlock> splitIntoBlocks(int startPage, int endPage, int questionCount) {
+        int totalPages = endPage - startPage + 1;
+        int numBlocks = Math.max(1, Math.min(questionCount, (int) Math.ceil(totalPages / (double) PAGES_PER_BLOCK)));
+
+        List<PageBlock> blocks = new ArrayList<>(numBlocks);
+        int pagesPerBlock = totalPages / numBlocks;
+        int extraPages = totalPages % numBlocks;
+        int questionsPerBlock = questionCount / numBlocks;
+        int extraQuestions = questionCount % numBlocks;
+
+        int page = startPage;
+        for (int i = 0; i < numBlocks; i++) {
+            int size = pagesPerBlock + (i < extraPages ? 1 : 0);
+            int blockEnd = page + size - 1;
+            int blockQuestions = questionsPerBlock + (i < extraQuestions ? 1 : 0);
+            blocks.add(new PageBlock(page, blockEnd, blockQuestions));
+            page = blockEnd + 1;
+        }
+        return blocks;
     }
 
     /** Parses the model's PAGE/QUESTION blocks; falls back to one whole-reply question if it didn't follow the format. */
@@ -124,7 +161,7 @@ public class QuizServiceImpl implements QuizService {
         String difficulty = resolveDifficulty(session.getDifficulty());
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
         String systemPrompt = promptAssembler.forFunction(
-                session, SlotKey.FN_QUIZ_QUESTION, difficulty, activityContentService.documentTextFor(content));
+                session, AppProfileSlotKey.FN_QUIZ_QUESTION, difficulty, activityContentService.documentTextFor(content));
         return activityContentService.converse(provider, content, systemPrompt, List.of(),
                 "Write one quiz question using only the supplied page(s). "
                         + "Do not ask about any page or information outside them.").strip();
@@ -150,7 +187,7 @@ public class QuizServiceImpl implements QuizService {
             AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
             ActivityContent content = activityContentService.resolve(session.getDocument(), provider,
                     pageNumber, pageNumber);
-            String systemPrompt = promptAssembler.forFunction(session, SlotKey.FN_ANSWER_GRADING, difficulty,
+            String systemPrompt = promptAssembler.forFunction(session, AppProfileSlotKey.FN_ANSWER_GRADING, difficulty,
                     activityContentService.documentTextFor(content));
             String instruction = "Question: " + (request.getQuestion() == null ? "" : request.getQuestion()) + "\n"
                     + "Reader's answer: " + (answer.isBlank() ? "(no answer given)" : answer)
@@ -163,18 +200,13 @@ public class QuizServiceImpl implements QuizService {
             feedback = grade.feedback();
         }
 
-        Long profileId = request.getAiProfileId() != null
-                ? request.getAiProfileId()
-                : session.getAiProfile() != null ? session.getAiProfile().getId() : null;
-
         QuizAttempt attempt = new QuizAttempt();
         attempt.setSession(session);
         attempt.setPageNumber(request.getPageNumber());
         attempt.setQuestion(request.getQuestion() == null ? "" : request.getQuestion());
         attempt.setAnswer(answer);
         attempt.setDifficulty(difficulty);
-        attempt.setAiProfile(profileId != null
-                ? aiProfileRepository.findByIdAndUserId(profileId, userId).orElse(null) : null);
+        attempt.setAiProfile(session.getAiProfile());
         attempt.setCorrect(correct);
         attempt.setScore(score);
         attempt.setFeedback(feedback);

@@ -9,8 +9,6 @@ import lombok.Data;
 @Data
 public class GenerateQuizRequest {
 
-    private Long aiProfileId;
-
     @Pattern(regexp = "easy|medium|hard")
     private String difficulty;
 

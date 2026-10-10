@@ -3,7 +3,7 @@ package com.booki.conversation.capability;
 import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
-import com.booki.domain.SlotKey;
+import com.booki.domain.AppProfileSlotKey;
 import com.booki.prompt.PromptAssembler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -34,7 +34,7 @@ public class MnemonicCapability implements ConversationCapability {
     @Override
     public String execute(CapabilityInvocation invocation) {
         String systemPrompt = promptAssembler.forFunction(
-                invocation.session(), SlotKey.FN_MNEMONIC, invocation.session().getDifficulty(),
+                invocation.session(), AppProfileSlotKey.FN_MNEMONIC, invocation.session().getDifficulty(),
                 activityContentService.documentTextFor(invocation.content()));
         String instruction = "The reader said: \"" + invocation.userText()
                 + "\". Build the memory aid for the key points of the pages above.";

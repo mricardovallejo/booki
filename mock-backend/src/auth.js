@@ -1,4 +1,5 @@
-const { users, nowIso, seedProfilesForUser } = require('./data');
+const { users, nowIso, seedProfilesForUser, seedAppProfile } = require('./data');
+const { CAPABILITIES } = require('./aiProfiles');
 
 const JWT_SECRET = 'mock-secret-do-not-use-in-production';
 
@@ -31,10 +32,12 @@ function register(email, password, name) {
     email,
     passwordHash: password,
     name: name || email.split('@')[0],
-    createdAt: nowIso()
+    createdAt: nowIso(),
+    enabledCapabilities: [...CAPABILITIES]
   };
   users.push(user);
   seedProfilesForUser(user.id);
+  seedAppProfile(user.id);
   return { token: generateToken(user.email, user.id), user: toUserResponse(user) };
 }
 
@@ -51,7 +54,8 @@ function toUserResponse(user) {
     id: user.id,
     email: user.email,
     name: user.name,
-    createdAt: user.createdAt
+    createdAt: user.createdAt,
+    enabledCapabilities: user.enabledCapabilities ?? [...CAPABILITIES]
   };
 }
 

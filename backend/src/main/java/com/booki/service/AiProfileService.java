@@ -16,7 +16,7 @@ public interface AiProfileService {
 
     AiProfileResponse duplicate(Long userId, Long id, String name);
 
-    AiProfileResponse revertSlot(Long userId, Long id, String slotKey);
+    AiProfileResponse revertPersona(Long userId, Long id);
 
     AiProfileResponse restore(Long userId, Long id);
 

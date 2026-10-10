@@ -14,5 +14,7 @@ public class SentReportResponse {
     private String email;
     private String downloadUrl;
     private boolean simulated;
+    private Integer startPage;
+    private Integer endPage;
     private Instant createdAt;
 }

@@ -46,6 +46,12 @@ export const ENDPOINTS = {
     restore: (id: number) => `/ai-profiles/${id}/restore`,
     delete: (id: number) => `/ai-profiles/${id}`
   },
+  appProfile: {
+    list: '/app-profile',
+    update: '/app-profile',
+    revert: (key: string) => `/app-profile/${key}/revert`,
+    restore: '/app-profile/restore'
+  },
   readerProfiles: {
     list: '/reader-profiles',
     create: '/reader-profiles',

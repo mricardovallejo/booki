@@ -1,8 +1,6 @@
 package com.booki.service.impl;
 
 import com.booki.domain.AiProfile;
-import com.booki.domain.Capability;
-import com.booki.domain.SlotKey;
 import com.booki.domain.User;
 import com.booki.dto.AiProfileResponse;
 import com.booki.dto.UpdateAiProfileRequest;
@@ -53,10 +51,11 @@ class AiProfileServiceImplTest {
     }
 
     @Test
-    void getReturnsEverySlot() {
+    void getReturnsThePersona() {
         AiProfileResponse response = service.get(USER_ID, PROFILE_ID);
         assertThat(response.name()).isEqualTo("Patient Tutor");
-        assertThat(response.slots()).hasSize(SlotKey.values().length);
+        assertThat(response.persona()).contains("You are a patient tutor");
+        assertThat(response.personaModified()).isFalse();
         assertThat(response.isDefault()).isTrue();
     }
 
@@ -67,72 +66,65 @@ class AiProfileServiceImplTest {
     }
 
     @Test
-    void updateAppliesName_capabilities_andSlotText() {
+    void updateAppliesNameAndPersona() {
         UpdateAiProfileRequest request = new UpdateAiProfileRequest();
         request.setName("  My Tutor  ");
-        request.setEnabledCapabilities(List.of("quiz", "explain", "translate")); // translate ignored
-        UpdateAiProfileRequest.SlotPatch patch = new UpdateAiProfileRequest.SlotPatch();
-        patch.setKey("persona");
-        patch.setText("A brand new persona.");
-        request.setSlots(List.of(patch));
+        request.setPersona("A brand new persona.");
 
         AiProfileResponse response = service.update(USER_ID, PROFILE_ID, request);
 
         assertThat(response.name()).isEqualTo("My Tutor");
-        assertThat(response.enabledCapabilities()).containsExactlyInAnyOrder("quiz", "explain");
-        assertThat(profile.text(SlotKey.PERSONA)).isEqualTo("A brand new persona.");
-        assertThat(profile.slot(SlotKey.PERSONA).isModified()).isTrue();
+        assertThat(profile.getPersonaText()).isEqualTo("A brand new persona.");
+        assertThat(profile.isPersonaModified()).isTrue();
     }
 
     @Test
-    void updateIgnoresUnknownSlotKey() {
-        UpdateAiProfileRequest request = new UpdateAiProfileRequest();
-        UpdateAiProfileRequest.SlotPatch patch = new UpdateAiProfileRequest.SlotPatch();
-        patch.setKey("does_not_exist");
-        patch.setText("x");
-        request.setSlots(List.of(patch));
-        assertThat(service.update(USER_ID, PROFILE_ID, request).slots()).hasSize(SlotKey.values().length);
-    }
-
-    @Test
-    void duplicateCopiesFieldsAndSlotsAndClearsDefault() {
-        profile.slot(SlotKey.PERSONA).setText("edited persona");
+    void duplicateCopiesPersonaAndClearsDefault() {
+        profile.setPersonaText("edited persona");
 
         AiProfileResponse copy = service.duplicate(USER_ID, PROFILE_ID, null);
 
         assertThat(copy.name()).isEqualTo("Patient Tutor (copy)");
         assertThat(copy.isDefault()).isFalse();
-        var persona = copy.slots().stream().filter(s -> s.key().equals("persona")).findFirst().orElseThrow();
-        assertThat(persona.text()).isEqualTo("edited persona");
-        assertThat(persona.originalText()).isNotEqualTo("edited persona"); // baseline carried over
-        assertThat(persona.modified()).isTrue();
+        assertThat(copy.persona()).isEqualTo("edited persona");
+        assertThat(copy.personaOriginal()).isNotEqualTo("edited persona"); // baseline carried over
+        assertThat(copy.personaModified()).isTrue();
         verify(repository).save(any(AiProfile.class));
     }
 
     @Test
-    void revertResetsOneSlotToItsOriginal() {
-        profile.slot(SlotKey.RUBRIC_MEDIUM).setText("harder");
-        service.revertSlot(USER_ID, PROFILE_ID, "rubric_medium");
-        assertThat(profile.slot(SlotKey.RUBRIC_MEDIUM).isModified()).isFalse();
+    void revertResetsPersonaToItsOriginal() {
+        profile.setPersonaText("different wording");
+        service.revertPersona(USER_ID, PROFILE_ID);
+        assertThat(profile.isPersonaModified()).isFalse();
     }
 
     @Test
-    void revertUnknownSlotIsRejected() {
-        assertThatThrownBy(() -> service.revertSlot(USER_ID, PROFILE_ID, "bogus"))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void restoreResetsWholeProfileButKeepsName() {
+    void restoreResetsPersonaButKeepsName() {
         profile.setName("Renamed");
-        profile.setEnabledCapabilities(java.util.EnumSet.of(Capability.QUIZ));
-        profile.slot(SlotKey.PERSONA).setText("changed");
+        profile.setPersonaText("changed");
 
         AiProfileResponse response = service.restore(USER_ID, PROFILE_ID);
 
         assertThat(response.name()).isEqualTo("Renamed");
-        assertThat(response.enabledCapabilities()).containsExactlyInAnyOrder("quiz", "summary", "explain", "mnemonic");
-        assertThat(profile.slot(SlotKey.PERSONA).isModified()).isFalse();
+        assertThat(profile.isPersonaModified()).isFalse();
+    }
+
+    @Test
+    void updateSetsDefaultAndClearsThePreviousOne() {
+        AiProfile other = catalog.newProfile(catalog.byKey("patient_tutor").orElseThrow(), profile.getUser());
+        other.setId(2L);
+        other.setDefaultProfile(true);
+        profile.setDefaultProfile(false);
+        when(repository.findFirstByUserIdAndDefaultProfileTrueOrderByIdAsc(USER_ID))
+                .thenReturn(Optional.of(other));
+
+        UpdateAiProfileRequest request = new UpdateAiProfileRequest();
+        request.setIsDefault(true);
+        AiProfileResponse response = service.update(USER_ID, PROFILE_ID, request);
+
+        assertThat(response.isDefault()).isTrue();
+        assertThat(other.isDefaultProfile()).isFalse();
     }
 
     @Test
@@ -147,5 +139,18 @@ class AiProfileServiceImplTest {
         when(repository.countByUserId(USER_ID)).thenReturn(3L);
         service.delete(USER_ID, PROFILE_ID);
         verify(repository).delete(profile);
+    }
+
+    @Test
+    void deletingTheDefaultPromotesAnotherProfile() {
+        AiProfile other = catalog.newProfile(catalog.byKey("patient_tutor").orElseThrow(), profile.getUser());
+        other.setId(2L);
+        when(repository.countByUserId(USER_ID)).thenReturn(2L);
+        when(repository.findByUserIdOrderByIdAsc(USER_ID)).thenReturn(List.of(other));
+
+        service.delete(USER_ID, PROFILE_ID);
+
+        assertThat(other.isDefaultProfile()).isTrue();
+        verify(repository).save(other);
     }
 }

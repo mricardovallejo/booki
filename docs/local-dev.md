@@ -119,7 +119,7 @@ cd backend
 ./gradlew bootRun
 ```
 
-A session that doesn't explicitly pick an AI model defaults to **OpenAI** here — needs `OPENAI_API_KEY`; otherwise AI endpoints return the controlled `502` provider error.
+A session that doesn't explicitly pick an AI model defaults to **Claude** here — needs `ANTHROPIC_API_KEY`; otherwise AI endpoints return the controlled `502` provider error.
 
 Requires Docker installed and your user in the `docker` group (`sudo usermod -aG docker $USER`, then log out/in or `newgrp docker` for just the current shell) so `docker`/`docker compose` work without `sudo`.
 

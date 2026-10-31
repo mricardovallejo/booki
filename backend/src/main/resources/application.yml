@@ -130,7 +130,7 @@ booki:
       tts-voice: ${VOICE_TTS_VOICE:alloy}
       tts-max-input-chars: ${VOICE_TTS_MAX_INPUT_CHARS:1200}
   ai:
-    default-provider: ${AI_PROVIDER:openai}
+    default-provider: ${AI_PROVIDER:claude}
     claude:
       api-key: ${ANTHROPIC_API_KEY:}
       model: ${ANTHROPIC_MODEL:claude-sonnet-5}
@@ -165,7 +165,7 @@ spring:
     locations: classpath:db/migration
 booki:
   ai:
-    default-provider: ${AI_PROVIDER:openai}
+    default-provider: ${AI_PROVIDER:claude}
 
 ---
 spring:

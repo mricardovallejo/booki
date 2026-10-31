@@ -5,14 +5,17 @@ import com.booki.conversation.ConversationFailedException;
 import com.booki.voice.VoiceTranscriptionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.TransactionException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -90,6 +93,29 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleNotFound(NoSuchElementException ex) {
         log.warn("Not found: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error("Resource not found"));
+    }
+
+    /**
+     * The database rejected a statement or could not be reached (a transaction
+     * that can't get a connection is a TransactionException, not a
+     * DataAccessException). Same neutral 500 as any other unexpected error, with
+     * its own searchable log line.
+     */
+    @ExceptionHandler({DataAccessException.class, TransactionException.class})
+    public ResponseEntity<Map<String, String>> handleDatabase(RuntimeException ex) {
+        log.error("db.error type={} sqlState={} cause={}",
+                ex.getClass().getSimpleName(), sqlState(ex), OutboundHttp.describeFailure(ex), ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(error("Something went wrong on our side. Please try again."));
+    }
+
+    private static String sqlState(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof SQLException sql) {
+                return sql.getSQLState();
+            }
+        }
+        return null;
     }
 
     /**

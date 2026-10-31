@@ -28,6 +28,13 @@ server:
   port: 8080
 
 logging:
+  pattern:
+    # Who/which session each line belongs to (MDC set by RequestLoggingFilter).
+    correlation: "[userId=%X{userId:--} sessionId=%X{sessionId:--}] "
+  structured:
+    json:
+      # Only applies with LOGGING_STRUCTURED_FORMAT_CONSOLE set (see deploy.yml).
+      customizer: com.booki.config.GcpSeverityLogCustomizer
   level:
     # Off by default — very noisy, and rarely what you actually want to read.
     # Turn it on for one run without touching this file:

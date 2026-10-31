@@ -19,7 +19,15 @@ If a doc and this file disagree, the doc wins (use read_repo_doc).
 - Health: /actuator/health and /readiness are public but show only the aggregate.
   Per-dependency detail (db, diskSpace, ssl, storage) needs a JWT; when it is DOWN,
   the logs usually name the failing component.
-- Request log line format: `http.request method=.. path=.. status=.. userId=.. durationMs=..`.
+- Log lines are JSON with `severity`; `userId` and `sessionId` are separate fields,
+  set on every line logged while handling a request. Message formats:
+  - `http.request method=.. path=.. status=.. userId=.. durationMs=..`
+  - `ai.config defaultProvider=.. models=[..]` (once at startup)
+  - `ai.call ok|failed provider=.. model=.. input=.. durationMs=.. cause=..`
+    (`cause` holds the provider's HTTP status and response body when it rejected the call)
+  - `STT call ...` / `TTS call ...` `provider=.. model=.. durationMs=.. cause=..`
+  - `email.send ok|failed|skipped host=.. port=.. durationMs=.. cause=..`
+  - `db.error type=.. sqlState=.. cause=..`
 
 ## Known failure modes -> signal -> fix
 1. Flyway checksum mismatch: `FlywayValidateException: Migration checksum mismatch`.

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.net.URI;
 import java.util.Map;
 
 /**
@@ -21,6 +22,8 @@ public class OpenAiTextToSpeechProvider implements TextToSpeechProvider {
 
     private final WebClient webClient;
     private final String model;
+    /** Host of the base URL — this client also serves OpenAI-compatible APIs (e.g. Groq), so "openai" could be wrong. */
+    private final String provider;
     private final String voice;
     private final int maxInputChars;
     private final boolean configured;
@@ -33,6 +36,7 @@ public class OpenAiTextToSpeechProvider implements TextToSpeechProvider {
             @Value("${booki.voice.openai.tts-max-input-chars:1200}") int maxInputChars) {
         this.configured = apiKey != null && !apiKey.isBlank();
         this.model = model;
+        this.provider = URI.create(baseUrl).getHost();
         this.voice = voice;
         this.maxInputChars = Math.max(200, maxInputChars);
         // Spring's default in-memory buffer for WebClient responses is 256 KB; a
@@ -82,14 +86,15 @@ public class OpenAiTextToSpeechProvider implements TextToSpeechProvider {
             if (audio == null || audio.length == 0) {
                 throw new VoiceProviderException("tts", "audio response was empty", null);
             }
-            log.info("TTS call completed model={} voice={} durationMs={}",
-                    model, voice, System.currentTimeMillis() - startedAt);
+            log.info("TTS call completed provider={} model={} voice={} durationMs={}",
+                    provider, model, voice, System.currentTimeMillis() - startedAt);
             return new Speech(audio, "audio/mpeg");
         } catch (VoiceProviderException e) {
             throw e;
         } catch (Exception e) {
-            log.error("TTS call failed model={} voice={} durationMs={}",
-                    model, voice, System.currentTimeMillis() - startedAt, e);
+            log.error("TTS call failed provider={} model={} voice={} durationMs={} cause={}",
+                    provider, model, voice, System.currentTimeMillis() - startedAt,
+                    OutboundHttp.describeFailure(e), e);
             throw new VoiceProviderException("tts", e);
         }
     }

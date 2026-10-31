@@ -58,6 +58,9 @@ jobs:
         run: |
           cat > env.yaml <<EOF
           SPRING_PROFILES_ACTIVE: "dev"
+          # JSON log lines: gives Cloud Logging a severity to filter on, keeps a
+          # stack trace in one entry, and makes userId/sessionId queryable fields.
+          LOGGING_STRUCTURED_FORMAT_CONSOLE: "logstash"
           DB_HOST: "${{ secrets.DB_HOST }}"
           DB_PORT: "${{ secrets.DB_PORT }}"
           DB_NAME: "${{ secrets.DB_NAME }}"

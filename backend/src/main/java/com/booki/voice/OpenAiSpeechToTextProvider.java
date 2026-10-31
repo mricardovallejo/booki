@@ -12,6 +12,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.net.URI;
+
 /**
  * Speech-to-text via OpenAI's {@code /audio/transcriptions} (Whisper). The wire
  * format is OpenAI-specific but the {@link SpeechToTextProvider} interface is
@@ -29,6 +31,8 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
 
     private final WebClient webClient;
     private final String model;
+    /** Host of the base URL — this client also serves OpenAI-compatible APIs (e.g. Groq), so "openai" could be wrong. */
+    private final String provider;
     private final boolean configured;
 
     public OpenAiSpeechToTextProvider(
@@ -37,6 +41,7 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
             @Value("${booki.voice.openai.stt-model:whisper-1}") String model) {
         this.configured = apiKey != null && !apiKey.isBlank();
         this.model = model;
+        this.provider = URI.create(baseUrl).getHost();
         this.webClient = WebClient.builder()
                 .clientConnector(OutboundHttp.connector())
                 .baseUrl(baseUrl)
@@ -80,12 +85,14 @@ public class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
             if (text == null || text.isBlank()) {
                 throw new VoiceProviderException("stt", "transcript was empty", null);
             }
-            log.info("STT call completed model={} durationMs={}", model, System.currentTimeMillis() - startedAt);
+            log.info("STT call completed provider={} model={} durationMs={}",
+                    provider, model, System.currentTimeMillis() - startedAt);
             return new Transcript(text.strip());
         } catch (VoiceProviderException e) {
             throw e;
         } catch (Exception e) {
-            log.error("STT call failed model={} durationMs={}", model, System.currentTimeMillis() - startedAt, e);
+            log.error("STT call failed provider={} model={} durationMs={} cause={}",
+                    provider, model, System.currentTimeMillis() - startedAt, OutboundHttp.describeFailure(e), e);
             throw new VoiceProviderException("stt", e);
         }
     }

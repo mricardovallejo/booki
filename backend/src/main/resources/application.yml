@@ -74,6 +74,14 @@ springdoc:
     enabled: false
 
 booki:
+  # Where the frontend lives; password-reset links point here.
+  app-url: ${APP_URL:http://localhost:5173}
+  auth:
+    password-reset:
+      # Addresses besides the account's own that may receive a reset link,
+      # separated by "," or ";". Whoever reads these inboxes can take over any
+      # account, so keep it to the app's owner. Blank = none. See ADR-033.
+      allowed-recipients: ${PASSWORD_RESET_ALLOWED_RECIPIENTS:}
   prompts:
     # Version-controlled content lives outside Java. Override only to test an
     # alternative catalog; prompts themselves do not belong in environment vars.

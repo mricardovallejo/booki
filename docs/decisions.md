@@ -731,3 +731,19 @@ will use SSE, which every browser supports.
   whole file, so correcting it would cause the very failure this ADR prevents.
   `docs/deployment.md` documents the rule and keeps the wipe procedure only as
   a historical fallback.
+
+## ADR-033: password reset by emailed link, with an allowlist for other recipients
+
+- **Context**: a forgotten password locked the reader out for good, and some
+  accounts were created with invented addresses that can't receive any email.
+- **Decision**: the reset link is a short-lived signed JWT holding a fingerprint
+  of the current password hash, so it stops working once the password changes,
+  with no new table. It goes to the account's own email. Another address is
+  accepted only if listed in `PASSWORD_RESET_ALLOWED_RECIPIENTS`, so the owner
+  can recover accounts with invented addresses.
+- **Consequence**: a free-form recipient would let anyone take over any account,
+  since the link only proves ownership by reaching the account's inbox. For the
+  same reason, whoever reads an allowlisted inbox can reset any account: keep the
+  list to the owner, protect that mailbox, and empty it once it is no longer
+  needed. `forgot-password` has no rate limit, so it can be used to send repeated
+  emails to someone. Sessions already open are not ended by a reset.

@@ -1,5 +1,7 @@
 export const ROUTES = {
   login: '/login',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
   home: '/',
   library: '/#library',
   tags: '/#tags',

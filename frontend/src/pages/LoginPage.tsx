@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { useLocation, useNavigate, type Location } from 'react-router-dom';
+import { Link, useLocation, useNavigate, type Location } from 'react-router-dom';
 import { login as loginRequest, register as registerRequest } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { ROUTES } from '../config/routes';
 import { getErrorMessage } from '../lib/errors';
+import AuthCard from '../components/AuthCard';
 import Button from '../components/ui/Button';
 import { Field, Input } from '../components/ui/FormField';
-import Logo from '../components/Logo';
 
 // Dev-only convenience. `import.meta.env.DEV` is statically false in a
 // production build, so Vite tree-shakes the button and these constants out of
@@ -54,12 +54,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-booki-bg px-4">
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-black" />
-      <div className="absolute inset-0 bg-gradient-to-t from-booki-bg via-booki-bg/60 to-transparent" />
-
-      <div className="relative w-full max-w-md rounded-2xl bg-booki-surface/90 p-8 shadow-2xl backdrop-blur">
-        <Logo size="lg" />
+    <AuthCard>
         <h1 className="mt-4 text-xl font-bold text-white">
           {mode === 'login' ? 'Sign in' : 'Create your account'}
         </h1>
@@ -92,6 +87,11 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
             />
+            {mode === 'login' && (
+              <Link to={ROUTES.forgotPassword} className="mt-1 inline-block text-xs text-white/60 hover:text-booki-accent">
+                Forgot your password?
+              </Link>
+            )}
           </Field>
 
           {error && <p className="text-sm text-rose-400">{error}</p>}
@@ -120,7 +120,6 @@ export default function LoginPage() {
             {mode === 'login' ? 'Sign up' : 'Sign in'}
           </button>
         </p>
-      </div>
-    </div>
+    </AuthCard>
   );
 }

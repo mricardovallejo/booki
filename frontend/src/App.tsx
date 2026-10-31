@@ -12,6 +12,8 @@ import { ROUTES } from './config/routes';
 const SessionPage = lazy(() => import('./pages/SessionPage'));
 const AiProfilesPage = lazy(() => import('./pages/AiProfilesPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 
 function PageFallback() {
   return (
@@ -26,6 +28,8 @@ function App() {
     <Suspense fallback={<PageFallback />}>
       <Routes>
         <Route path={ROUTES.login} element={<LoginPage />} />
+        <Route path={ROUTES.forgotPassword} element={<ForgotPasswordPage />} />
+        <Route path={ROUTES.resetPassword} element={<ResetPasswordPage />} />
         <Route
           path={ROUTES.home}
           element={

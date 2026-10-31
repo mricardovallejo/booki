@@ -4,7 +4,11 @@ import com.booki.domain.Capability;
 import com.booki.domain.User;
 import com.booki.dto.AuthRequest;
 import com.booki.dto.AuthResponse;
+import com.booki.dto.ChangePasswordRequest;
+import com.booki.dto.ForgotPasswordRequest;
+import com.booki.dto.ResetPasswordRequest;
 import com.booki.dto.UserResponse;
+import com.booki.email.PasswordResetEmailSender;
 import com.booki.email.ReportRecipientResolver;
 import com.booki.prompt.SlotPromptCatalog;
 import com.booki.repository.AiProfileRepository;
@@ -14,14 +18,19 @@ import com.booki.security.JwtUtil;
 import com.booki.service.AuthService;
 import com.booki.service.event.UserRegisteredEvent;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -35,6 +44,10 @@ public class AuthServiceImpl implements AuthService {
     private final ReaderProfileProvisioner readerProfileProvisioner;
     private final ApplicationEventPublisher events;
     private final ReportRecipientResolver reportRecipientResolver;
+    private final PasswordResetEmailSender passwordResetEmails;
+
+    @Value("${booki.auth.password-reset.allowed-recipients:}")
+    private String allowedResetRecipients;
 
     @Override
     @Transactional
@@ -65,6 +78,64 @@ public class AuthServiceImpl implements AuthService {
             throw new BadCredentialsException("Invalid credentials");
         }
         return toAuthResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(Long userId, ChangePasswordRequest request) {
+        User user = userRepository.findById(userId).orElseThrow();
+        // An open session alone must not be enough to take over the account.
+        // 400, not 401: the frontend treats any 401 as an expired session and signs out.
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+    }
+
+    @Override
+    public void forgotPassword(ForgotPasswordRequest request) {
+        String email = normalizeEmail(request.getEmail());
+        boolean hasDeliverTo = request.getDeliverTo() != null && !request.getDeliverTo().isBlank();
+        String recipient = hasDeliverTo ? normalizeEmail(request.getDeliverTo()) : email;
+
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            log.info("password.reset notSent reason=unknown-account");
+            return;
+        }
+        // The link proves ownership only because it goes to the account's own inbox.
+        // Letting the caller pick any other address would let anyone take over any account.
+        if (!recipient.equals(email) && !isAllowedResetRecipient(recipient)) {
+            log.warn("password.reset notSent reason=recipient-not-allowed");
+            return;
+        }
+        String token = jwtUtil.generatePasswordResetToken(user.getId(), user.getPasswordHash());
+        try {
+            passwordResetEmails.send(recipient, email, token);
+        } catch (TaskRejectedException e) {
+            // Background queue full. Still answer normally: a 500 here, only for
+            // existing accounts, would reveal which emails are registered.
+            log.error("password.reset notSent reason=queue-full");
+        }
+    }
+
+    private boolean isAllowedResetRecipient(String recipient) {
+        return Arrays.stream(allowedResetRecipients.split("[,;]"))
+                .map(this::normalizeEmail)
+                .anyMatch(recipient::equals);
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        Long userId = jwtUtil.extractPasswordResetUserId(request.getToken());
+        User user = userId == null ? null : userRepository.findById(userId).orElse(null);
+        if (user == null || !jwtUtil.matchesCurrentPassword(request.getToken(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("This link is invalid or has expired. Please request a new one.");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
     }
 
     /** Emails are case-insensitive in practice; normalizing avoids duplicate accounts and login mismatches. */

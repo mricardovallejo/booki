@@ -155,6 +155,46 @@ class AuthSecurityIT extends IntegrationTestBase {
     }
 
     @Test
+    void changingPasswordRequiresTheCurrentOneAndReplacesIt() {
+        String email = uniqueEmail("change");
+        AuthData user = register(email);
+
+        com.booki.dto.ChangePasswordRequest wrongCurrent = changePassword("not-my-password", "new-password-456");
+        ResponseEntity<Map<String, String>> rejected = rest.exchange("/api/users/me/password", HttpMethod.POST,
+                new HttpEntity<>(wrongCurrent, auth(user.token())), errorType());
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(login(email, "password123").getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        com.booki.dto.ChangePasswordRequest tooShort = changePassword("password123", "short");
+        ResponseEntity<Map<String, String>> invalid = rest.exchange("/api/users/me/password", HttpMethod.POST,
+                new HttpEntity<>(tooShort, auth(user.token())), errorType());
+        assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        com.booki.dto.ChangePasswordRequest valid = changePassword("password123", "new-password-456");
+        ResponseEntity<Void> changed = rest.exchange("/api/users/me/password", HttpMethod.POST,
+                new HttpEntity<>(valid, auth(user.token())), Void.class);
+        assertThat(changed.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        assertThat(login(email, "new-password-456").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(login(email, "password123", errorType()).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void changingPasswordRequiresASignedInUser() {
+        ResponseEntity<Map<String, String>> anonymous = rest.exchange("/api/users/me/password", HttpMethod.POST,
+                new HttpEntity<>(changePassword("password123", "new-password-456")), errorType());
+
+        assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    private com.booki.dto.ChangePasswordRequest changePassword(String current, String next) {
+        com.booki.dto.ChangePasswordRequest request = new com.booki.dto.ChangePasswordRequest();
+        request.setCurrentPassword(current);
+        request.setNewPassword(next);
+        return request;
+    }
+
+    @Test
     void healthAndLivenessArePublicButActuatorInfoIsNot() {
         ResponseEntity<Map<String, Object>> health = rest.getForEntity("/api/health", mapType());
         assertThat(health.getStatusCode()).isEqualTo(HttpStatus.OK);

@@ -18,3 +18,9 @@ export const login = (payload: AuthRequest) =>
 
 export const register = (payload: AuthRequest) =>
   api.post<AuthResponse>(ENDPOINTS.auth.register, payload).then((r) => r.data);
+
+export const forgotPassword = (email: string, deliverTo?: string) =>
+  api.post<void>(ENDPOINTS.auth.forgotPassword, { email, deliverTo }).then(() => undefined);
+
+export const resetPassword = (token: string, newPassword: string) =>
+  api.post<void>(ENDPOINTS.auth.resetPassword, { token, newPassword }).then(() => undefined);

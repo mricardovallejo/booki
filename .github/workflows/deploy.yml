@@ -93,6 +93,10 @@ jobs:
           SMTP_USERNAME: "${{ secrets.SMTP_USERNAME }}"
           SMTP_PASSWORD: "${{ secrets.SMTP_PASSWORD }}"
           EMAIL_FROM: "${{ secrets.EMAIL_FROM }}"
+          # Password-reset links point at the frontend. An unset secret leaves the
+          # allowlist empty: links then go only to the account's own email (ADR-033).
+          APP_URL: "https://${{ secrets.GCP_PROJECT_ID }}.web.app"
+          PASSWORD_RESET_ALLOWED_RECIPIENTS: "${{ secrets.PASSWORD_RESET_ALLOWED_RECIPIENTS }}"
           EOF
           URL=$(gcloud run deploy booki-backend \
             --quiet \

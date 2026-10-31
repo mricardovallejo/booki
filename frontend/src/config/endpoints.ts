@@ -18,11 +18,14 @@ export const API_BASE_IS_SECURE = !(import.meta.env.PROD && /^http:\/\//i.test(A
 export const ENDPOINTS = {
   auth: {
     login: '/auth/login',
-    register: '/auth/register'
+    register: '/auth/register',
+    forgotPassword: '/auth/forgot-password',
+    resetPassword: '/auth/reset-password'
   },
   users: {
     me: '/users/me',
-    updateMe: '/users/me'
+    updateMe: '/users/me',
+    changePassword: '/users/me/password'
   },
   documents: {
     list: '/documents',

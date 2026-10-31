@@ -42,4 +42,19 @@ router.patch('/me', authMiddleware, (req, res) => {
   res.json(toUserResponse(user));
 });
 
+router.post('/me/password', authMiddleware, (req, res) => {
+  const user = users.find((u) => u.id === req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const { currentPassword, newPassword } = req.body;
+  if (currentPassword !== user.passwordHash) {
+    return res.status(400).json({ error: 'Current password is incorrect' });
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 72) {
+    return res.status(400).json({ error: 'newPassword: Password must be between 8 and 72 characters' });
+  }
+  user.passwordHash = newPassword;
+  res.status(204).end();
+});
+
 module.exports = router;

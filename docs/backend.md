@@ -40,6 +40,8 @@ All routes below are under `/api` and require a `Authorization: Bearer <jwt>` he
 |--------|------|-------------|
 | POST | `/api/auth/register` | Register with email/password, returns a JWT + the new user (`201`) |
 | POST | `/api/auth/login` | Login, returns a JWT + the user |
+| POST | `/api/auth/forgot-password` | Request a reset link. Always `202`, so it cannot reveal who has an account. Goes to the account email, or to `deliverTo` if allowlisted (ADR-033) |
+| POST | `/api/auth/reset-password` | Set a new password with the emailed token (1 hour, stops working once the password changes) |
 
 Email is normalized (trimmed + lowercased) before lookup/storage on both routes, so `Name@Example.com` and `name@example.com` are treated as the same account.
 
@@ -51,6 +53,7 @@ On register the account is also seeded with its default tutor profiles and an ed
 |--------|------|-------------|
 | GET | `/api/users/me` | Get the current user's profile, incl. `enabledCapabilities` |
 | PATCH | `/api/users/me` | Update the display name, `enabledCapabilities`, and/or `defaultReportEmail` (one address or several separated by `;`; empty string clears it back to the app-wide default — learning preferences themselves live in reader profiles) |
+| POST | `/api/users/me/password` | Change the password. Requires `currentPassword`; a wrong one is a `400`. Already issued tokens stay valid until they expire |
 
 ### Documents — `/api/documents`
 

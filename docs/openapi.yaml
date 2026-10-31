@@ -158,6 +158,57 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password-reset link by email
+      operationId: forgotPassword
+      description: >
+        Always 202, whether or not a link was sent, so this can't reveal who has
+        an account. The link goes to the account's email, or to `deliverTo` if
+        that address is on the server's allowlist (ADR-033).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, description: "The account's email" }
+                deliverTo: { type: string, format: email, description: "Where to send the link instead" }
+      responses:
+        "202":
+          description: Request accepted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Set a new password using an emailed link's token
+      operationId: resetPassword
+      description: >
+        The token expires after 1 hour and stops working once the password has
+        changed. Sessions already open stay valid until their tokens expire.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string }
+                newPassword: { type: string, minLength: 8, maxLength: 72 }
+      responses:
+        "204":
+          description: Password changed
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
   /users/me:
     get:
       tags: [Users]
@@ -202,6 +253,32 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me/password:
+    post:
+      tags: [Users]
+      summary: Change the current user's password
+      operationId: changePassword
+      description: >
+        Requires the current password. Tokens already issued stay valid until
+        they expire, so other signed-in devices are not signed out.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 8, maxLength: 72 }
+      responses:
+        "204":
+          description: Password changed
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
 

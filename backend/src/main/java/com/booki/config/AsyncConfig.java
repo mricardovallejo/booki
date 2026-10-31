@@ -9,9 +9,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 /**
  * Enables {@code @Async} and provides the one small background pool BooKI uses.
  *
- * <p>Currently its only job is best-effort post-registration work (seeding the
- * welcome guide — ADR-022): parsing a bundled PDF and writing it to blob storage
- * must not sit on the sign-up request thread. The pool is deliberately tiny — a
+ * <p>It runs best-effort work that must not sit on a request thread: seeding the
+ * welcome guide after sign-up (ADR-022: parsing a bundled PDF and writing it to
+ * blob storage) and sending password-reset emails (ADR-033). The pool is deliberately tiny — a
  * burst of sign-ups queues rather than spawning threads — and drains on
  * shutdown so an in-flight seed still completes.
  */

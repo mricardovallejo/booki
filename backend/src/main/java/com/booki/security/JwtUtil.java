@@ -8,7 +8,10 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
+import java.util.HexFormat;
 
 @Slf4j
 @Component
@@ -16,6 +19,10 @@ public class JwtUtil {
 
     /** The value shipped in application.yml / .env.example — never acceptable for signing real tokens. */
     static final String DEV_PLACEHOLDER_SECRET = "change-me-in-production-this-is-a-dev-secret-32bytes";
+
+    private static final long PASSWORD_RESET_VALIDITY_MS = 60 * 60 * 1000;
+    private static final String RESET_USER_CLAIM = "resetUserId";
+    private static final String RESET_FINGERPRINT_CLAIM = "passwordFingerprint";
 
     private final SecretKey key;
     private final long expirationMs;
@@ -65,6 +72,48 @@ public class JwtUtil {
                 .expiration(expiry)
                 .signWith(key)
                 .compact();
+    }
+
+    /**
+     * The token inside a password-reset link. It has no {@code userId} claim, so
+     * the auth filter never accepts it as a session, and session tokens lack the
+     * reset claim, so they can't reset a password. It carries a fingerprint of the
+     * current password hash: changing the password makes the fingerprint stop
+     * matching, which is what makes a link single-use with nothing stored.
+     */
+    public String generatePasswordResetToken(Long userId, String passwordHash) {
+        Date now = new Date();
+        return Jwts.builder()
+                .claim(RESET_USER_CLAIM, userId)
+                .claim(RESET_FINGERPRINT_CLAIM, fingerprint(passwordHash))
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + PASSWORD_RESET_VALIDITY_MS))
+                .signWith(key)
+                .compact();
+    }
+
+    /** @return the account a valid, unexpired reset token is for, or {@code null} for anything else */
+    public Long extractPasswordResetUserId(String token) {
+        try {
+            Number userId = parseToken(token).get(RESET_USER_CLAIM, Number.class);
+            return userId != null ? userId.longValue() : null;
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** False once the password has changed since the link was issued. Call after {@link #extractPasswordResetUserId}. */
+    public boolean matchesCurrentPassword(String resetToken, String passwordHash) {
+        return fingerprint(passwordHash).equals(parseToken(resetToken).get(RESET_FINGERPRINT_CLAIM, String.class));
+    }
+
+    private static String fingerprint(String passwordHash) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(passwordHash.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public Claims parseToken(String token) {

@@ -46,6 +46,16 @@ app.post('/api/auth/login', (req, res, next) => {
   }
 });
 
+// Nothing is emailed on the mock: the screens can be walked through, but no link ever arrives.
+app.post('/api/auth/forgot-password', (req, res) => {
+  if (!req.body.email) return res.status(400).json({ error: 'email: must not be blank' });
+  res.status(202).end();
+});
+
+app.post('/api/auth/reset-password', (req, res) => {
+  res.status(400).json({ error: 'This link is invalid or has expired. Please request a new one.' });
+});
+
 app.use('/api/documents', documentsRoutes);
 app.use('/api/sessions', sessionsRoutes);
 app.use('/api/ai-profiles', aiProfilesRoutes);

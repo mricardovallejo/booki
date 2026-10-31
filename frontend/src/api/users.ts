@@ -13,3 +13,6 @@ export interface UpdateUserRequest {
 
 export const updateMe = (payload: UpdateUserRequest) =>
   api.patch<User>(ENDPOINTS.users.updateMe, payload).then((r) => r.data);
+
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  api.post<void>(ENDPOINTS.users.changePassword, { currentPassword, newPassword }).then(() => undefined);

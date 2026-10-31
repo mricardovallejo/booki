@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { ROUTES } from '../config/routes';
+import ChangePasswordForm from '../components/ChangePasswordForm';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import { Field, Input } from '../components/ui/FormField';
@@ -66,6 +67,8 @@ export default function ProfilePage() {
         </div>
         {error && <p className="text-sm text-rose-400">{error}</p>}
       </form>
+
+      <ChangePasswordForm />
 
       <Card className="mt-6">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-booki-muted">

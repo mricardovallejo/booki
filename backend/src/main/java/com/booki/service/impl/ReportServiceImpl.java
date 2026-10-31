@@ -221,7 +221,7 @@ public class ReportServiceImpl implements ReportService {
         Session session = findOwned(userId, sessionId);
         SummaryJob job = prepareSummary(session, request);
         SummaryPrompt prompt = buildSummaryPrompt(session, request.getLengthPages(), request.getPrompt(), job.content(), true);
-        String reply = activityContentService.converse(job.provider(), job.content(), prompt.system(), List.of(), prompt.instruction());
+        String reply = activityContentService.converseLong(job.provider(), job.content(), prompt.system(), List.of(), prompt.instruction());
         String summaryText = summaryFigures.resolve(session, job.provider(), summaryHeading(session, job) + reply.strip(),
                 job.startPage(), job.endPage());
         Message botMessage = saveSummaryMessage(session, summaryText);
@@ -389,7 +389,7 @@ public class ReportServiceImpl implements ReportService {
                                       ActivityContent content) {
         SummaryPrompt prompt = buildSummaryPrompt(session, lengthPages, customPrompt, content, false);
         AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
-        return activityContentService.converse(provider, content, prompt.system(), List.of(), prompt.instruction()).strip();
+        return activityContentService.converseLong(provider, content, prompt.system(), List.of(), prompt.instruction()).strip();
     }
 
     private record SummaryPrompt(String system, String instruction) {

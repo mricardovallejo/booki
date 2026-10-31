@@ -15,6 +15,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The one place that decides, per document + provider, what an activity
@@ -110,6 +111,36 @@ public class ActivityContentService {
         }
         logged.onDelta(reply);
         logged.onComplete(reply);
+    }
+
+    /**
+     * The same long reply, for a caller that only needs the finished text. It still
+     * streams from the provider: a blocking call has too little room, because models
+     * that think first can spend nearly all of it before writing.
+     */
+    public String converseLong(AiProvider provider, ActivityContent content, String systemPrompt,
+                               List<AiProvider.Message> history, String userMessage) {
+        AtomicReference<String> reply = new AtomicReference<>();
+        AtomicReference<RuntimeException> failure = new AtomicReference<>();
+        converseLong(provider, content, systemPrompt, history, userMessage, new StreamingAiProvider.TokenStream() {
+            @Override
+            public void onDelta(String text) {
+            }
+
+            @Override
+            public void onComplete(String fullText) {
+                reply.set(fullText);
+            }
+
+            @Override
+            public void onError(RuntimeException error) {
+                failure.set(error);
+            }
+        });
+        if (failure.get() != null) {
+            throw failure.get();
+        }
+        return reply.get();
     }
 
     /** What to embed in the prompt's "document" section — the real text, or a note pointing at the attached pages. */

@@ -1,5 +1,6 @@
 package com.booki.ai;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +15,7 @@ import java.util.Set;
  * to {@code booki.ai.default-provider} (itself profile-dependent — see
  * application.yml) when the session didn't specify one.
  */
+@Slf4j
 @Component
 public class AiProviderRegistry {
 
@@ -24,6 +26,9 @@ public class AiProviderRegistry {
                               @Value("${booki.ai.default-provider}") String defaultProvider) {
         this.providers = providers;
         this.defaultProvider = defaultProvider;
+        log.info("ai.config defaultProvider={} models={}", defaultProvider, providers.entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue().model())
+                .toList());
     }
 
     public Set<String> availableProviders() {

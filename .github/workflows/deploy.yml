@@ -58,6 +58,9 @@ jobs:
         run: |
           cat > env.yaml <<EOF
           SPRING_PROFILES_ACTIVE: "dev"
+          # JSON log lines: gives Cloud Logging a severity to filter on, keeps a
+          # stack trace in one entry, and makes userId/sessionId queryable fields.
+          LOGGING_STRUCTURED_FORMAT_CONSOLE: "logstash"
           DB_HOST: "${{ secrets.DB_HOST }}"
           DB_PORT: "${{ secrets.DB_PORT }}"
           DB_NAME: "${{ secrets.DB_NAME }}"
@@ -65,7 +68,7 @@ jobs:
           DB_PASSWORD: "${{ secrets.DB_PASSWORD }}"
           DB_SSLMODE: "require"
           JWT_SECRET: "${{ secrets.JWT_SECRET }}"
-          AI_PROVIDER: "openai"
+          AI_PROVIDER: "claude"
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
           # Claude is a real secondary provider now (ADR-025: it reads an
           # uploaded PDF directly) — a session that picks it needs a working key.

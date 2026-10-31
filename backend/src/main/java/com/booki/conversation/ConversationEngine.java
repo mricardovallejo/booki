@@ -16,7 +16,6 @@ import com.booki.repository.MessageRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.domain.Capability;
 import com.booki.prompt.PromptAssembler;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -47,7 +46,6 @@ import java.util.Set;
  * <p>It knows nothing about REST/SSE/WebSocket: callers pass a
  * {@link ConversationRequest} and receive a {@link ConversationResult}.
  */
-@Slf4j
 @Service
 public class ConversationEngine {
 
@@ -299,17 +297,7 @@ public class ConversationEngine {
         Set<Capability> enabled = promptAssembler.enabledCapabilities(session);
         String systemPrompt = promptAssembler.forChat(session, activityContentService.documentTextFor(content),
                 capabilityRegistry.routerInstructions(enabled));
-        long startedAt = System.currentTimeMillis();
-        String reply;
-        try {
-            reply = activityContentService.converse(provider, content, systemPrompt, history, request.text());
-        } catch (RuntimeException e) {
-            log.warn("AI call failed provider={} model={} durationMs={}",
-                    provider.key(), provider.model(), System.currentTimeMillis() - startedAt);
-            throw e;
-        }
-        log.info("AI call completed provider={} model={} durationMs={}",
-                provider.key(), provider.model(), System.currentTimeMillis() - startedAt);
+        String reply = activityContentService.converse(provider, content, systemPrompt, history, request.text());
 
         return routedCapability(reply, enabled)
                 .map(capability -> capability.execute(invocation))

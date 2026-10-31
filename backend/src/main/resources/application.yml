@@ -28,6 +28,13 @@ server:
   port: 8080
 
 logging:
+  pattern:
+    # Who/which session each line belongs to (MDC set by RequestLoggingFilter).
+    correlation: "[userId=%X{userId:--} sessionId=%X{sessionId:--}] "
+  structured:
+    json:
+      # Only applies with LOGGING_STRUCTURED_FORMAT_CONSOLE set (see deploy.yml).
+      customizer: com.booki.config.GcpSeverityLogCustomizer
   level:
     # Off by default — very noisy, and rarely what you actually want to read.
     # Turn it on for one run without touching this file:
@@ -123,7 +130,7 @@ booki:
       tts-voice: ${VOICE_TTS_VOICE:alloy}
       tts-max-input-chars: ${VOICE_TTS_MAX_INPUT_CHARS:1200}
   ai:
-    default-provider: ${AI_PROVIDER:openai}
+    default-provider: ${AI_PROVIDER:claude}
     claude:
       api-key: ${ANTHROPIC_API_KEY:}
       model: ${ANTHROPIC_MODEL:claude-sonnet-5}
@@ -158,7 +165,7 @@ spring:
     locations: classpath:db/migration
 booki:
   ai:
-    default-provider: ${AI_PROVIDER:openai}
+    default-provider: ${AI_PROVIDER:claude}
 
 ---
 spring:

@@ -1,5 +1,6 @@
 package com.booki.email;
 
+import com.booki.config.OutboundHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
@@ -31,13 +32,18 @@ public class ReportEmailSender {
 
     private final JavaMailSender mailSender;
     private final String from;
+    private final String host;
+    private final int port;
     private final boolean enabled;
 
     public ReportEmailSender(JavaMailSender mailSender,
                              @Value("${booki.email.from}") String from,
-                             @Value("${spring.mail.host}") String host) {
+                             @Value("${spring.mail.host}") String host,
+                             @Value("${spring.mail.port}") int port) {
         this.mailSender = mailSender;
         this.from = from;
+        this.host = host;
+        this.port = port;
         this.enabled = !host.isBlank() && !from.isBlank();
         if (!enabled) {
             log.info("Email delivery disabled (set SMTP_HOST + EMAIL_FROM to enable) — "
@@ -62,8 +68,10 @@ public class ReportEmailSender {
     /** @param to one or more addresses, semicolon-separated (see {@link EmailList}) — every one gets the PDF. */
     public Result send(String to, String subject, byte[] pdf, String attachmentFilename) {
         if (!enabled) {
+            log.warn("email.send skipped reason=not-configured");
             return Result.failure("Email delivery is not configured for this BooKI instance.");
         }
+        long startedAt = System.currentTimeMillis();
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -73,9 +81,12 @@ public class ReportEmailSender {
             helper.setText(BODY);
             helper.addAttachment(attachmentFilename, new ByteArrayResource(pdf), "application/pdf");
             mailSender.send(message);
+            log.info("email.send ok host={} port={} pdfBytes={} durationMs={}",
+                    host, port, pdf.length, System.currentTimeMillis() - startedAt);
             return Result.success();
         } catch (MessagingException | MailException e) {
-            log.warn("Could not email report to {}", to, e);
+            log.error("email.send failed host={} port={} to={} durationMs={} cause={}",
+                    host, port, to, System.currentTimeMillis() - startedAt, OutboundHttp.describeFailure(e), e);
             return Result.failure("Could not send the email: " + e.getMessage());
         }
     }

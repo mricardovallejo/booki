@@ -1,8 +1,10 @@
 package com.booki.ai;
 
+import com.booki.config.OutboundHttp;
 import com.booki.domain.Document;
 import com.booki.storage.StorageAdapter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -24,7 +26,11 @@ import java.util.List;
  * range. Neither path caches anything: slicing/extracting is cheap and local,
  * and re-cutting on every turn is what keeps a stale reference from ever being
  * a concern.
+ *
+ * <p>Every activity's model call passes through {@link #converse}, so that is
+ * where each call is logged ({@code ai.call}), whichever feature made it.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ActivityContentService {
@@ -42,11 +48,27 @@ public class ActivityContentService {
     /** Dispatches to whichever {@link AiProvider} call fits the resolved content — the one place callers need. */
     public String converse(AiProvider provider, ActivityContent content, String systemPrompt,
                            List<AiProvider.Message> history, String userMessage) {
-        return switch (content) {
-            case ActivityContent.DocumentReference doc -> provider.converseWithDocument(
-                    systemPrompt, history, userMessage, doc.pdfBytes(), doc.startPage(), doc.endPage());
-            case ActivityContent.PlainText ignored -> provider.converse(systemPrompt, history, userMessage);
+        String input = switch (content) {
+            case ActivityContent.DocumentReference doc ->
+                    "document pages=" + doc.startPage() + "-" + doc.endPage() + " pdfBytes=" + doc.pdfBytes().length;
+            case ActivityContent.PlainText text -> "text chars=" + text.text().length();
         };
+        long startedAt = System.currentTimeMillis();
+        try {
+            String reply = switch (content) {
+                case ActivityContent.DocumentReference doc -> provider.converseWithDocument(
+                        systemPrompt, history, userMessage, doc.pdfBytes(), doc.startPage(), doc.endPage());
+                case ActivityContent.PlainText ignored -> provider.converse(systemPrompt, history, userMessage);
+            };
+            log.info("ai.call ok provider={} model={} input={} durationMs={}",
+                    provider.key(), provider.model(), input, System.currentTimeMillis() - startedAt);
+            return reply;
+        } catch (RuntimeException e) {
+            log.error("ai.call failed provider={} model={} input={} durationMs={} cause={}",
+                    provider.key(), provider.model(), input, System.currentTimeMillis() - startedAt,
+                    OutboundHttp.describeFailure(e));
+            throw e;
+        }
     }
 
     /** What to embed in the prompt's "document" section — the real text, or a note pointing at the attached pages. */

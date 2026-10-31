@@ -39,9 +39,9 @@ use this same builder.
   `claude` (`ClaudeProvider`), `openai` / `kimi` (`OpenAiCompatibleProvider`),
   `ollama` (`OllamaProvider`).
 - Each `Session` picks one at `POST /sessions` (`Session.aiProvider`); `null`
-  falls back to `booki.ai.default-provider` — `openai` by default (`dev`/`test`),
-  `ollama` on `local` (`AI_PROVIDER` overrides either). `openai` is the default
-  because the same key also powers cloud voice.
+  falls back to `booki.ai.default-provider` — `claude` by default (`dev`/`test`),
+  `ollama` on `local` (`AI_PROVIDER` overrides either). Cloud voice still uses
+  `OPENAI_API_KEY`, whichever provider is the default.
 - **Provider failures are real errors.** A network failure, upstream 4xx/5xx,
   an empty/unparseable payload, or a **timeout** raises `AiProviderException`;
   `ConversationEngine` turns it into `ConversationFailedException` and
@@ -54,8 +54,8 @@ use this same builder.
 
 | Provider | Env vars | Default model |
 |----------|----------|---------------|
-| `openai` *(default)* | `OPENAI_API_KEY`, `OPENAI_MODEL` | `gpt-4o-mini` |
-| `claude` | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `claude-sonnet-5` |
+| `claude` *(default)* | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `claude-sonnet-5` |
+| `openai` | `OPENAI_API_KEY`, `OPENAI_MODEL` | `gpt-4o-mini` |
 | `kimi`   | `KIMI_API_KEY`, `KIMI_MODEL`, `KIMI_BASE_URL` | `kimi-k2` |
 | `ollama` | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` (no key) | `llama3.2:1b` |
 

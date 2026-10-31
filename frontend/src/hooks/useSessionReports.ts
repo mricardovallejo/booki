@@ -12,7 +12,9 @@ function triggerDownload(blob: Blob, fileName: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Revoking synchronously can cancel the download on mobile browsers (iOS Safari, some Android) —
+  // give them time to start reading the blob first.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export function useSessionReports(sessionId: number) {
@@ -29,6 +31,8 @@ export function useSessionReports(sessionId: number) {
           ? await sendProgressReport(sessionId, email)
           : await sendQuizReport(sessionId, email, quizRequestId);
       setLastSent(report);
+      // Email didn't go out (not configured or SMTP error) — save the PDF on the device so it isn't lost.
+      if (report.simulated) await download(report);
       return report;
     } catch (err) {
       setError(getErrorMessage(err, 'Could not send the report.'));

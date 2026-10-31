@@ -261,7 +261,7 @@ export default function QuizPanel({ sessionId, onActivity }: Props) {
                     <span className={lastSent.simulated ? 'text-amber-400' : undefined}>
                       {lastSent.simulated
                         ? lastSent.emailError
-                          ? `Could not email ${lastSent.email}: ${lastSent.emailError}`
+                          ? `Could not email ${lastSent.email}: ${lastSent.emailError} — PDF downloaded to this device instead`
                           : `Not actually emailed to ${lastSent.email} — email isn't configured on this server`
                         : `Sent to ${lastSent.email}`}
                     </span>

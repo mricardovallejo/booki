@@ -78,7 +78,8 @@ export const ENDPOINTS = {
     reports: (id: number) => `/sessions/${id}/reports`,
     reportProgress: (id: number) => `/sessions/${id}/reports/progress`,
     reportQuiz: (id: number) => `/sessions/${id}/reports/quiz`,
-    summary: (id: number) => `/sessions/${id}/summary`
+    summaryStream: (id: number) => `/sessions/${id}/summary/stream`,
+    figure: (id: number, figureId: string) => `/sessions/${id}/figures/${figureId}`
   },
   reports: {
     file: (id: number) => `/reports/${id}/file`

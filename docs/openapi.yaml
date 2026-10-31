@@ -1373,6 +1373,62 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /sessions/{id}/summary/stream:
+    post:
+      tags: [Summary]
+      summary: Same as /summary, written as it is generated
+      operationId: streamSummary
+      description: >
+        Server-Sent Events: `start`, then `delta` with `{text}`, `figures` once the
+        book's images are being cut, then either
+        `done` with `{messageId, cutOff, report, reportError}` or `error` with
+        `{error}`. Invalid input is a normal JSON error, sent before the stream
+        starts. A stream that ends with neither `done` nor `error` was cut by
+        something outside BooKI, and its text is incomplete. `cutOff: true` means
+        the model stopped early; the saved text ends with a notice saying so.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerateSummaryRequest" }
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{id}/figures/{figureId}:
+    get:
+      tags: [Summary]
+      summary: An image cut from the book for one of this session's summaries
+      operationId: getSummaryFigure
+      description: Referenced in a summary's text as `[[FIG:<figureId>|caption]]`.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: figureId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The image
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /sessions/{id}/summary:
     post:
       tags: [Summary]
@@ -1380,18 +1436,16 @@ paths:
       operationId: generateSummary
       description: >
         A genuine AI call (the session's `aiProvider`) that combines the
-        required `startPage` / `endPage` range — the shared activity range,
-        same one every other activity uses — with recent chat history. An
-        out-of-bounds range is clamped, not rejected. When the provider can
-        read the document directly (Claude, OpenAI) it is handed the actual
-        pages; otherwise (Kimi, Ollama) plain text extracted from that range is
-        capped (~12k chars) so a wide range stays bounded. The session's AI
-        Profile (persona, reader context, `fn_summary` slot) and an optional
-        free-text instruction (`prompt`) shape the result. `lengthPages`
-        controls the target density (roughly 1–10 pages). Delivered either as a
-        new BooKI chat message, or as a downloadable PDF (optionally also "sent"
-        by email, same caveat as the other reports). The conversational summary
-        capability resolves its own range the same way.
+        required `startPage` / `endPage` range, at most 50 pages, with recent
+        chat history. When the provider can read the document directly (Claude,
+        OpenAI) it is handed the actual pages; otherwise (Kimi, Ollama) the text
+        extracted from them, untrimmed. The session's AI Profile (persona, reader
+        context, `fn_summary` slot) and an optional free-text instruction
+        (`prompt`) shape the result. Without `lengthPages` the content decides
+        the length. The summary is always saved as a chat message, so later turns
+        know about it; `deliverAs: pdf` also builds a downloadable PDF, optionally
+        emailed. A reply that was cut off ends with a visible notice. The frontend
+        uses `/sessions/{id}/summary/stream`.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:

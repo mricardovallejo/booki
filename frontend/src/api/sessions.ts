@@ -3,7 +3,6 @@ import { ENDPOINTS } from '../config/endpoints';
 import type {
   CapabilityHint,
   Difficulty,
-  GenerateSummaryRequest,
   Message,
   PageMode,
   QuizAnswerResult,
@@ -100,12 +99,5 @@ export const sendProgressReport = (id: number, email: string) =>
 export const sendQuizReport = (id: number, email: string, quizRequestId?: number) =>
   api.post<SentReport>(ENDPOINTS.sessions.reportQuiz(id), { email, quizRequestId }).then((r) => r.data);
 
-export const generateSummaryAsChat = (id: number, payload: Omit<GenerateSummaryRequest, 'deliverAs'>) =>
-  api
-    .post<Message>(ENDPOINTS.sessions.summary(id), { ...payload, deliverAs: 'chat' })
-    .then((r) => r.data);
-
-export const generateSummaryAsPdf = (id: number, payload: Omit<GenerateSummaryRequest, 'deliverAs'>) =>
-  api
-    .post<SentReport>(ENDPOINTS.sessions.summary(id), { ...payload, deliverAs: 'pdf' })
-    .then((r) => r.data);
+export const getSummaryFigure = (id: number, figureId: string) =>
+  api.get<Blob>(ENDPOINTS.sessions.figure(id, figureId), { responseType: 'blob' }).then((r) => r.data);

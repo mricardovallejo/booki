@@ -77,7 +77,9 @@ public abstract class OpenAiCompatibleProvider implements AiProvider {
             if (content == null || content.isBlank()) {
                 throw new AiProviderException(providerName(), "response contained no choices/content", null);
             }
-            return content;
+            return "length".equals(root.path("choices").path(0).path("finish_reason").asString())
+                    ? content + CUT_OFF_NOTICE
+                    : content;
         } catch (AiProviderException e) {
             throw e;
         } catch (Exception e) {

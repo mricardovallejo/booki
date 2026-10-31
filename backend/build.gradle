@@ -59,7 +59,12 @@ dependencies {
 	runtimeOnly 'io.jsonwebtoken:jjwt-gson:0.12.6'
 
 	// PDF text extraction
-	implementation 'org.apache.pdfbox:pdfbox:3.0.3'
+	implementation 'org.apache.pdfbox:pdfbox:3.0.8'
+
+	// Summary PDFs: Markdown -> HTML -> PDF (openhtmltopdf builds on PDFBox above)
+	implementation 'org.commonmark:commonmark:0.31.0'
+	implementation 'org.commonmark:commonmark-ext-gfm-tables:0.31.0'
+	implementation 'io.github.openhtmltopdf:openhtmltopdf-pdfbox:1.1.105'
 
 	// Real email delivery for sent reports (booki.email.enabled) — SMTP via JavaMailSender.
 	implementation 'org.springframework.boot:spring-boot-starter-mail'

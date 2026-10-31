@@ -53,13 +53,17 @@ if (import.meta.env.DEV) {
   );
 }
 
+export function handleExpiredSession() {
+  setAuthToken(null);
+  localStorage.removeItem('booki-auth');
+  window.location.href = '/login';
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      setAuthToken(null);
-      localStorage.removeItem('booki-auth');
-      window.location.href = '/login';
+      handleExpiredSession();
     }
     return Promise.reject(error);
   }

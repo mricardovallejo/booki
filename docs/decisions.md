@@ -747,3 +747,32 @@ will use SSE, which every browser supports.
   list to the owner, protect that mailbox, and empty it once it is no longer
   needed. `forgot-password` has no rate limit, so it can be used to send repeated
   emails to someone. Sessions already open are not ended by a reset.
+
+## ADR-034: summaries are streamed, cover the pages instead of a word count, and always live in the chat
+
+- **Context**: a summary was capped at 4096 output tokens with no check for being
+  cut off, asked for "about N pages", trimmed plain text to 12k characters, and,
+  when delivered as a PDF, was never saved to the conversation.
+- **Decision**: the summary is streamed as Server-Sent Events on the request
+  thread, with room for 32000 output tokens and a limit of 50 pages. Its length
+  follows the content. It is always saved as a chat message, and the PDF is built
+  from that same text with no second model call. Any reply the model didn't finish
+  ends with a visible notice (`AiProvider.CUT_OFF_NOTICE`), for chat turns too.
+- **Compression**: a copy with large images scaled to 1300 px is what the model
+  reads, for every activity. A 44-page book of photographed pages goes from 31 MB,
+  over the API's request limit, to 6 MB. The stored original is untouched.
+- **PDF**: Markdown to HTML with commonmark, HTML to PDF with openhtmltopdf and an
+  embedded font. The text comes from a model reading a PDF, so raw HTML is escaped
+  and Markdown images are dropped, leaving nothing that can fetch a URL.
+- **Figures**: only ones a summary uses are cut; nothing is indexed. The model
+  marks them while writing, as `[[FIG:page|caption]]`. Asked for coordinates it was
+  unreliable, so it names cells of a labelled grid instead, on the page and again
+  on a zoomed crop. A figure it can't find is dropped; if locating fails, the whole
+  page is used. Images never come from a generator.
+- **Consequence**: the request holds a thread for minutes, so Cloud Run's request
+  timeout is 600 s. Only Claude streams; other providers deliver one blocking reply
+  with their usual limit, so a long summary may arrive cut off, though marked as
+  such. Within the history window, the whole summary is resent on each chat turn.
+  Each figure costs two small model calls. Figure files aren't removed when their
+  document is deleted, the same as report files. Page citations use the PDF's own
+  numbering, which can differ from the numbers printed on the pages.

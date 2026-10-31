@@ -23,6 +23,15 @@ public interface StreamingAiProvider {
     void converseStream(String systemPrompt, List<AiProvider.Message> context,
                         String userMessage, TokenStream stream);
 
+    /**
+     * For a long reply over {@code content} (a summary of many pages): attaches
+     * the document, and allows far more output than a chat turn. A reply that
+     * didn't finish ends with {@link AiProvider#CUT_OFF_NOTICE}, delivered as a
+     * last delta. Same never-throws contract as {@link #converseStream}.
+     */
+    void converseLongStream(String systemPrompt, List<AiProvider.Message> context, String userMessage,
+                            ActivityContent content, TokenStream stream);
+
     interface TokenStream {
         /** A chunk of reply text, in order. May be called zero or more times. */
         void onDelta(String text);

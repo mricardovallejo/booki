@@ -5,6 +5,8 @@ import com.booki.ai.ActivityContentService;
 import com.booki.ai.AiProvider;
 import com.booki.ai.AiProviderRegistry;
 import com.booki.ai.PageRangeResolver;
+import com.booki.ai.StreamingAiProvider;
+import com.booki.config.OutboundHttp;
 import com.booki.domain.Document;
 import com.booki.domain.AiProfile;
 import com.booki.domain.Message;
@@ -29,8 +31,10 @@ import com.booki.repository.QuizRequestRepository;
 import com.booki.repository.SentReportRepository;
 import com.booki.repository.SessionRepository;
 import com.booki.service.ReportService;
+import com.booki.service.SummaryStreamListener;
 import com.booki.storage.StorageAdapter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +46,7 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
@@ -60,9 +65,16 @@ public class ReportServiceImpl implements ReportService {
     private final PageRangeResolver pageRangeResolver;
     private final StorageAdapter storage;
     private final ReportEmailSender emailSender;
+    private final SummaryFigures summaryFigures;
+    private final SummaryPdfRenderer summaryPdfRenderer;
 
     private static final Map<String, String> LANGUAGE_NAMES = Map.of("en", "English", "es", "Spanish", "fr", "French");
     private static final Map<String, String> SUMMARY_HEADING = Map.of("en", "Summary", "es", "Resumen", "fr", "Résumé");
+
+    private static final int MAX_SUMMARY_PAGES = 50;
+    /** Anthropic rejects requests over 32 MB, and base64 adds a third. */
+    private static final int MAX_SUMMARY_PDF_BYTES = 23 * 1024 * 1024;
+    private static final int SUMMARY_DISCUSSION_MESSAGES = 20;
 
     @Override
     @Transactional(readOnly = true)
@@ -201,33 +213,18 @@ public class ReportServiceImpl implements ReportService {
 
     // Not @Transactional: generateSummaryText makes a slow model call, and a
     // transaction spanning it would hold a DB connection open for its duration.
-    // The only writes are a single Message row or a single SentReport row.
+    // The writes are a single Message row and, for a PDF, a single SentReport row.
     @Override
     public Object generateSummary(Long userId, Long sessionId, GenerateSummaryRequest request) {
         Session session = findOwned(userId, sessionId);
-        boolean deliverAsPdf = "pdf".equals(request.getDeliverAs());
+        SummaryJob job = prepareSummary(session, request);
+        SummaryPrompt prompt = buildSummaryPrompt(session, request.getLengthPages(), request.getPrompt(), job.content(), true);
+        String reply = activityContentService.converse(job.provider(), job.content(), prompt.system(), List.of(), prompt.instruction());
+        String summaryText = summaryFigures.resolve(session, job.provider(), summaryHeading(session, job) + reply.strip(),
+                job.startPage(), job.endPage());
+        Message botMessage = saveSummaryMessage(session, summaryText);
 
-        String email = null;
-        if (deliverAsPdf && request.getEmail() != null && !request.getEmail().isBlank()) {
-            email = requireValidEmail(request.getEmail());
-        }
-
-        PageRangeResolver.PhysicalRange range = pageRangeResolver.resolve(
-                session.getDocument(), request.getStartPage(), request.getEndPage(), PageMode.ofWire(request.getPageMode()));
-        int startPage = range.start();
-        int endPage = range.end();
-        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
-        ActivityContent content = activityContentService.resolve(session.getDocument(), provider, startPage, endPage);
-        String summaryText = generateSummaryText(session, request.getLengthPages(), request.getPrompt(), content);
-
-        if (!deliverAsPdf) {
-            Message botMessage = new Message();
-            botMessage.setSession(session);
-            botMessage.setSpeaker(Message.Speaker.BOOKI);
-            botMessage.setInputType(Message.InputType.TEXT);
-            botMessage.setMessage(summaryText);
-            messageRepository.save(botMessage);
-
+        if (!"pdf".equals(request.getDeliverAs())) {
             MessageResponse response = new MessageResponse();
             response.setId(botMessage.getId());
             response.setSpeaker(botMessage.getSpeaker().name());
@@ -236,26 +233,141 @@ public class ReportServiceImpl implements ReportService {
             response.setCreatedAt(botMessage.getCreatedAt());
             return response;
         }
+        return toResponse(buildSummaryReport(session, request, job, summaryText));
+    }
 
+    @Override
+    public void streamSummary(Long userId, Long sessionId, GenerateSummaryRequest request,
+                              SummaryStreamListener listener) {
+        Session session = findOwned(userId, sessionId);
+        SummaryJob job = prepareSummary(session, request);
+        SummaryPrompt prompt = buildSummaryPrompt(session, request.getLengthPages(), request.getPrompt(), job.content(), true);
+        String heading = summaryHeading(session, job);
+
+        listener.onStart();
+        listener.onDelta(heading);
+        StringBuilder written = new StringBuilder(heading);
+
+        activityContentService.converseLong(job.provider(), job.content(), prompt.system(), List.of(), prompt.instruction(),
+                new StreamingAiProvider.TokenStream() {
+                    @Override
+                    public void onDelta(String text) {
+                        written.append(text);
+                        listener.onDelta(text);
+                    }
+
+                    @Override
+                    public void onComplete(String fullText) {
+                        finishSummary(session, request, job, written.toString(), listener);
+                    }
+
+                    @Override
+                    public void onError(RuntimeException error) {
+                        if (written.length() == heading.length()) {
+                            listener.onFailed(summaryFailureMessage(error));
+                            return;
+                        }
+                        // Part of it arrived. Keep it, clearly marked, rather than lose what was paid for.
+                        onDelta(AiProvider.CUT_OFF_NOTICE);
+                        finishSummary(session, request, job, written.toString(), listener);
+                    }
+                });
+    }
+
+    private void finishSummary(Session session, GenerateSummaryRequest request, SummaryJob job, String streamed,
+                               SummaryStreamListener listener) {
+        String text;
+        Message saved;
+        try {
+            listener.onFigures();
+            text = summaryFigures.resolve(session, job.provider(), streamed, job.startPage(), job.endPage());
+            saved = saveSummaryMessage(session, text);
+        } catch (RuntimeException e) {
+            log.error("summary.save failed sessionId={}", session.getId(), e);
+            listener.onFailed("The summary could not be saved. Please try again.");
+            return;
+        }
+
+        SentReportResponse report = null;
+        String reportError = null;
+        if ("pdf".equals(request.getDeliverAs())) {
+            try {
+                report = toResponse(buildSummaryReport(session, request, job, text));
+            } catch (RuntimeException e) {
+                log.error("summary.pdf failed sessionId={}", session.getId(), e);
+                reportError = "The summary is in the chat, but its PDF could not be created.";
+            }
+        }
+        listener.onDone(saved.getId(), AiProvider.wasCutOff(text), report, reportError);
+    }
+
+    private static String summaryFailureMessage(RuntimeException error) {
+        return OutboundHttp.describeFailure(error).startsWith("status=429")
+                ? "These pages are too much for the AI account's current limit. Try again in a minute, or choose fewer pages."
+                : "The reading assistant is temporarily unavailable. Please try again in a moment.";
+    }
+
+    /** Everything a summary needs, validated up front, before any model call or any byte of a stream. */
+    private record SummaryJob(int startPage, int endPage, AiProvider provider, ActivityContent content, String email) {
+    }
+
+    private SummaryJob prepareSummary(Session session, GenerateSummaryRequest request) {
+        String email = null;
+        if ("pdf".equals(request.getDeliverAs()) && request.getEmail() != null && !request.getEmail().isBlank()) {
+            email = requireValidEmail(request.getEmail());
+        }
+
+        PageRangeResolver.PhysicalRange range = pageRangeResolver.resolve(
+                session.getDocument(), request.getStartPage(), request.getEndPage(), PageMode.ofWire(request.getPageMode()));
+        if (range.end() - range.start() + 1 > MAX_SUMMARY_PAGES) {
+            throw new IllegalArgumentException("A summary can cover up to " + MAX_SUMMARY_PAGES + " pages at a time.");
+        }
+
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+        ActivityContent content = activityContentService.resolve(session.getDocument(), provider, range.start(), range.end());
+        if (content instanceof ActivityContent.DocumentReference doc && doc.pdfBytes().length > MAX_SUMMARY_PDF_BYTES) {
+            throw new IllegalArgumentException("These pages are too large to read at once ("
+                    + doc.pdfBytes().length / (1024 * 1024) + " MB). Please choose fewer pages.");
+        }
+        return new SummaryJob(range.start(), range.end(), provider, content, email);
+    }
+
+    /** Opens the saved text, so later chat turns know which pages this summary covers. */
+    private String summaryHeading(Session session, SummaryJob job) {
+        String heading = SUMMARY_HEADING.getOrDefault(
+                promptAssembler.resolveLanguage(session.getLanguage()), SUMMARY_HEADING.get("en"));
+        return "## " + heading + " (" + job.startPage() + "–" + job.endPage() + ")\n\n";
+    }
+
+    /** Always a chat message, PDF or not: this is what lets the reader keep discussing the summary. */
+    private Message saveSummaryMessage(Session session, String text) {
+        Message message = new Message();
+        message.setSession(session);
+        message.setSpeaker(Message.Speaker.BOOKI);
+        message.setInputType(Message.InputType.TEXT);
+        message.setMessage(text);
+        return messageRepository.save(message);
+    }
+
+    private SavedReport buildSummaryReport(Session session, GenerateSummaryRequest request, SummaryJob job, String text) {
         Document document = documentRepository.findById(session.getDocument().getId()).orElse(null);
-        PdfReportBuilder.Cover cover = null;
+        SummaryPdfRenderer.Cover cover = null;
         if (Boolean.TRUE.equals(request.getIncludeCover()) && document != null) {
-            cover = new PdfReportBuilder.Cover(
+            cover = new SummaryPdfRenderer.Cover(
                     pdfReportBuilder.coverColorFor(document.getTitle(), document.getId()),
                     pdfReportBuilder.initialsFor(document.getTitle()));
         }
 
-        String heading = SUMMARY_HEADING.getOrDefault(
-                promptAssembler.resolveLanguage(session.getLanguage()), SUMMARY_HEADING.get("en"));
-        List<PdfReportBuilder.Section> sections = List.of(new PdfReportBuilder.Section(heading, List.of(
-                "Pages: " + startPage + "-" + endPage,
-                summaryText
-        )));
-
-        byte[] pdf = pdfReportBuilder.build("Summary — " + sessionTitle(session, startPage, endPage), null, sections, cover);
+        byte[] pdf = summaryPdfRenderer.render(session.getId(), sessionTitle(session, job.startPage(), job.endPage()), text, cover);
         String fileName = writeReportFile(pdf);
-        SavedReport saved = saveSentReport(session, "summary", email, pdf, fileName, "Resumen", startPage, endPage);
-        return toResponse(saved);
+        return saveSentReport(session, "summary", job.email(), pdf, fileName, "Resumen", job.startPage(), job.endPage());
+    }
+
+    @Override
+    public Resource getSummaryFigure(Long userId, Long sessionId, String figureId) {
+        Session session = findOwned(userId, sessionId);
+        // Parsing also keeps anything but a plain id out of the storage key.
+        return storage.get(SummaryFigures.storageKey(session.getId(), UUID.fromString(figureId).toString()));
     }
 
     @Override
@@ -265,25 +377,29 @@ public class ReportServiceImpl implements ReportService {
         return storage.get("reports/" + report.getFileName());
     }
 
-    /** Ceiling on the book excerpt sent with a summary, so a wide range can't blow up the request — only matters for the plain-text fallback (Kimi/Ollama); a document-capable provider reads the actual PDF instead. */
-    private static final int SUMMARY_EXCERPT_CHAR_BUDGET = 12000;
-
     /**
-     * Real AI call grounded in the resolved page content (scaled by lengthPages)
-     * and the discussion so far, on top of the session's layered prompt with the
-     * {@code fn_summary} App Profile slot.
+     * Real AI call grounded in the resolved page content and the discussion so
+     * far, on top of the session's layered prompt with the {@code fn_summary}
+     * App Profile slot.
      */
     @Override
     public String generateSummaryText(Session session, Integer lengthPages, String customPrompt,
                                       ActivityContent content) {
-        int pages = normalizedSummaryLength(lengthPages);
-        String bookExcerpt = switch (content) {
-            case ActivityContent.DocumentReference doc ->
-                    "(See the attached document, pages " + doc.startPage() + "-" + doc.endPage() + ".)";
-            case ActivityContent.PlainText text -> truncate(text.text(), SUMMARY_EXCERPT_CHAR_BUDGET);
-        };
+        SummaryPrompt prompt = buildSummaryPrompt(session, lengthPages, customPrompt, content, false);
+        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
+        return activityContentService.converse(provider, content, prompt.system(), List.of(), prompt.instruction()).strip();
+    }
 
-        int messageCount = Math.min(40, Math.max(2, pages * 4));
+    private record SummaryPrompt(String system, String instruction) {
+    }
+
+    private SummaryPrompt buildSummaryPrompt(Session session, Integer lengthPages, String customPrompt,
+                                             ActivityContent content, boolean withFigures) {
+        // The page limit bounds this, so the text is never trimmed: dropping part
+        // of it would silently produce a summary of only some of the pages.
+        String bookExcerpt = activityContentService.documentTextFor(content);
+
+        int messageCount = lengthPages == null ? SUMMARY_DISCUSSION_MESSAGES : Math.min(40, Math.max(2, lengthPages * 4));
         List<Message> sessionMessages = messageRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
         List<Message> recent = sessionMessages.subList(Math.max(0, sessionMessages.size() - messageCount), sessionMessages.size());
         String discussion = recent.isEmpty()
@@ -298,22 +414,25 @@ public class ReportServiceImpl implements ReportService {
         String systemPrompt = promptAssembler.forFunction(
                 session, AppProfileSlotKey.FN_SUMMARY, session.getDifficulty(), contextText);
 
-        StringBuilder instruction = new StringBuilder("Write the summary now — about " + pages
-                + " page(s) long (roughly " + (pages * 250) + " words), from the excerpt and discussion above.");
+        StringBuilder instruction = new StringBuilder("Write the summary now, from the excerpt and discussion above.");
+        if (lengthPages != null) {
+            int pages = Math.min(10, Math.max(1, lengthPages));
+            instruction.append(" Make it about ").append(pages).append(" page(s) long (roughly ")
+                    .append(pages * 250).append(" words).");
+        }
         if (customPrompt != null && !customPrompt.isBlank()) {
             instruction.append(" Follow this specific request: \"").append(customPrompt.trim()).append("\".");
         }
-
-        AiProvider provider = aiProviderRegistry.get(session.getAiProvider());
-        return activityContentService.converse(provider, content, systemPrompt, List.of(), instruction.toString()).strip();
-    }
-
-    private static String truncate(String text, int budget) {
-        return text.length() > budget ? text.substring(0, budget) + "…" : text;
-    }
-
-    private int normalizedSummaryLength(Integer lengthPages) {
-        return Math.min(10, Math.max(1, lengthPages != null ? lengthPages : 2));
+        // Here rather than in the editable prompt, because SummaryFigures parses this exact format.
+        if (withFigures && content instanceof ActivityContent.DocumentReference) {
+            instruction.append(" Where a figure on these pages (illustration, portrait, map, timeline, diagram) would ")
+                    .append("help the reader understand or remember a point, insert on its own line, right after that ")
+                    .append("point: [[FIG:<page>|<caption>]], where <page> is the page it is on, numbered as given for ")
+                    .append("the attached document, and <caption> says in the session language what it shows. Use at most ")
+                    .append(SummaryFigures.MAX_FIGURES)
+                    .append(" and only real figures from the pages, never decoration.");
+        }
+        return new SummaryPrompt(systemPrompt, instruction.toString());
     }
 
     /** @return the normalized, "; "-joined form of one or more addresses (see {@link EmailList}). */

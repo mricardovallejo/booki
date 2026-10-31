@@ -946,4 +946,41 @@ router.post('/:id/summary', authMiddleware, async (req, res) => {
   res.status(201).json(toSentReportResponse(report));
 });
 
+// Same event format as the real backend. The PDF option isn't simulated here.
+router.post('/:id/summary/stream', authMiddleware, async (req, res) => {
+  const session = sessions.find((s) => s.id === Number(req.params.id) && s.userId === req.userId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  const startPage = Number(req.body?.startPage) || session.startPage;
+  const endPage = Number(req.body?.endPage) || session.endPage;
+  if (endPage - startPage + 1 > 50) {
+    return res.status(400).json({ error: 'A summary can cover up to 50 pages at a time.' });
+  }
+  const { intro, bookPart, discussionPart, labels } = buildSummaryContent(
+    session, undefined, req.body?.prompt, startPage, endPage
+  );
+  const summaryText = `## ${labels.book} (${startPage}–${endPage})\n\n${intro}\n\n${bookPart}\n\n${discussionPart}`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  send('start', {});
+  for (const word of summaryText.split(/(?<=\s)/)) {
+    send('delta', { text: word });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+
+  const botMessage = {
+    id: messages.length ? Math.max(...messages.map((m) => m.id)) + 1 : 1,
+    sessionId: session.id,
+    speaker: 'BOOKI',
+    inputType: 'TEXT',
+    message: summaryText,
+    createdAt: nowIso()
+  };
+  messages.push(botMessage);
+  const reportError = req.body?.deliverAs === 'pdf' ? 'The mock backend does not build summary PDFs.' : null;
+  send('done', { messageId: botMessage.id, cutOff: false, report: null, reportError });
+  res.end();
+});
+
 module.exports = router;

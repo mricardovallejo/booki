@@ -119,7 +119,7 @@ Nine account-wide slots, one set per account, never per tutor:
 | `easy` / `medium` / `hard` | Difficulty — Easy/Medium/Advanced | difficulty | — |
 | `fn_quiz_question` | Function — Quiz question | functions | "output only the question…", one open question, no multiple choice |
 | `fn_answer_grading` | Function — Answer grading | functions | the `SCORE:` / `FEEDBACK:` format (ADR-023) |
-| `fn_summary` | Function — Summary | functions | "prose only…" |
+| `fn_summary` | Function — Summary | functions | Markdown: section headings, bullets, tables |
 | `fn_explain` | Function — Explain | functions | — |
 | `fn_mnemonic` | Function — Mnemonic | functions | — |
 | `capability_routing` | Capability routing | routing | the `{"capability":"<name>"}` contract |

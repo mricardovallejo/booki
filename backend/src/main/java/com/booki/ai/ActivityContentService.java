@@ -40,7 +40,8 @@ public class ActivityContentService {
     public ActivityContent resolve(Document document, AiProvider provider, int startPage, int endPage) {
         byte[] fullPdf = readBytes(storage.get(document.getFilePath()));
         if (provider.supportsDocuments()) {
-            return new ActivityContent.DocumentReference(slicePdf(fullPdf, startPage, endPage), startPage, endPage);
+            byte[] slice = PdfImageShrinker.shrink(slicePdf(fullPdf, startPage, endPage));
+            return new ActivityContent.DocumentReference(slice, startPage, endPage);
         }
         return new ActivityContent.PlainText(extractPlainText(fullPdf, startPage, endPage));
     }
@@ -48,18 +49,10 @@ public class ActivityContentService {
     /** Dispatches to whichever {@link AiProvider} call fits the resolved content — the one place callers need. */
     public String converse(AiProvider provider, ActivityContent content, String systemPrompt,
                            List<AiProvider.Message> history, String userMessage) {
-        String input = switch (content) {
-            case ActivityContent.DocumentReference doc ->
-                    "document pages=" + doc.startPage() + "-" + doc.endPage() + " pdfBytes=" + doc.pdfBytes().length;
-            case ActivityContent.PlainText text -> "text chars=" + text.text().length();
-        };
+        String input = describe(content);
         long startedAt = System.currentTimeMillis();
         try {
-            String reply = switch (content) {
-                case ActivityContent.DocumentReference doc -> provider.converseWithDocument(
-                        systemPrompt, history, userMessage, doc.pdfBytes(), doc.startPage(), doc.endPage());
-                case ActivityContent.PlainText ignored -> provider.converse(systemPrompt, history, userMessage);
-            };
+            String reply = call(provider, content, systemPrompt, history, userMessage);
             log.info("ai.call ok provider={} model={} input={} durationMs={}",
                     provider.key(), provider.model(), input, System.currentTimeMillis() - startedAt);
             return reply;
@@ -71,12 +64,77 @@ public class ActivityContentService {
         }
     }
 
+    /**
+     * For a long reply, written as it is generated. A provider that can't stream
+     * delivers its whole (blocking, shorter) reply as one delta; a cut-off reply
+     * still ends with {@link AiProvider#CUT_OFF_NOTICE}. Never throws: {@code out}
+     * always ends in exactly one of onComplete or onError.
+     */
+    public void converseLong(AiProvider provider, ActivityContent content, String systemPrompt,
+                             List<AiProvider.Message> history, String userMessage,
+                             StreamingAiProvider.TokenStream out) {
+        long startedAt = System.currentTimeMillis();
+        StreamingAiProvider.TokenStream logged = new StreamingAiProvider.TokenStream() {
+            @Override
+            public void onDelta(String text) {
+                out.onDelta(text);
+            }
+
+            @Override
+            public void onComplete(String fullText) {
+                log.info("ai.call ok provider={} model={} input={} durationMs={} outputChars={} cutOff={}",
+                        provider.key(), provider.model(), describe(content), System.currentTimeMillis() - startedAt,
+                        fullText.length(), AiProvider.wasCutOff(fullText));
+                out.onComplete(fullText);
+            }
+
+            @Override
+            public void onError(RuntimeException error) {
+                log.error("ai.call failed provider={} model={} input={} durationMs={} cause={}",
+                        provider.key(), provider.model(), describe(content), System.currentTimeMillis() - startedAt,
+                        OutboundHttp.describeFailure(error));
+                out.onError(error);
+            }
+        };
+
+        if (provider instanceof StreamingAiProvider streaming) {
+            streaming.converseLongStream(systemPrompt, history, userMessage, content, logged);
+            return;
+        }
+        String reply;
+        try {
+            reply = call(provider, content, systemPrompt, history, userMessage);
+        } catch (RuntimeException e) {
+            logged.onError(e);
+            return;
+        }
+        logged.onDelta(reply);
+        logged.onComplete(reply);
+    }
+
     /** What to embed in the prompt's "document" section — the real text, or a note pointing at the attached pages. */
     public String documentTextFor(ActivityContent content) {
         return switch (content) {
             case ActivityContent.DocumentReference doc ->
                     "(See the attached document, pages " + doc.startPage() + "-" + doc.endPage() + ".)";
             case ActivityContent.PlainText text -> text.text();
+        };
+    }
+
+    private static String call(AiProvider provider, ActivityContent content, String systemPrompt,
+                               List<AiProvider.Message> history, String userMessage) {
+        return switch (content) {
+            case ActivityContent.DocumentReference doc -> provider.converseWithDocument(
+                    systemPrompt, history, userMessage, doc.pdfBytes(), doc.startPage(), doc.endPage());
+            case ActivityContent.PlainText ignored -> provider.converse(systemPrompt, history, userMessage);
+        };
+    }
+
+    private static String describe(ActivityContent content) {
+        return switch (content) {
+            case ActivityContent.DocumentReference doc ->
+                    "document pages=" + doc.startPage() + "-" + doc.endPage() + " pdfBytes=" + doc.pdfBytes().length;
+            case ActivityContent.PlainText text -> "text chars=" + text.text().length();
         };
     }
 

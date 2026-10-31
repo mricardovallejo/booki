@@ -145,7 +145,9 @@ ADR-030.
 | GET | `/api/sessions/{id}/reports` | List reports already generated/sent for this session |
 | POST | `/api/sessions/{id}/reports/progress` | Generate and email a progress report to `email` (one address, or several separated by `;` — `EmailList`, ADR-030) |
 | POST | `/api/sessions/{id}/reports/quiz` | Generate and email a quiz report to `email` (same multi-address support). Optional `quizRequestId` picks which round to report on — falls back to the session's most recent `QuizRequest`, then to a best-effort reconstruction from answered attempts for pre-ADR-030 data |
-| POST | `/api/sessions/{id}/summary` | Generate a summary for a requested page range (omitted fields default to the whole document; clamped, not rejected; optional `pageMode`). The book excerpt is capped (~12k chars, even-sampled) so a wide range stays bounded |
+| POST | `/api/sessions/{id}/summary` | Generate a summary for a page range of up to 50 pages, all at once, and save it as a chat message; with `deliverAs: "pdf"` also builds the PDF. Optional `pageMode` |
+| POST | `/api/sessions/{id}/summary/stream` | The same summary written as Server-Sent Events: `start`, `delta` (`{text}`), `figures` (the book's images are being cut), then `done` (`{messageId, cutOff, report, reportError}`) or `error` (`{error}`). Invalid input is a normal JSON error. A stream with neither `done` nor `error` was cut by something outside BooKI |
+| GET | `/api/sessions/{id}/figures/{figureId}` | A JPEG cut from the book for one of this session's summaries, referenced in the text as `[[FIG:<figureId>\|caption]]` |
 
 ### Quiz — `/api/sessions/{sessionId}` (mounted under Sessions)
 

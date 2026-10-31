@@ -24,7 +24,9 @@ public enum AppProfileSlotKey {
                     + "part they missed or misread together with the correct information from the page. "
                     + "Never tell them to try again.", null),
     FN_SUMMARY("Function — Summary", Group.FUNCTIONS,
-            "Write prose only. No headings unless the reader asks for them.", null),
+            "Format the summary in Markdown: \"##\" section headings written in the session language, "
+                    + "bullet lists, and tables where they help. Start directly with the content, "
+                    + "with no title and no remark about what you are going to do.", null),
     FN_EXPLAIN("Function — Explain", Group.FUNCTIONS, null, null),
     FN_MNEMONIC("Function — Mnemonic", Group.FUNCTIONS, null, null),
 

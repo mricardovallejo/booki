@@ -14,9 +14,13 @@ import com.booki.dto.UpdateCurrentPageRequest;
 import com.booki.service.ReportService;
 import com.booki.service.SessionService;
 import com.booki.util.SecurityUtil;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -99,5 +103,24 @@ public class SessionController {
                                                    @Valid @RequestBody GenerateSummaryRequest request) {
         Object response = reportService.generateSummary(SecurityUtil.currentUserId(), id, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * The same summary, written as it is generated. Stays on the request thread
+     * (no async dispatch) so the security context and log fields stay available.
+     * Bad input still gets a normal JSON error: nothing is written until it passes.
+     */
+    @PostMapping("/{id}/summary/stream")
+    public void streamSummary(@PathVariable Long id, @Valid @RequestBody GenerateSummaryRequest request,
+                              HttpServletResponse response) {
+        reportService.streamSummary(SecurityUtil.currentUserId(), id, request, new SseSummaryWriter(response));
+    }
+
+    @GetMapping("/{id}/figures/{figureId}")
+    public ResponseEntity<Resource> getSummaryFigure(@PathVariable Long id, @PathVariable String figureId) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_JPEG)
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=86400")
+                .body(reportService.getSummaryFigure(SecurityUtil.currentUserId(), id, figureId));
     }
 }

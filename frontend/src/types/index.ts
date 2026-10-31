@@ -242,7 +242,6 @@ export interface SentReport {
 export type SummaryDeliverAs = 'chat' | 'pdf';
 
 export interface GenerateSummaryRequest {
-  lengthPages: number;
   startPage: number;
   endPage: number;
   pageMode?: PageMode;

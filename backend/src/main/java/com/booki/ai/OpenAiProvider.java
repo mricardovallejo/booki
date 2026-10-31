@@ -89,7 +89,7 @@ public class OpenAiProvider extends OpenAiCompatibleProvider {
                     if ("output_text".equals(block.path("type").asString())) {
                         String text = block.path("text").asString();
                         if (text != null && !text.isBlank()) {
-                            return text;
+                            return "incomplete".equals(root.path("status").asString()) ? text + CUT_OFF_NOTICE : text;
                         }
                     }
                 }

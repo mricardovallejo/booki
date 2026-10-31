@@ -107,6 +107,7 @@ jobs:
             --min-instances 1 \
             --max-instances 2 \
             --memory 1Gi \
+            --timeout 600 \
             --port 8080 \
             --env-vars-file env.yaml \
             --format 'value(status.url)')

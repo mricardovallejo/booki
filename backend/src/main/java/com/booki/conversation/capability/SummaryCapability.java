@@ -15,9 +15,6 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SummaryCapability implements ConversationCapability {
 
-    /** Conversational summaries stay short; the modal is where length is configurable. */
-    private static final int DEFAULT_LENGTH_PAGES = 2;
-
     private final ReportService reportService;
 
     @Override
@@ -34,7 +31,7 @@ public class SummaryCapability implements ConversationCapability {
     @Override
     public String execute(CapabilityInvocation invocation) {
         return reportService.generateSummaryText(
-                invocation.session(), DEFAULT_LENGTH_PAGES,
+                invocation.session(), null,
                 invocation.userText(), invocation.content());
     }
 }

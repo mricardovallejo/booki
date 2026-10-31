@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { getSummaryFigure } from '../api/sessions';
 import { useChat } from '../hooks/useChat';
 import { useSession } from '../hooks/useSession';
+import { useSummary } from '../hooks/useSummary';
 import { useActivityRange } from '../context/ActivityRangeContext';
 import { useVoice } from '../hooks/useVoice';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
@@ -84,8 +86,77 @@ interface Props {
   onActivity?: () => void;
 }
 
+// [[FIG:<id>|caption]] is an image cut from the book. While a summary is still
+// being written the marker holds a page number instead, and there is no image yet.
+const FIGURE_MARKER = /\[\[FIG:([^|\]]+)\|([^\]]*)]]/g;
+const UNFINISHED_MARKER = /\[\[FIG:[^\]]*$/;
+
+function BookFigure({ sessionId, figureId, caption }: { sessionId: number; figureId: string; caption: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!/^[0-9a-f-]{36}$/.test(figureId)) return;
+    let url: string | null = null;
+    let cancelled = false;
+    getSummaryFigure(sessionId, figureId)
+      .then((blob) => {
+        if (cancelled) return;
+        url = URL.createObjectURL(blob);
+        setSrc(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [sessionId, figureId]);
+
+  return (
+    <figure className="my-3">
+      {src && <img src={src} alt={caption} className="max-h-80 rounded-lg" />}
+      <figcaption className="mt-1 text-xs italic text-white/60">{caption}</figcaption>
+    </figure>
+  );
+}
+
+function BookiMarkdown({ sessionId, text }: { sessionId: number; text: string }) {
+  const parts: ReactNode[] = [];
+  let position = 0;
+  for (const match of text.matchAll(FIGURE_MARKER)) {
+    parts.push(<PlainMarkdown key={position} text={text.slice(position, match.index)} />);
+    parts.push(<BookFigure key={match[1]} sessionId={sessionId} figureId={match[1]} caption={match[2]} />);
+    position = match.index + match[0].length;
+  }
+  parts.push(<PlainMarkdown key={position} text={text.slice(position).replace(UNFINISHED_MARKER, '')} />);
+  return <>{parts}</>;
+}
+
+function PlainMarkdown({ text }: { text: string }) {
+  return (
+    <div className={MARKDOWN_CLASSES}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          table: ({ ...props }) => (
+            <div className="overflow-x-auto">
+              <table {...props} />
+            </div>
+          ),
+          // Model output can contain links — open them in a new tab
+          // and cut the opener reference (tabnabbing).
+          a: ({ ...props }) => <a {...props} target="_blank" rel="noopener noreferrer nofollow" />
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 export default function ChatPanel({ sessionId, onActivity }: Props) {
   const { messages, sending, error, send, sendVoice, refresh } = useChat(sessionId, onActivity);
+  const summary = useSummary(sessionId, refresh);
+  const busy = sending || summary.generating;
   const { session } = useSession(sessionId);
   const { range, pinned } = useActivityRange();
   // The shared range governs every activity now, chat included — see
@@ -178,9 +249,11 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
     send(action.text[lang], range, 'TEXT', action.hint);
   };
 
+  // Scrolls when a summary starts, not on every chunk: following each chunk would
+  // pull the reader away from the part they are reading.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, summary.generating]);
 
   const onSend = async () => {
     if (!range) return;
@@ -196,7 +269,8 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
         {summaryEnabled && (
           <button
             onClick={() => setSummaryOpen(true)}
-            className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+            disabled={summary.generating}
+            className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h4m1 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -231,25 +305,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
               }`}
             >
               {m.speaker === 'BOOKI' ? (
-                <div className={MARKDOWN_CLASSES}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      table: ({ ...props }) => (
-                        <div className="overflow-x-auto">
-                          <table {...props} />
-                        </div>
-                      ),
-                      // Model output can contain links — open them in a new tab
-                      // and cut the opener reference (tabnabbing).
-                      a: ({ ...props }) => (
-                        <a {...props} target="_blank" rel="noopener noreferrer nofollow" />
-                      )
-                    }}
-                  >
-                    {m.message}
-                  </ReactMarkdown>
-                </div>
+                <BookiMarkdown sessionId={sessionId} text={m.message} />
               ) : (
                 <p>{m.message}</p>
               )}
@@ -259,11 +315,48 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
             </div>
           </div>
         ))}
+        {summary.streamedText !== null && (
+          <div className="mb-4 flex justify-start">
+            <div className="max-w-[85%] rounded-2xl rounded-bl-none bg-booki-card px-4 py-3 text-sm leading-relaxed text-white/90">
+              <BookiMarkdown sessionId={sessionId} text={summary.streamedText} />
+              {summary.generating && (
+                <span className="mt-2 flex items-center gap-2 text-[10px] opacity-60">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                  {summary.addingFigures ? 'Adding images from the book…' : 'BooKI is reading the pages and writing…'}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
       <div className="border-t border-white/10 p-4">
         {error && <p className="mb-2 text-xs text-rose-400">{error}</p>}
+        {summary.error && <p className="mb-2 text-xs text-rose-400">{summary.error}</p>}
+        {summary.cutOff && (
+          <p className="mb-2 text-xs text-amber-400">
+            This summary is incomplete: it was cut off before the end. Choose fewer pages for a complete one.
+          </p>
+        )}
+        {summary.interrupted && (
+          <p className="mb-2 text-xs text-amber-400">
+            The connection was lost before the summary finished, so what you see above is incomplete. If it isn't in
+            the chat after reloading, generate it again.
+          </p>
+        )}
+        {summary.report && (
+          <p className={`mb-2 text-xs ${summary.report.simulated ? 'text-amber-400' : 'text-emerald-400'}`}>
+            PDF created.{' '}
+            <button onClick={() => summary.report && summary.downloadReport(summary.report)} className="underline">
+              Download again
+            </button>
+            {summary.report.email &&
+              (summary.report.simulated
+                ? ` · Could not email ${summary.report.email}${summary.report.emailError ? `: ${summary.report.emailError}` : ''}`
+                : ` · Sent to ${summary.report.email}`)}
+          </p>
+        )}
         {voiceError && <p className="mb-2 text-xs text-rose-400">{voiceError}</p>}
         {rangeTooSmall && (
           <p className="mb-2 text-xs text-amber-400">
@@ -276,7 +369,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
               <button
                 key={action.hint}
                 onClick={() => runQuickAction(action)}
-                disabled={sending || !canSend}
+                disabled={busy || !canSend}
                 className="font-menu shrink-0 rounded-full bg-white/5 px-3 py-1 text-[10px] tracking-wide text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
               >
                 {action.label[lang]}
@@ -288,7 +381,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
           <VoiceButton
             supported={voiceSupported}
             active={voiceActive}
-            busy={sending || !canSend}
+            busy={busy || !canSend}
             onPress={onVoicePress}
             size="sm"
           />
@@ -301,12 +394,12 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSend()}
             placeholder="Write to BooKI…"
-            disabled={sending || !canSend}
+            disabled={busy || !canSend}
             className="flex-1 bg-transparent py-2 text-sm text-white placeholder-white/40 outline-none"
           />
           <button
             onClick={onSend}
-            disabled={sending || !canSend || !text.trim()}
+            disabled={busy || !canSend || !text.trim()}
             className="rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20 disabled:opacity-40"
           >
             {sending ? (
@@ -320,12 +413,7 @@ export default function ChatPanel({ sessionId, onActivity }: Props) {
         </div>
       </div>
 
-      <SummaryModal
-        sessionId={sessionId}
-        open={summaryOpen}
-        onClose={() => setSummaryOpen(false)}
-        onChatGenerated={refresh}
-      />
+      <SummaryModal open={summaryOpen} onClose={() => setSummaryOpen(false)} onGenerate={summary.generate} />
     </div>
   );
 }

@@ -1,85 +1,61 @@
 import { useEffect, useState } from 'react';
-import { useSummary } from '../hooks/useSummary';
-import { useSession } from '../hooks/useSession';
 import { useActivityRange } from '../context/ActivityRangeContext';
 import { useAuth } from '../context/AuthContext';
 import Button from './ui/Button';
 import { Field, Input, TextArea } from './ui/FormField';
-import type { SummaryDeliverAs } from '../types';
+import type { GenerateSummaryRequest } from '../types';
+
+const MAX_SUMMARY_PAGES = 50;
 
 interface Props {
-  sessionId: number;
   open: boolean;
   onClose: () => void;
-  onChatGenerated: () => void;
+  onGenerate: (payload: GenerateSummaryRequest) => void;
 }
 
-export default function SummaryModal({ sessionId, open, onClose, onChatGenerated }: Props) {
-  const { generating, error, lastReport, generate } = useSummary(sessionId);
-  const { session, refresh } = useSession(sessionId);
+export default function SummaryModal({ open, onClose, onGenerate }: Props) {
   const { range, pinned } = useActivityRange();
   const { user } = useAuth();
-  const [lengthPages, setLengthPages] = useState(2);
-  const [startPage, setStartPage] = useState(1);
-  const [endPage, setEndPage] = useState(1);
   const [prompt, setPrompt] = useState('');
+  const [wantsPdf, setWantsPdf] = useState(false);
   const [includeCover, setIncludeCover] = useState(true);
-  const [deliverAs, setDeliverAs] = useState<SummaryDeliverAs>('chat');
   const [email, setEmail] = useState('');
-  const [done, setDone] = useState(false);
 
   useEffect(() => {
     if (user?.effectiveReportEmail) setEmail((prev) => prev || user.effectiveReportEmail || '');
   }, [user]);
 
-  useEffect(() => {
-    if (range) {
-      setStartPage(range.start);
-      setEndPage(range.end);
-    }
-  }, [range]);
-
-  useEffect(() => {
-    if (open) refresh();
-  }, [open, refresh]);
-
   if (!open) return null;
 
+  const pageCount = range ? range.end - range.start + 1 : 0;
   // Refuse a degenerate, never-adjusted 1-page range (right when a session
   // starts) rather than silently summarizing a single page nobody chose.
-  const rangeTooSmall = range != null && !pinned && range.end - range.start + 1 < 2;
-  const pageRangeValid = Boolean(session && range) && !rangeTooSmall;
+  const rangeTooSmall = range != null && !pinned && pageCount < 2;
+  const rangeTooLarge = pageCount > MAX_SUMMARY_PAGES;
 
-  const onGenerate = async () => {
-    setDone(false);
-    const result = await generate({
-      lengthPages,
-      startPage,
-      endPage,
+  const onSubmit = () => {
+    if (!range) return;
+    onGenerate({
+      startPage: range.start,
+      endPage: range.end,
       prompt: prompt.trim() || undefined,
       includeCover,
-      deliverAs,
-      email: deliverAs === 'pdf' && email.trim() ? email.trim() : undefined
+      deliverAs: wantsPdf ? 'pdf' : 'chat',
+      email: wantsPdf && email.trim() ? email.trim() : undefined
     });
-    if (!result) return;
-    if (result.deliveredAs === 'chat') {
-      onChatGenerated();
-      onClose();
-    } else {
-      setDone(true);
-    }
+    onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-booki-surface p-6 shadow-2xl">
-        <h2 className="text-xl font-bold text-white">Summarize this session</h2>
+        <h2 className="text-xl font-bold text-white">Summarize these pages</h2>
         <p className="mt-1 text-sm text-booki-muted">
-          Combines the book's pages with our discussion so far, in your tutor's and your own voice.
+          A condensed summary that keeps every key idea, written in the chat so you can keep discussing it.
         </p>
 
         <div className="mt-5 space-y-4">
-          <Field label="Describe the summary you want (optional)">
+          <Field label="Anything to focus on? (optional)">
             <TextArea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -88,96 +64,60 @@ export default function SummaryModal({ sessionId, open, onClose, onChatGenerated
             />
           </Field>
 
-          <Field label={`Length: about ${lengthPages} page${lengthPages > 1 ? 's' : ''}`}>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={lengthPages}
-              onChange={(e) => setLengthPages(Number(e.target.value))}
-              className="w-full accent-booki-accent"
-            />
-          </Field>
-
           {range && (
             <p className="text-xs text-white/50">
-              Covers pages {range.start}–{range.end} — the activity range set above the PDF.
+              Covers pages {range.start}–{range.end} ({pageCount} pages) — the activity range set above the PDF.
             </p>
           )}
 
           <label className="flex items-center gap-2 text-sm text-white/80">
             <input
               type="checkbox"
-              checked={includeCover}
-              onChange={(e) => setIncludeCover(e.target.checked)}
+              checked={wantsPdf}
+              onChange={(e) => setWantsPdf(e.target.checked)}
               className="rounded border-white/20 bg-booki-card"
             />
-            Include the book's cover art
+            Also create a PDF
           </label>
 
-          <Field label="Deliver as">
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDeliverAs('chat')}
-                className={`rounded-lg py-2 text-xs font-bold transition ${
-                  deliverAs === 'chat'
-                    ? 'bg-booki-accent text-white'
-                    : 'bg-booki-card text-white/70 hover:bg-booki-card-hover'
-                }`}
-              >
-                Message in chat
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeliverAs('pdf')}
-                className={`rounded-lg py-2 text-xs font-bold transition ${
-                  deliverAs === 'pdf'
-                    ? 'bg-booki-accent text-white'
-                    : 'bg-booki-card text-white/70 hover:bg-booki-card-hover'
-                }`}
-              >
-                Download PDF
-              </button>
-            </div>
-          </Field>
-
-          {deliverAs === 'pdf' && (
-            <Field label="Also email it (optional)">
-              <Input
-                type="text"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@email.com; someone-else@email.com"
-              />
-            </Field>
+          {wantsPdf && (
+            <>
+              <label className="flex items-center gap-2 text-sm text-white/80">
+                <input
+                  type="checkbox"
+                  checked={includeCover}
+                  onChange={(e) => setIncludeCover(e.target.checked)}
+                  className="rounded border-white/20 bg-booki-card"
+                />
+                Include the book's cover art
+              </label>
+              <Field label="Also email it (optional)">
+                <Input
+                  type="text"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@email.com; someone-else@email.com"
+                />
+              </Field>
+            </>
           )}
 
           {rangeTooSmall && (
             <p className="text-xs text-amber-400">Adjust the page range above before generating a summary.</p>
           )}
-          {error && <p className="text-sm text-rose-400">{error}</p>}
-          {done && deliverAs === 'pdf' && (
-            <p className={`text-sm ${lastReport?.simulated ? 'text-amber-400' : 'text-emerald-400'}`}>
-              PDF generated and downloaded
-              {lastReport?.email
-                ? lastReport.simulated
-                  ? lastReport.emailError
-                    ? ` · could not email ${lastReport.email}: ${lastReport.emailError}`
-                    : ` · not actually emailed to ${lastReport.email} — email isn't configured on this server`
-                  : ` · sent to ${lastReport.email}`
-                : ''}
-              .
+          {rangeTooLarge && (
+            <p className="text-xs text-amber-400">
+              A summary can cover up to {MAX_SUMMARY_PAGES} pages at a time. Choose a smaller range above.
             </p>
           )}
         </div>
 
         <div className="mt-6 flex gap-3">
           <Button variant="secondary" onClick={onClose} className="flex-1">
-            {done ? 'Close' : 'Cancel'}
+            Cancel
           </Button>
-          <Button onClick={onGenerate} disabled={generating || !pageRangeValid} className="flex-1">
-            {generating ? 'Generating…' : 'Generate'}
+          <Button onClick={onSubmit} disabled={!range || rangeTooSmall || rangeTooLarge} className="flex-1">
+            Generate
           </Button>
         </div>
       </div>

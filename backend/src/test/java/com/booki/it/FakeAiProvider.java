@@ -83,7 +83,7 @@ public class FakeAiProvider implements AiProvider {
         if (systemPrompt.contains("Output only the question")) {
             return "What is the main idea of this page?";
         }
-        if (systemPrompt.contains("Write prose only. No headings")) {
+        if (systemPrompt.contains("Format the summary in Markdown")) {
             return "Summary of the pages.";
         }
         if (systemPrompt.contains("Build one memory aid whose form fits")) {

@@ -36,6 +36,9 @@ final class PdfImageShrinker {
 
     static byte[] shrink(byte[] pdf) {
         try (PDDocument document = Loader.loadPDF(pdf)) {
+            // PDFBox's cache keeps every decoded image until the heap is full, which on
+            // a 1 GiB container pushes the whole process past the limit.
+            document.setResourceCache(null);
             boolean changed = false;
             for (PDPage page : document.getPages()) {
                 changed |= shrinkImagesOn(page, document);

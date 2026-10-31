@@ -72,6 +72,8 @@ public class ReportServiceImpl implements ReportService {
     private static final Map<String, String> SUMMARY_HEADING = Map.of("en", "Summary", "es", "Resumen", "fr", "Résumé");
 
     private static final int MAX_SUMMARY_PAGES = 50;
+    /** Figures take far more room than notes, so a short range gets only a few. */
+    private static final int PAGES_PER_FIGURE = 3;
     /** Anthropic rejects requests over 32 MB, and base64 adds a third. */
     private static final int MAX_SUMMARY_PDF_BYTES = 23 * 1024 * 1024;
     private static final int SUMMARY_DISCUSSION_MESSAGES = 20;
@@ -424,12 +426,14 @@ public class ReportServiceImpl implements ReportService {
             instruction.append(" Follow this specific request: \"").append(customPrompt.trim()).append("\".");
         }
         // Here rather than in the editable prompt, because SummaryFigures parses this exact format.
-        if (withFigures && content instanceof ActivityContent.DocumentReference) {
-            instruction.append(" Where a figure on these pages (illustration, portrait, map, timeline, diagram) would ")
-                    .append("help the reader understand or remember a point, insert on its own line, right after that ")
+        if (withFigures && content instanceof ActivityContent.DocumentReference document) {
+            int pages = document.endPage() - document.startPage() + 1;
+            int maxFigures = Math.min(SummaryFigures.MAX_FIGURES, Math.max(2, pages / PAGES_PER_FIGURE));
+            instruction.append(" Where a figure on these pages (illustration, portrait, map, timeline, diagram) shows ")
+                    .append("something the notes can't say as well in words, insert on its own line, right after that ")
                     .append("point: [[FIG:<page>|<caption>]], where <page> is the page it is on, numbered as given for ")
-                    .append("the attached document, and <caption> says in the session language what it shows. Use at most ")
-                    .append(SummaryFigures.MAX_FIGURES)
+                    .append("the attached document, and <caption> says in a few words, in the session language, what it shows. Use at most ")
+                    .append(maxFigures)
                     .append(" and only real figures from the pages, never decoration.");
         }
         return new SummaryPrompt(systemPrompt, instruction.toString());

@@ -28,7 +28,8 @@ COPY --from=build /src/build/libs/*.jar app.jar
 USER booki
 EXPOSE 8080
 
-# MaxRAMPercentage lets the heap track the container memory limit (e.g. 75% of
-# Cloud Run's 512Mi). Override JAVA_OPTS at deploy time if needed.
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
+# MaxRAMPercentage lets the heap track the container memory limit. The JVM uses
+# about 335 MiB outside the heap, so 60% of Cloud Run's 1Gi keeps the process
+# under the limit. Override JAVA_OPTS at deploy time if needed.
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=60.0"
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

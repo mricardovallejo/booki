@@ -47,6 +47,19 @@ class SummaryPdfRendererTest {
     }
 
     @Test
+    void theLastPageIsNeverBlank() throws IOException {
+        for (int lines = 40; lines <= 130; lines++) {
+            String notes = "- Une ligne de notes\n".repeat(lines);
+            byte[] pdf = renderer.render(7L, "Livre", notes, null);
+            try (PDDocument document = Loader.loadPDF(pdf)) {
+                PDFTextStripper lastPage = new PDFTextStripper();
+                lastPage.setStartPage(document.getNumberOfPages());
+                assertThat(lastPage.getText(document)).as("%d lines", lines).contains("Une ligne de notes");
+            }
+        }
+    }
+
+    @Test
     void rendersFormattingAndCharactersTheOldFontCouldNotPrint() throws IOException {
         byte[] pdf = renderer.render(7L, "Le Livre d'Hélène (pages 1-3)", """
                 ## La **Renaissance**

@@ -54,6 +54,8 @@ public class SummaryFigures {
 
     public static final int MAX_FIGURES = 12;
     private static final Pattern PAGE_MARKER = Pattern.compile("\\[\\[FIG:(\\d+)\\|([^\\]\\n]*)]]");
+    /** What a reply cut off while writing a marker leaves behind. */
+    private static final Pattern UNFINISHED_MARKER = Pattern.compile("\\[\\[FIG:[^\\]\\n]*]?$", Pattern.MULTILINE);
 
     private static final int GRID = 20;
     private static final String COLUMNS = "ABCDEFGHIJKLMNOPQRST";
@@ -76,7 +78,8 @@ public class SummaryFigures {
     }
 
     /** @return {@code text} with its page markers replaced by stored figures, or removed */
-    public String resolve(Session session, AiProvider provider, String text, int startPage, int endPage) {
+    public String resolve(Session session, AiProvider provider, String reply, int startPage, int endPage) {
+        String text = UNFINISHED_MARKER.matcher(reply).replaceAll("");
         List<PageFigure> figures = parseMarkers(text, startPage, endPage);
         if (figures.isEmpty()) {
             return PAGE_MARKER.matcher(text).replaceAll("");
@@ -145,6 +148,7 @@ public class SummaryFigures {
         }
         Map<Integer, BufferedImage> pages = new HashMap<>();
         try (PDDocument document = Loader.loadPDF(pdf)) {
+            document.setResourceCache(null); // See PdfImageShrinker: it would hold every decoded image.
             PDFRenderer renderer = new PDFRenderer(document);
             for (PageFigure figure : figures) {
                 if (!pages.containsKey(figure.page())) {

@@ -113,6 +113,19 @@ class SummaryStreamIT extends IntegrationTestBase {
     }
 
     @Test
+    void aFigureMarkerLeftUnfinishedByACutOffIsRemoved() {
+        AuthData user = register(uniqueEmail("stream-cut-marker"));
+        Long sessionId = createSession(user, uploadThreePageDocument(user), 1, 3);
+        fakeAi.enqueue("Some text\n\n[[FIG:2|A hive that nev" + AiProvider.CUT_OFF_NOTICE);
+
+        stream(user, sessionId, request(1, 3, "chat"));
+
+        String saved = messages(user, sessionId).getLast().get("message").toString();
+        assertThat(saved).contains("Some text").doesNotContain("[[FIG");
+        assertThat(AiProvider.wasCutOff(saved)).isTrue();
+    }
+
+    @Test
     void moreThanFiftyPagesIsAPlainJsonErrorBeforeAnyStreamOrModelCall() {
         AuthData user = register(uniqueEmail("stream-limit"));
         String[] pages = new String[51];

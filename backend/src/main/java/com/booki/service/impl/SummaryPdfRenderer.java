@@ -47,35 +47,38 @@ public class SummaryPdfRenderer {
             .build();
 
     private static final String CSS = """
-            @page { size: letter; margin: 54pt 54pt 60pt 54pt;
+            @page { size: letter; margin: 36pt 40pt 40pt 40pt;
                     @bottom-center { content: counter(page) " / " counter(pages); font-family: 'DejaVu Sans';
-                                     font-size: 8pt; color: #8a8a94; } }
-            body { font-family: 'DejaVu Sans'; font-size: 10pt; line-height: 1.45; color: #24242c; }
-            .brand { color: #e63946; font-size: 20pt; font-weight: bold; }
-            .title { font-size: 13pt; font-weight: bold; color: #17171f; margin: 4pt 0 14pt 0;
-                     padding-bottom: 8pt; border-bottom: 2pt solid #e63946; }
-            .cover { float: right; width: 44pt; height: 44pt; line-height: 44pt; text-align: center;
-                     color: #ffffff; font-size: 16pt; font-weight: bold; }
-            h1, h2 { font-size: 13pt; color: #17171f; margin: 16pt 0 6pt 0; padding-bottom: 3pt;
+                                     font-size: 7pt; color: #8a8a94; } }
+            body { margin: 0; font-family: 'DejaVu Sans'; font-size: 9pt; line-height: 1.3; color: #24242c; }
+            .brand { color: #e63946; font-size: 13pt; font-weight: bold; }
+            .title { font-size: 9.5pt; font-weight: bold; color: #17171f; margin: 1pt 0 7pt 0;
+                     padding-bottom: 4pt; border-bottom: 1.5pt solid #e63946; }
+            .cover { float: right; width: 28pt; height: 28pt; line-height: 28pt; text-align: center;
+                     color: #ffffff; font-size: 10pt; font-weight: bold; }
+            h1, h2 { font-size: 10.5pt; color: #17171f; margin: 8pt 0 3pt 0; padding-bottom: 1.5pt;
                      border-bottom: 0.75pt solid #d9d9e0; page-break-after: avoid; }
-            h3, h4 { font-size: 11pt; color: #e63946; margin: 11pt 0 4pt 0; page-break-after: avoid; }
-            p { margin: 0 0 7pt 0; }
-            ul, ol { margin: 0 0 7pt 0; padding-left: 16pt; }
-            li { margin-bottom: 3pt; }
+            h3, h4 { font-size: 9.5pt; color: #e63946; margin: 5pt 0 2pt 0; page-break-after: avoid; }
+            p { margin: 0 0 3pt 0; }
+            ul, ol { margin: 0 0 3pt 0; padding-left: 11pt; }
+            li { margin-bottom: 1pt; }
+            /* A margin after the last line could spill alone onto a blank page. */
+            .notes { margin: 0; }
+            .notes > :last-child, .notes > :last-child > li:last-child { margin-bottom: 0; }
             strong { font-weight: bold; color: #17171f; }
             em { font-style: italic; }
-            hr { border: 0; border-top: 0.75pt solid #d9d9e0; margin: 10pt 0; }
-            code { font-size: 9pt; background-color: #f1f1f4; }
-            blockquote { margin: 0 0 7pt 0; padding: 6pt 10pt; background-color: #f6f6f9;
-                         border-left: 3pt solid #e63946; }
-            table { width: 100%; border-collapse: collapse; margin: 4pt 0 10pt 0; font-size: 9pt;
+            hr { border: 0; border-top: 0.75pt solid #d9d9e0; margin: 5pt 0; }
+            code { font-size: 8pt; background-color: #f1f1f4; }
+            blockquote { margin: 0 0 3pt 0; padding: 3pt 6pt; background-color: #f6f6f9;
+                         border-left: 2pt solid #e63946; }
+            table { width: 100%; border-collapse: collapse; margin: 2pt 0 5pt 0; font-size: 8pt;
                     -fs-table-paginate: paginate; }
-            th { background-color: #17171f; color: #ffffff; font-weight: bold; text-align: left; padding: 4pt 6pt; }
-            td { border: 0.75pt solid #d9d9e0; padding: 4pt 6pt; vertical-align: top; }
+            th { background-color: #17171f; color: #ffffff; font-weight: bold; text-align: left; padding: 1.5pt 4pt; }
+            td { border: 0.75pt solid #d9d9e0; padding: 1.5pt 4pt; vertical-align: top; }
             tr { page-break-inside: avoid; }
-            .figure { text-align: center; margin: 8pt 0 10pt 0; page-break-inside: avoid; }
-            .figure img { max-width: 75%; max-height: 210pt; }
-            .caption { font-size: 8.5pt; font-style: italic; color: #5f5f6a; margin-top: 3pt; }
+            .figure { text-align: center; margin: 3pt 0 4pt 0; page-break-inside: avoid; }
+            .figure img { max-width: 50%; max-height: 110pt; }
+            .caption { font-size: 7.5pt; font-style: italic; color: #5f5f6a; margin-top: 1pt; }
             """;
 
     private final StorageAdapter storage;
@@ -87,14 +90,14 @@ public class SummaryPdfRenderer {
         String html = "<html><head><meta charset=\"UTF-8\"/><title>" + escape(title) + "</title><style>"
                 + CSS + "</style></head><body>" + coverHtml(cover)
                 + "<div class=\"brand\">BooKI</div><div class=\"title\">" + escape(title) + "</div>"
-                + bodyHtml(sessionId, markdown) + "</body></html>";
+                + "<div class=\"notes\">" + bodyHtml(sessionId, markdown) + "</div></body></html>";
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
-            font(builder, "DejaVuSans.ttf", 400, BaseRendererBuilder.FontStyle.NORMAL);
-            font(builder, "DejaVuSans-Bold.ttf", 700, BaseRendererBuilder.FontStyle.NORMAL);
-            font(builder, "DejaVuSans-Oblique.ttf", 400, BaseRendererBuilder.FontStyle.ITALIC);
+            font(builder, "DejaVuSansCondensed.ttf", 400, BaseRendererBuilder.FontStyle.NORMAL);
+            font(builder, "DejaVuSansCondensed-Bold.ttf", 700, BaseRendererBuilder.FontStyle.NORMAL);
+            font(builder, "DejaVuSansCondensed-Oblique.ttf", 400, BaseRendererBuilder.FontStyle.ITALIC);
             builder.withHtmlContent(XML_INVALID.matcher(html).replaceAll(""), null);
             builder.toStream(out);
             builder.run();

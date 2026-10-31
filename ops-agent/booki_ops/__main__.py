@@ -26,7 +26,7 @@ def main() -> None:
 
     cfg = Config.from_env(dry_run=args.dry_run)
     audit = AuditLog(cfg.audit_log)
-    agent = OpsAgent(cfg, Toolbox(cfg, CommandRunner(cfg)), anthropic.Anthropic(),
+    agent = OpsAgent(cfg, Toolbox(cfg, CommandRunner(cfg)), anthropic.Anthropic(default_headers=({'anthropic-workspace-id': cfg.anthropic_workspace_id} if cfg.anthropic_workspace_id else None)),
                      terminal_approver(audit), audit)
 
     print(f"BooKI ops agent · {cfg.project}/{cfg.service} · modelo {cfg.model}"

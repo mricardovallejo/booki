@@ -36,6 +36,7 @@ class Config:
     model: str
     max_steps: int
     audit_log: Path
+    anthropic_workspace_id: str | None = None
     dry_run: bool = False
 
     @staticmethod
@@ -58,5 +59,6 @@ class Config:
             model=os.environ.get("OPS_AGENT_MODEL", "claude-sonnet-5-5"),
             max_steps=int(os.environ.get("OPS_AGENT_MAX_STEPS", "25")),
             audit_log=Path(os.environ.get("OPS_AUDIT_LOG", "audit.jsonl")),
+            anthropic_workspace_id=os.environ.get("ANTHROPIC_WORKSPACE_ID") or None,
             dry_run=dry_run,
         )
